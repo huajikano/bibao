@@ -2188,6 +2188,10 @@ window.__ModuleLoader__.load({
             sendEnabled: false,
             tuning: { memoryStrength: 1, talkativeness: 1 },
           },
+          personaSeed: { name: '', ageNow: 22, brief: '' },
+          personaDraft: null,
+          personaBusy: false,
+          personaNote: '',
         }
         this.load = this.load.bind(this)
         this.loadBio = this.loadBio.bind(this)
@@ -2929,6 +2933,52 @@ window.__ModuleLoader__.load({
         }, 350)
       }
 
+      async genPersona() {
+        const seed = {
+          name: seedForm.name || undefined,
+          ageNow: seedForm.ageNow || undefined,
+          tone: seedForm.brief || undefined,
+          wound: seedForm.brief || undefined,
+          oneLine: seedForm.brief || undefined,
+        }
+        this.setState({ personaBusy: true, personaNote: '生成中…（可能要十几秒）' })
+        try {
+          const data = await request('/biography/generate', {
+            method: 'POST',
+            body: JSON.stringify({ seed }),
+          })
+          this.setState({
+            personaDraft: data.persona,
+            personaBusy: false,
+            personaNote:
+              (data.source === 'ai' ? 'AI 生成' : '模板生成') +
+              (data.warnings?.length ? `·${data.warnings[0]}` : ''),
+          })
+        } catch (error) {
+          this.setState({ personaBusy: false, personaNote: `失败：${error.message}` })
+        }
+      }
+
+      async applyPersona(mode) {
+        if (!this.state.personaDraft) return
+        this.setState({ personaBusy: true, personaNote: '应用中…' })
+        try {
+          const data = await request('/biography/apply', {
+            method: 'POST',
+            body: JSON.stringify({ persona: this.state.personaDraft, mode }),
+          })
+          this.setState((prev) => ({
+            personaBusy: false,
+            personaDraft: null,
+            snap: data.snapshot,
+            note: `已应用（${data.result.mode === 'rebuild' ? '重建' : `新增 ${data.result.added ?? 0} 条经历`}）`,
+          }))
+          if (this.alive) this.load()
+        } catch (error) {
+          this.setState({ personaBusy: false, personaNote: `应用失败：${error.message}` })
+        }
+      }
+
       async saveSettings() {
         const { form } = this.state
         if (this.tuningTimer) {
@@ -3344,6 +3394,7 @@ window.__ModuleLoader__.load({
 
       renderSettings(t, snap) {
         const { form, bio, bioDirty, saving, note } = this.state
+        const seedForm = this.state.personaSeed ?? { name: '', ageNow: 22, brief: '' }
         if (!form) return h('div', { className: 'bb-muted' }, '正在读取设置…')
         const snow = snap.snow ?? {}
         return h(
@@ -3405,6 +3456,83 @@ window.__ModuleLoader__.load({
                 },
               }),
               h('div', { className: 'bb-muted' }, '记忆拉低＝只有刚才十几分钟清晰；频率拉低＝更容易装死。都不改四定律，只改这个人的参数。'),
+            ),
+          ),
+          h(
+            Card,
+            { title: '人物经历（AI 生成）', hint: '一句话设定 → 20 条过去 + 关系，先预览再应用' },
+            h(
+              'div',
+              { className: 'bb-persona' },
+              h(
+                'div',
+                { className: 'bb-personaRow' },
+                h('input', {
+                  className: 'bb-input',
+                  placeholder: '她的名字',
+                  value: seedForm.name,
+                  onChange: (event) =>
+                    this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, name: event.target.value } })),
+                }),
+                h('input', {
+                  className: 'bb-input',
+                  type: 'number',
+                  min: '16',
+                  max: '60',
+                  placeholder: '年龄',
+                  value: seedForm.ageNow,
+                  onChange: (event) =>
+                    this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, ageNow: Number(event.target.value) } })),
+                }),
+              ),
+              h('textarea', {
+                className: 'bb-textarea',
+                rows: 3,
+                placeholder: '一句话：她是什么样的人、怕什么、和你什么关系',
+                value: seedForm.brief,
+                onChange: (event) =>
+                  this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, brief: event.target.value } })),
+              }),
+              h(
+                'div',
+                { className: 'bb-actions' },
+                h(
+                  'button',
+                  { type: 'button', className: 'bb-btn primary', disabled: this.state.personaBusy, onClick: () => this.genPersona() },
+                  this.state.personaBusy ? '处理中…' : '生成一版',
+                ),
+                this.state.personaDraft
+                  ? h(
+                      'button',
+                      { type: 'button', className: 'bb-btn', disabled: this.state.personaBusy, onClick: () => this.applyPersona('merge') },
+                      '应用（只补新经历）',
+                    )
+                  : null,
+                this.state.personaDraft
+                  ? h(
+                      'button',
+                      { type: 'button', className: 'bb-btn', disabled: this.state.personaBusy, onClick: () => this.applyPersona('rebuild') },
+                      '应用并重建',
+                    )
+                  : null,
+                this.state.personaNote ? h('span', { className: 'bb-chip good' }, this.state.personaNote) : null,
+              ),
+              this.state.personaDraft
+                ? h(
+                    'div',
+                    { className: 'bb-personaList' },
+                    h('div', { className: 'bb-muted' }, `${this.state.personaDraft.oneLine ?? ''} · ${this.state.personaDraft.events.length} 条经历 / ${this.state.personaDraft.relations.length} 段关系`),
+                    this.state.personaDraft.events.slice(0, 20).map((event, index) =>
+                      h(
+                        'div',
+                        { key: index, className: 'bb-a9' },
+                        h(Chip, { children: `${event.age} 岁` }),
+                        h('span', {}, `${event.title}｜${event.narrative.slice(0, 34)}…`),
+                        h('span', { className: 'bb-muted' }, event.valence >= 0 ? '好感' : '难受'),
+                      ),
+                    ),
+                  )
+                : null,
             ),
           ),
           h(
@@ -3835,6 +3963,9 @@ window.__ModuleLoader__.load({
   background: color-mix(in oklab, var(--dsw-alias-bg-base) 88%, transparent);
   backdrop-filter: blur(6px);
 }
+.bb-persona { display: flex; flex-direction: column; gap: 8px; }
+.bb-personaRow { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }
+.bb-personaList { display: flex; flex-direction: column; gap: 4px; max-block-size: 280px; overflow: auto; }
 .bb-tune { display: flex; flex-direction: column; gap: 6px; }
 .bb-tuneHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
 .bb-senseStrip { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }

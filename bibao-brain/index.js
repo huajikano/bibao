@@ -10,7 +10,7 @@
  * 这里没有任何 QQ / snowluma 协议代码：Phase 2 的感官与嘴由后续适配层挂载。
  */
 
-import { appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import { copyFile, appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -22,6 +22,7 @@ import { runSandbox } from './core/sandbox.js'
 import { SnowlumaBridge } from './core/snowluma.js'
 import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
+import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
 
 export const name = 'bibao-brain'
@@ -1154,6 +1155,103 @@ export function apply(ctx, config = {}) {
         })
       },
     },
+    {
+      path: '/biography/generate',
+      methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const seed = body.seed ?? {}
+        const llms = llmNow()
+        const warnings = []
+        let persona = null
+        let source = 'template'
+        if (body.useAi !== false && llms.broca?.llm && llms.broca.provider && llms.broca.model) {
+          const prompt = buildGenerationPrompt(seed)
+          const attempt = async (extra) => {
+            let raw = ''
+            const stream = llms.broca.llm.stream({
+              provider: llms.broca.provider,
+              model: llms.broca.model,
+              system: prompt.system + (extra ?? ''),
+              messages: [{ role: 'user', content: [{ type: 'text', text: prompt.user }] }],
+              maxTokens: 4096,
+              temperature: 0.85,
+            })
+            for await (const chunk of stream) if (chunk.type === 'text-delta') raw += chunk.text
+            const parsed = parsePersonaJson(raw)
+            if (!parsed) console.warn('[bibao] persona raw:', raw.length, JSON.stringify(raw.slice(0, 160)))
+            return parsed ? validatePersona(parsed, { seed }) : { ok: false, errors: ['模型没有给出可解析的 JSON', 'len=' + raw.length] }
+          }
+          try {
+            let checked = await attempt('')
+            if (!checked.ok) checked = await attempt('\n重要：不要输出任何思考过程或说明文字，第一个字符必须是 {，最后一个字符必须是 }。')
+            if (checked.ok) {
+              persona = checked.persona
+              source = 'ai'
+            } else {
+              warnings.push(...checked.errors.slice(0, 3))
+            }
+          } catch (error) {
+            warnings.push(`模型调用失败：${String(error?.message ?? error).slice(0, 80)}`)
+          }
+        } else {
+          warnings.push('没有可用的模型，用模板生成了一份可编辑的草稿')
+        }
+        if (!persona) {
+          const fallback = templatePersona(seed)
+          if (!fallback.ok) return fail(`生成失败：${fallback.errors.join('；')}`, 500)
+          persona = fallback.persona
+          source = 'template'
+        }
+        return json({ source, warnings, persona, prompt: buildGenerationPrompt(seed) })
+      },
+    },
+    {
+      path: '/biography/apply',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        const checked = validatePersona(body.persona ?? {}, { seed: body.persona?.seed ?? {} })
+        if (!checked.ok) return fail(`档案不合法：${checked.errors.slice(0, 3).join('；')}`, 400)
+        const persona = checked.persona
+        const mode = body.mode === 'rebuild' ? 'rebuild' : 'merge'
+        const rev = new Date().toISOString().replace(/[:.]/g, '-')
+        try {
+          await mkdir(dataDir, { recursive: true })
+          await copyFile(biographyFile, path.join(dataDir, `biography.rev-${rev}.json`))
+        } catch {
+          /* 还没有旧档就不用备份 */
+        }
+        const saved = { ...persona }
+        delete saved.seed
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(biographyFile, JSON.stringify(saved, null, 2), 'utf8')
+        biography = saved
+        let result = { mode, rev }
+        if (mode === 'rebuild') {
+          rebuildBrain(saved)
+          result = { ...result, rebuilt: true }
+        } else {
+          result = { ...result, ...brain.injectBiography(saved) }
+          schedulePersist(200)
+        }
+        return json({ ok: true, result, snapshot: snapshot() })
+      },
+    },
+    {
+      path: '/biography/revisions',
+      methods: ['GET'],
+      handler: async () => {
+        try {
+          const names = await readdir(dataDir)
+          return json({ revisions: names.filter((name) => name.startsWith('biography.rev-')).sort().reverse().slice(0, 20) })
+        } catch {
+          return json({ revisions: [] })
+        }
+      },
+    },
+
     {
       path: '/biography',
       methods: ['GET', 'POST'],

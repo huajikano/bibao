@@ -378,6 +378,52 @@ export class BibaoBrain {
     return deltaMs
   }
 
+
+  /**
+   * 把人物档案的过去写成记忆。
+   * 只补"还没有的"（按标题判重），已有聊天记忆一条不动；关系向目标值靠一半。
+   */
+  injectBiography(persona = {}) {
+    const now = this.simMs
+    const titles = new Set(this.memory.episodes.map((node) => node.title))
+    let added = 0
+    for (const event of persona.events ?? []) {
+      if (titles.has(event.title)) continue
+      const yearsAgo = Math.max(0, (persona.ageNow ?? this.age) - event.age)
+      const episode = this.memory.write({
+        now: now - yearsAgo * 365 * DAY_MS,
+        age: event.age,
+        arousal: event.arousal,
+        pe: 0.5,
+        valence: event.valence,
+        salience: Math.max(0.3, event.arousal),
+        title: event.title,
+        narrative: event.narrative,
+        tags: event.tags ?? [],
+        entityId: null,
+        entityName: null,
+        source: 'ai',
+      })
+      if (episode) {
+        titles.add(event.title)
+        added += 1
+      }
+    }
+    for (const relation of persona.relations ?? []) {
+      const current = this.social.get(relation.name) ?? this.social.ensure(relation.name, relation.name)
+      this.social.adjust(relation.name, {
+        intimacy: (relation.intimacy - current.intimacy) * 0.5,
+        trust: (relation.trust - current.trust) * 0.5,
+        powerFear: (relation.powerFear - (current.powerFear ?? 0)) * 0.5,
+      })
+      if (relation.impression) {
+        const row = this.social.get(relation.name)
+        if (row) row.impression = relation.impression
+      }
+    }
+    return { added, relations: (persona.relations ?? []).length }
+  }
+
   /** 夜间把今天的情景压成事实：带出处、带置信度，低置信 7 天后过期。 */
   async _extractFacts() {
     const llm = this.llms?.memory ?? this.llms?.reflection
