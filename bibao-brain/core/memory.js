@@ -81,6 +81,13 @@ export class MemorySystem {
         (1 + PARAMS.valenceStabilityGain * Math.abs(valence) * clamp(Number(arousal))) *
         (input.betaAge ?? 1),
     }
+    // 倒摄干扰：同一个人、同一次标签的旧记忆会被新记忆压下去一点
+    for (const other of this.episodes) {
+      if (other.entityId && other.entityId === node.entityId && other.tags.some((tag) => node.tags.includes(tag))) {
+        other.sDays = Math.max(0.05, other.sDays * 0.9)
+        this.store?.upsertEpisode(other)
+      }
+    }
     this.episodes.push(node)
     this.store?.upsertEpisode(node)
     // 有持久层就不再按 900 条硬截断：归档交给 SQLite，热层只按需裁剪
@@ -159,7 +166,7 @@ export class MemorySystem {
   }
 
   /** 按话题/对象检索显意识层；潜意识层只贡献偏置，不交出文本。 */
-  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null }) {
+  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0 }) {
     const tokens = tokenize(query)
     const scored = []
     for (const node of this.episodes) {
@@ -167,6 +174,8 @@ export class MemorySystem {
       const r = this.extractability(node, now)
       if (r < PARAMS.consciousTier) continue
       let score = r * 0.6 + node.salience * 0.4
+      // 情绪一致回忆：心情差时更容易想起糟心事，反之亦然
+      score += 0.18 * mood * node.valence
       if (entityId && node.entityId === entityId) score += 0.35
       if (tokens.length) {
         const haystack = `${node.title} ${node.narrative} ${node.tags.join(' ')}`

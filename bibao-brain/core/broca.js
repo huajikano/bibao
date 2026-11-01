@@ -112,6 +112,7 @@ export function composeReply(ctx) {
     lastStressor = null,
     transferTarget = null,
     forgot = null,
+    tip = null,
   } = ctx
 
   const category = pickCategory(analysis)
@@ -146,6 +147,16 @@ export function composeReply(ctx) {
   bubbles = enforceBudget(bubbles, budget.maxChars, budget.maxBubbles)
 
   if (route === 'SILENT_READ' || route === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
+
+  // 舌尖现象：具体情节沉下去了，只剩一个标题和一点情绪
+  if (tip && !forgot) {
+    parts = [
+      '话到嘴边就是想不起来具体是哪次',
+      `只记得${tip.title}这个标题，细节全糊了`,
+      tip.valence < -0.2 ? '想起来也不舒服' : '好像不是什么坏事',
+    ]
+    bubbles = enforceBudget(['记不清了', `好像是${String(tip.title).slice(0, 8)}`], budget.maxChars, budget.maxBubbles)
+  }
 
   // 打断忘词：被挤出工作空间且从未落库的话题，真的捞不回来
   if (forgot) {

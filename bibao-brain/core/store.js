@@ -68,7 +68,11 @@ export function openBrainStore(file) {
   const insertFact = db.prepare(`
     INSERT INTO facts (id, text, subject, confidence, source_ids, created_at, updated_at, expires_at, archived_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-    ON CONFLICT(id) DO UPDATE SET text = excluded.text, confidence = excluded.confidence, updated_at = excluded.updated_at
+    ON CONFLICT(id) DO UPDATE SET
+      text = excluded.text,
+      confidence = MAX(confidence, excluded.confidence),
+      updated_at = excluded.updated_at,
+      expires_at = COALESCE(excluded.expires_at, expires_at)
   `)
 
   return {

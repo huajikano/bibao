@@ -45,7 +45,7 @@ export const SYSTEM_PROMPT = `你是「比宝」（沈知遥）的语言区，�
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -78,6 +78,7 @@ export function buildPerceptionFrame(ctx) {
       ? `还想得起的两件事：\n${episodes.map((item) => `  · ${item.title}——${item.narrative}`).join('\n')}`
       : '',
     memories.length ? `相关的旧事：${memoryLine}。` : '',
+    tip ? `话到嘴边想不起来：只记得${tip.title}这个标题，细节糊了。` : '',
     `潜意识偏置 ${bias >= 0 ? '+' : ''}${bias.toFixed(2)}；核心信念：${schemaLine}。${schemaHits.length ? `这次踩到了：${schemaHits.map((hit) => hit.cue).join('、')}。` : ''}`,
     `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,

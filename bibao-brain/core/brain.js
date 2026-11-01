@@ -807,6 +807,7 @@ export class BibaoBrain {
       tags,
       limit: 3,
       exclude: episode?.id ?? null,
+      mood: this.state.moodValence,
     })
     const transferTarget =
       decision.route === 'TRANSFER_PRIVATE_GOSSIP'
@@ -821,6 +822,18 @@ export class BibaoBrain {
     const forgot = recallProbe && recentlyLost.length
       ? { lost: recentlyLost.map((item) => item.title).reverse(), probe: text }
       : null
+    // 舌尖现象：具体情节已经沉到潜意识，但还留着一个标题
+    const tip =
+      recallProbe && !forgot
+        ? (() => {
+            const hit = this.memory.episodes.find(
+              (node) =>
+                this.memory.tier(node, now) === 'subconscious' &&
+                (node.entityId === entityId || node.tags.some((tag) => text.includes(tag))),
+            )
+            return hit ? { title: hit.title, valence: Number(hit.valence.toFixed(2)) } : null
+          })()
+        : null
 
     stages.push({
       key: 'appraisal',
@@ -869,6 +882,7 @@ export class BibaoBrain {
         lastStressor: this.state.lastStressor,
         transferTarget,
         forgot,
+        tip,
         appraisalHint,
         recent: relation.recent ?? [],
         digest: this.digestFor(relation),
