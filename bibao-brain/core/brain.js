@@ -14,6 +14,21 @@ import {
   HORMONES,
 } from './constants.js'
 import { createRng, hashString, uid } from './rng.js'
+
+function bigramOverlap(a = '', b = '') {
+  const grams = (text) => {
+    const clean = String(text).replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '')
+    const out = new Set()
+    for (let i = 0; i < clean.length - 1; i += 1) out.add(clean.slice(i, i + 2))
+    return out
+  }
+  const left = grams(a)
+  const right = grams(b)
+  if (!left.size || !right.size) return 0
+  let hit = 0
+  for (const gram of left) if (right.has(gram)) hit += 1
+  return hit / Math.min(left.size, right.size)
+}
 import { NeuroState, moodWord } from './state.js'
 import { CoreSchema } from './schema.js'
 import { SocialMemory } from './social.js'
@@ -333,6 +348,35 @@ export class BibaoBrain {
 
 
 
+
+  /** 把整条时间轴平移 delta 毫秒：所有记忆/预期/梦一起走，年龄不变。 */
+  shiftTime(deltaMs) {
+    if (!Number.isFinite(deltaMs) || deltaMs === 0) return 0
+    const shift = (value) => (Number.isFinite(value) ? value + deltaMs : value)
+    this.simMs = shift(this.simMs)
+    this.lastExternalAt = shift(this.lastExternalAt)
+    this.lastDmnAt = shift(this.lastDmnAt)
+    this.lastSpokeAt = shift(this.lastSpokeAt)
+    this.lastRealMs = Date.now()
+    for (const node of this.memory.episodes) {
+      node.at = shift(node.at)
+      node.createdAt = shift(node.createdAt)
+      node.rUpdatedAt = shift(node.rUpdatedAt)
+      node.lastRecallAt = shift(node.lastRecallAt)
+      this.store?.upsertEpisode(node)
+    }
+    for (const dream of this.memory.dreams) dream.at = shift(dream.at)
+    for (const semantic of this.memory.semantics) semantic.formedAt = shift(semantic.formedAt)
+    for (const item of this.pending) {
+      item.sentAt = shift(item.sentAt)
+      item.expireAt = shift(item.expireAt)
+    }
+    for (const item of this.inner) item.at = shift(item.at)
+    for (const item of this.workspace.lost) item.at = shift(item.at)
+    for (const channel of Object.values(this.senses.channels)) channel.lastAt = shift(channel.lastAt)
+    return deltaMs
+  }
+
   /** 夜间把今天的情景压成事实：带出处、带置信度，低置信 7 天后过期。 */
   async _extractFacts() {
     const llm = this.llms?.memory ?? this.llms?.reflection
@@ -381,6 +425,14 @@ export class BibaoBrain {
           createdAt: this.simMs,
           updatedAt: this.simMs,
           expiresAt: confidence < 0.6 ? this.simMs + 7 * DAY_MS : null,
+        }
+        // 冲突消解：同一个主语、内容高度重叠但说法不同 → 新事实推翻旧事实
+        try {
+          const existing = this.store.listFacts(this.simMs, 50)
+          const clash = existing.find((old) => old.id !== record.id && old.subject === record.subject && bigramOverlap(old.text, text) >= 0.5)
+          if (clash) record.supersedes = clash.id
+        } catch {
+          /* 冲突判断失败就按新事实入库 */
         }
         this.store.insertFact(record)
         saved.push(record)
@@ -1100,6 +1152,8 @@ export class BibaoBrain {
         sleeping: isSleeping(localParts(now).hour),
         night: isNight(now),
         virtual: this.virtual,
+        realLabel: clockLabel(Date.now()),
+        driftSec: Math.round((this.simMs - Date.now()) / 1000),
         ageDays: Math.round((now - this.birth) / DAY_MS),
       },
       neuro: this.state.snapshot({ mood: moodWord(this.state.moodValence) }),

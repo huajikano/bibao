@@ -906,6 +906,31 @@ window.__ModuleLoader__.load({
         ),
         h(
           Card,
+          { title: '时间校准', hint: '脑内时间 vs 系统时间' },
+          h(Stat, { label: '脑内', value: `${snap.clock.day} ${snap.clock.label}` }),
+          h(Stat, { label: '系统', value: snap.clock.realLabel ?? '—' }),
+          h(Stat, {
+            label: '漂移',
+            value: `${snap.clock.driftSec ?? 0} 秒`,
+            tone: Math.abs(snap.clock.driftSec ?? 0) > 60 ? 'warn' : '',
+          }),
+          h(
+            'div',
+            { className: 'bb-actions' },
+            h(
+              'button',
+              { type: 'button', className: 'bb-btn', disabled: busy, onClick: () => act('/clock', { mode: 'shift' }) },
+              '平移对齐（保留记忆年龄）',
+            ),
+            h(
+              'button',
+              { type: 'button', className: 'bb-btn', disabled: busy, onClick: () => act('/clock', { mode: 'reset' }) },
+              '只对齐时钟',
+            ),
+          ),
+        ),
+        h(
+          Card,
           { title: t('snowTitle'), hint: snow.httpBase || 'snowluma' },
           h(
             'div',

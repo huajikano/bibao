@@ -1049,6 +1049,30 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/clock',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          const mode = String(body.mode ?? 'shift')
+          const driftMs = brain.simMs - Date.now()
+          if (mode === 'shift') {
+            brain.shiftTime(-driftMs)
+          } else {
+            brain.simMs = Date.now()
+            brain.lastRealMs = Date.now()
+            brain.lastExternalAt = brain.simMs
+          }
+          brain.sync()
+          schedulePersist(200)
+          await appendSnowLog({ at: Date.now(), kind: 'clock', mode, driftMs })
+        }
+        const snap = brain.snapshot()
+        return json({ clock: snap.clock, now: Date.now() })
+      },
+    },
+    {
       path: '/tuning',
       methods: ['GET', 'POST'],
       handler: async (request) => {

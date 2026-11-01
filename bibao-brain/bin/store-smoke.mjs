@@ -46,6 +46,21 @@ store.insertFact({
   expiresAt: 6000,
 })
 check('事实写入与读取', store.listFacts(5500, 10).length === 2, JSON.stringify(store.listFacts(5500, 10).map((f) => f.text)))
+store.insertFact({
+  id: 'fact_c',
+  text: '她说不想辞职了',
+  confidence: 0.8,
+  sourceIds: ['ep_1'],
+  createdAt: 7000,
+  expiresAt: null,
+  supersedes: 'fact_a',
+})
+const afterSupersede = store.listFacts(7500, 10).map((f) => f.id)
+check(
+  '事实冲突：新事实归档旧事实',
+  !afterSupersede.includes('fact_a') && afterSupersede.includes('fact_c'),
+  afterSupersede.join(','),
+)
 check('低置信到期后不再返回', store.expireFacts(6500) === 1 && store.listFacts(7000, 10).length === 1, 'expire ok')
 
 store.close()

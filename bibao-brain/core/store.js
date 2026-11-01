@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS facts (
   created_at INTEGER,
   updated_at INTEGER,
   expires_at INTEGER,
-  archived_at INTEGER
+  archived_at INTEGER,
+  supersedes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
 CREATE INDEX IF NOT EXISTS idx_facts_archived ON facts(archived_at);
@@ -50,6 +51,11 @@ export function openBrainStore(file) {
   try {
     db = new DatabaseSync(file)
     db.exec(SCHEMA)
+    try {
+      db.exec('ALTER TABLE facts ADD COLUMN supersedes TEXT')
+    } catch {
+      /* 已有该列 */
+    }
   } catch (error) {
     console.warn('[bibao] sqlite unavailable, falling back to json:', error?.message ?? error)
     return null
@@ -66,8 +72,8 @@ export function openBrainStore(file) {
   `)
   const archive = db.prepare('UPDATE episodes SET archived_at = ? WHERE id = ? AND archived_at IS NULL')
   const insertFact = db.prepare(`
-    INSERT INTO facts (id, text, subject, confidence, source_ids, created_at, updated_at, expires_at, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    INSERT INTO facts (id, text, subject, confidence, source_ids, created_at, updated_at, expires_at, archived_at, supersedes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
     ON CONFLICT(id) DO UPDATE SET
       text = excluded.text,
       confidence = MAX(confidence, excluded.confidence),
@@ -140,6 +146,9 @@ export function openBrainStore(file) {
     },
     insertFact(fact) {
       try {
+        if (fact.supersedes) {
+          db.prepare('UPDATE facts SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(Date.now(), fact.supersedes)
+        }
         insertFact.run(
           fact.id,
           fact.text,
@@ -149,6 +158,7 @@ export function openBrainStore(file) {
           fact.createdAt ?? Date.now(),
           fact.updatedAt ?? Date.now(),
           fact.expiresAt ?? null,
+          fact.supersedes ?? null,
         )
       } catch (error) {
         console.warn('[bibao] insertFact failed:', error?.message ?? error)
