@@ -1018,6 +1018,35 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/senses',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'GET') {
+          return json({
+            channels: brain.senses.snapshot(),
+            recent: (brain.inner ?? [])
+              .filter((item) => item.kind === 'sensor')
+              .slice(-12)
+              .map((item) => ({ at: item.at, source: item.source, thought: item.thought })),
+          })
+        }
+        const body = await readBody(request)
+        if (body.toggle && typeof body.channel === 'string') {
+          const channel = brain.senses.setEnabled(body.channel, body.enabled !== false)
+          schedulePersist()
+          return json({ ok: Boolean(channel), channels: brain.senses.snapshot() })
+        }
+        const result = await brain.perceiveSense({
+          channel: String(body.channel ?? 'vision'),
+          text: String(body.text ?? ''),
+          intensity: Number(body.intensity ?? 0.6),
+        })
+        schedulePersist()
+        return json({ result, snapshot: snapshot() })
+      },
+    },
+    {
       path: '/biography',
       methods: ['GET', 'POST'],
       handler: async (request) => {

@@ -3338,6 +3338,7 @@ window.__ModuleLoader__.load({
           ['memory', t('tabMemory')],
           ['groups', t('tabGroups')],
           ['gate', t('tabGate')],
+          ['senses', '感官'],
           ['settings', t('tabSettings')],
         ]
         return h(
@@ -3398,7 +3399,187 @@ window.__ModuleLoader__.load({
           tab === 'groups' ? this.renderGroups(t, snap) : null,
           tab === 'gate' ? this.renderGate(t, snap) : null,
           tab === 'settings' ? this.renderSettings(t, snap) : null,
+          tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
+        )
+      }
+    }
+
+
+    /* ------------------------------------------------------------------ */
+    /* 脑机接口（实验性）：六个感官通道                                      */
+    /* ------------------------------------------------------------------ */
+
+    class SensesPanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { channels: [], recent: [], drafts: {}, levels: {}, error: '', note: '' }
+        this.load = this.load.bind(this)
+        this.feed = this.feed.bind(this)
+        this.toggle = this.toggle.bind(this)
+      }
+
+      componentDidMount() {
+        this.alive = true
+        this.load()
+      }
+
+      componentWillUnmount() {
+        this.alive = false
+      }
+
+      async load() {
+        try {
+          const data = await request('/senses')
+          if (!this.alive) return
+          this.setState({ channels: data.channels ?? [], recent: data.recent ?? [], error: '' })
+        } catch (error) {
+          if (this.alive) this.setState({ error: error.message })
+        }
+      }
+
+      async toggle(channel) {
+        try {
+          const data = await request('/senses', {
+            method: 'POST',
+            body: JSON.stringify({ toggle: true, channel: channel.key, enabled: !channel.enabled }),
+          })
+          this.setState({ channels: data.channels ?? [] })
+        } catch (error) {
+          this.setState({ error: error.message })
+        }
+      }
+
+      async feed(channel) {
+        const text = (this.state.drafts[channel.key] ?? '').trim()
+        if (!text) return
+        this.setState({ note: '投喂中…' })
+        try {
+          const data = await request('/senses', {
+            method: 'POST',
+            body: JSON.stringify({
+              channel: channel.key,
+              text,
+              intensity: Number(this.state.levels[channel.key] ?? 0.6),
+            }),
+          })
+          const result = data.result
+          this.setState((prev) => ({ drafts: { ...prev.drafts, [channel.key]: '' } }))
+          this.setState({
+            note: result.ignited
+              ? `${channel.label}进了工作空间（显著性 ${result.salience}）`
+              : `${channel.label}没进意识（显著性 ${result.salience}）`,
+          })
+          await this.load()
+        } catch (error) {
+          this.setState({ note: `失败：${error.message}` })
+        }
+      }
+
+      render() {
+        const t = typeof this.props.t === 'function' ? this.props.t : (key) => key
+        const { channels, recent, drafts, levels, error, note } = this.state
+        return h(
+          'div',
+          { className: 'bb-stack' },
+          h(
+            Card,
+            { title: '脑机接口 · 实验性', hint: '感官皮层' },
+            h(
+              'p',
+              { className: 'bb-quote' },
+              '六个通道各占一个接口位。现在只有「手动投喂」是真的：一段画面、一句听到的话、一股气味，会当成一次真实知觉进入丘脑，参与点火、写记忆、改变激素。摄像头、麦克风、屏幕与浏览器的自动采集还没接，开关只记状态。',
+            ),
+            h(
+              'div',
+              { className: 'bb-senseStrip' },
+              channels.map((channel) =>
+                h(
+                  'div',
+                  { key: channel.key, className: `bb-senseChip${channel.enabled ? ' is-on' : ''}` },
+                  h('span', { className: 'bb-senseGlyph' }, channel.glyph),
+                  h('span', {}, channel.label),
+                  h('span', { className: 'bb-muted' }, channel.samples ? `${channel.samples} 次` : '未接'),
+                ),
+              ),
+            ),
+            note ? h('div', { className: 'bb-chip good' }, note) : null,
+            error ? h('div', { className: 'bb-error' }, error) : null,
+          ),
+          h(
+            'div',
+            { className: 'bb-senseGrid' },
+            channels.map((channel) =>
+              h(
+                'section',
+                { key: channel.key, className: `bb-card bb-senseCard${channel.enabled ? ' is-on' : ''}` },
+                h(
+                  'header',
+                  { className: 'bb-senseHead' },
+                  h('span', { className: 'bb-senseGlyph bb-senseGlyph--big' }, channel.glyph),
+                  h(
+                    'div',
+                    { className: 'bb-senseMeta' },
+                    h('strong', {}, channel.label),
+                    h('span', { className: 'bb-muted' }, `${channel.modality} · ${channel.hint}`),
+                  ),
+                  h(
+                    'button',
+                    { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.toggle(channel) },
+                    channel.enabled ? '已启用' : '接入',
+                  ),
+                ),
+                channel.lastText
+                  ? h('div', { className: 'bb-senseLast' }, h('span', { className: 'bb-muted' }, '最近：'), channel.lastText)
+                  : h('div', { className: 'bb-muted' }, '还没有信号'),
+                h(
+                  'div',
+                  { className: 'bb-senseFeed' },
+                  h('textarea', {
+                    className: 'bb-textarea',
+                    rows: 2,
+                    placeholder: `模拟一次「${channel.modality}」…`,
+                    value: drafts[channel.key] ?? '',
+                    onChange: (event) =>
+                      this.setState((prev) => ({ drafts: { ...prev.drafts, [channel.key]: event.target.value } })),
+                  }),
+                  h(
+                    'div',
+                    { className: 'bb-inline' },
+                    h('span', { className: 'bb-muted' }, '强度'),
+                    h('input', {
+                      className: 'bb-slider',
+                      type: 'range',
+                      min: '0',
+                      max: '1',
+                      step: '0.05',
+                      value: levels[channel.key] ?? 0.6,
+                      onChange: (event) =>
+                        this.setState((prev) => ({ levels: { ...prev.levels, [channel.key]: event.target.value } })),
+                    }),
+                    h('button', { type: 'button', className: 'bb-btn primary bb-btn--tiny', onClick: () => this.feed(channel) }, '投喂'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          h(
+            Card,
+            { title: '感知流', hint: '最近进入意识的感官事件' },
+            recent.length
+              ? recent
+                  .slice()
+                  .reverse()
+                  .map((item, index) =>
+                    h(
+                      'div',
+                      { key: `${item.at}-${index}`, className: 'bb-innerItem' },
+                      h('div', { className: 'bb-innerMeta' }, h('span', {}, clockOf(item.at)), h(Chip, { children: item.source.replace('sense:', '') })),
+                      h('div', {}, item.thought),
+                    ),
+                  )
+              : h('div', { className: 'bb-muted' }, '还没有任何感官事件'),
+          ),
         )
       }
     }
@@ -3430,6 +3611,26 @@ window.__ModuleLoader__.load({
 .bb-bioRow { border-block-start: 1px dashed var(--dsw-alias-border-l1); padding-block-start: 8px; display: flex; flex-direction: column; gap: 6px; }
 .bb-bioAge { max-inline-size: 84px; }
 .bb-bioNum { max-inline-size: 76px; }
+.bb-senseStrip { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }
+.bb-senseChip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; color: var(--dsw-alias-label-secondary);
+}
+.bb-senseChip.is-on { border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 45%, transparent); color: var(--dsw-alias-label-primary); }
+.bb-senseGlyph {
+  display: inline-grid; place-items: center; inline-size: 20px; block-size: 20px; border-radius: 7px;
+  background: color-mix(in oklab, var(--dsw-alias-brand-primary) 12%, var(--dsw-alias-bg-layer-1));
+  color: var(--dsw-alias-brand-primary); font-size: 11px;
+}
+.bb-senseGlyph--big { inline-size: 30px; block-size: 30px; border-radius: 10px; font-size: 13px; }
+.bb-senseGrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.bb-senseCard { display: flex; flex-direction: column; gap: 8px; }
+.bb-senseCard.is-on { box-shadow: inset 3px 0 0 var(--dsw-alias-brand-primary); }
+.bb-senseHead { display: flex; align-items: center; gap: 8px; }
+.bb-senseMeta { display: flex; flex-direction: column; min-inline-size: 0; flex: 1 1 auto; font-size: 12px; }
+.bb-senseLast { font-size: 11.5px; }
+.bb-senseFeed { display: flex; flex-direction: column; gap: 6px; }
+.bb-slider { flex: 1 1 auto; min-inline-size: 60px; accent-color: var(--dsw-alias-brand-primary); }
 .bb-badge {
   position: fixed; inset-block-end: 18px; inset-inline-end: 18px; z-index: 58;
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;

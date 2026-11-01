@@ -34,6 +34,7 @@ import {
 import { composeEndogenous, decideBudget } from './broca.js'
 import { generateDualTrack, extractJson } from './prefrontal.js'
 import { bootstrapLife } from './life.js'
+import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
@@ -97,6 +98,7 @@ export class BibaoBrain {
     this.lastPE = 0
     this.lastPipeline = null
     this.lastLlmError = ''
+    this.senses = new SensoryCortex()
   }
 
   get name() {
@@ -315,6 +317,87 @@ export class BibaoBrain {
       schemaApplied: applied,
       at: this.simMs,
       label: `${key} 03:00 睡眠归纳`,
+    }
+  }
+
+
+  /**
+   * 脑机接口：一条外部感知（看到的画面 / 听到的声音 / 闻到的气味…）。
+   * 它不进社交账本，也不会生成回话，只影响工作空间、记忆和情绪。
+   */
+  perceiveSense({ channel = 'vision', text = '', intensity = 0.6 } = {}) {
+    this.sync()
+    const now = this.simMs
+    const meta = SENSE_CHANNELS.find((item) => item.key === channel)
+    if (!meta) return { ok: false, reason: 'unknown-channel' }
+    const content = String(text ?? '').trim()
+    if (!content) return { ok: false, reason: 'empty' }
+    this.senses.record(channel, content, now)
+
+    const level = clamp(Number(intensity) || 0.6)
+    const hitsInterest = this.interests.some((word) => content.includes(word))
+    const salience = clamp(0.22 + level * 0.55 + (meta.key === 'interoception' ? 0.05 : 0) + (hitsInterest ? 0.12 : 0))
+    const ignition = this.workspace.ignite(
+      {
+        kind: 'sensor',
+        source: `sense:${channel}`,
+        title: `${meta.label}：${content.slice(0, 18)}`,
+        content,
+        salience,
+        arousal: clamp(this.state.arousal + level * 0.2),
+        pe: 0.3,
+        tags: [meta.label, meta.modality],
+      },
+      { state: this.state, silenceMin: this.silenceMin, now },
+    )
+
+    // 感官直接改情绪：听到的比看到的更揪心，闻到的更容易勾起旧事
+    const delta = { dopamine: 0.02, cortisol: 0, oxytocin: 0 }
+    if (channel === 'hearing') delta.cortisol = 0.04 * level
+    if (channel === 'smell') delta.oxytocin = 0.05 * level
+    if (channel === 'browser') delta.dopamine = 0.05 * level
+    if (channel === 'interoception') delta.cortisol = 0.03 * level
+    this.state.applyStimulus(delta, { valenceTarget: (level - 0.5) * 0.4, at: now })
+
+    if (!ignition.ignited) {
+      return { ok: true, ignited: false, salience: Number(salience.toFixed(3)), channel, text: content }
+    }
+
+    const pool = SENSE_REACTIONS[channel] ?? SENSE_REACTIONS.vision
+    const thought = `${meta.label}里：${content.slice(0, 40)}。${pool[Math.floor(this.rng.next() * pool.length)]}`
+    const episode = this.memory.write({
+      now,
+      age: this.age,
+      arousal: this.state.arousal,
+      pe: 0.32,
+      valence: (level - 0.5) * 0.3,
+      salience,
+      title: `${meta.label}：${content.slice(0, 14)}`,
+      narrative: `我${meta.modality}到：${content}`,
+      tags: [meta.label, meta.modality, '感官'],
+      entityId: null,
+      entityName: null,
+      source: 'sense',
+    })
+    if (episode) this.workspace.markWritten(ignition.slot.id, episode.id)
+
+    this.inner.push({
+      at: now,
+      kind: 'sensor',
+      source: `sense:${channel}`,
+      thought,
+      ignited: true,
+      salience,
+    })
+    this._trimInner()
+    return {
+      ok: true,
+      ignited: true,
+      channel,
+      label: meta.label,
+      thought,
+      salience: Number(salience.toFixed(3)),
+      episodeId: episode?.id ?? null,
     }
   }
 
@@ -851,6 +934,7 @@ export class BibaoBrain {
       })),
       inner: this.inner.slice(-14),
       pipeline: this.lastPipeline,
+      senses: this.senses.snapshot(),
       stats: { ...this.stats },
       timeline: this.timeline.map((item) => ({
         index: item.index,
@@ -893,6 +977,7 @@ export class BibaoBrain {
       lastPE: this.lastPE,
       lastPipeline: this.lastPipeline,
       lastLlmError: this.lastLlmError,
+      senses: this.senses.toJSON(),
       timeline: this.timeline,
     }
   }
@@ -927,6 +1012,7 @@ export class BibaoBrain {
     brain.lastPE = json.lastPE ?? 0
     brain.lastPipeline = json.lastPipeline ?? null
     brain.lastLlmError = json.lastLlmError ?? ''
+    brain.senses = SensoryCortex.fromJSON(json.senses)
     // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大
     const fromVersion = json.version ?? 1
     if (fromVersion < 2) {
