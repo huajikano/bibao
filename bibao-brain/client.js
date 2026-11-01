@@ -3275,6 +3275,17 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'bb-stack' },
           h(
+            'div',
+            { className: 'bb-saveBar' },
+            h('span', { className: 'bb-muted' }, '改动后点这里保存；滑杆也会自动存'),
+            h(
+              'button',
+              { type: 'button', className: 'bb-btn primary', disabled: Boolean(saving), onClick: this.saveSettings },
+              saving || '保存全部',
+            ),
+            note ? h('span', { className: 'bb-chip good' }, note) : null,
+          ),
+          h(
             Card,
             { title: '行为调节', hint: '两个旋钮，拉满就是现在的样子' },
             h(
@@ -3356,6 +3367,11 @@ window.__ModuleLoader__.load({
                   : null,
               )
             }),
+            h(
+              'div',
+              { className: 'bb-actions', style: { marginBlockStart: '10px' } },
+              h('button', { type: 'button', className: 'bb-btn primary', disabled: Boolean(saving), onClick: this.saveSettings }, '保存模型'),
+            ),
           ),
           h(
             Card,
@@ -3736,6 +3752,13 @@ window.__ModuleLoader__.load({
   color: var(--dsw-alias-label-primary);
   border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 45%, transparent);
   background: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
+}
+.bb-saveBar {
+  position: sticky; inset-block-start: 0; z-index: 4;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px;
+  background: color-mix(in oklab, var(--dsw-alias-bg-base) 88%, transparent);
+  backdrop-filter: blur(6px);
 }
 .bb-tune { display: flex; flex-direction: column; gap: 6px; }
 .bb-tuneHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
