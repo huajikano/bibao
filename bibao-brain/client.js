@@ -2906,7 +2906,10 @@ window.__ModuleLoader__.load({
         if (form.httpToken) snowluma.httpToken = form.httpToken
         if (form.wsToken) snowluma.wsToken = form.wsToken
         try {
-          const data = await request('/settings', { method: 'POST', body: JSON.stringify({ llm, snowluma }) })
+          const data = await request('/settings', {
+            method: 'POST',
+            body: JSON.stringify({ llm, snowluma, tuning: form.tuning }),
+          })
           this.setState({ snap: data.snapshot, saving: '', note: '已保存' })
           this.syncForm(data.snapshot)
         } catch (error) {
