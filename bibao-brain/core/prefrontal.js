@@ -45,7 +45,7 @@ export const SYSTEM_PROMPT = `你是「比宝」（沈知遥）的语言区，�
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -55,8 +55,10 @@ export function buildPerceptionFrame(ctx) {
   const memoryLine = memories?.length
     ? memories.map((item) => `「${item.title}」(${item.valence >= 0 ? '好' : '坏'}感${item.valence.toFixed(2)})`).join('；')
     : '没有能想起来的完整情节'
-  const stress = state.lastStressor
-    ? `上一段没过去的不愉快：${state.lastStressor.name ?? '某人'}说「${String(state.lastStressor.text ?? '').slice(0, 24)}」`
+  // 心事会过期：45 分钟没有新刺激就翻篇，否则会变成口头禅
+  const stressAge = state.lastStressor?.at ? now - state.lastStressor.at : Number.POSITIVE_INFINITY
+  const stress = state.lastStressor && stressAge < 45 * 60 * 1000
+    ? `心里还压着一件没过去的事：${state.lastStressor.name ?? '某人'}那句话之后，到现在都没个结果`
     : '最近没有卡在心里的冲突'
 
   const somatic = digest?.somatic ?? ''
@@ -71,7 +73,7 @@ export function buildPerceptionFrame(ctx) {
     `对这个人的态度：${stance || relations}。`,
     stress && stress !== '最近没有卡在心里的冲突' ? `${stress}。` : '',
     recent && recent.length
-      ? `刚才聊到：${recent.slice(-3).map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
+      ? `刚才聊到：${recent.slice(-2).map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
       : '',
     facts.length ? `记得的事：\n${facts.map((text) => `  · ${text}`).join('\n')}` : '',
     episodes.length
@@ -83,6 +85,7 @@ export function buildPerceptionFrame(ctx) {
     `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,
     `状态机预判路由：${routeHint}。以比宝的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
+    '同一件事如果已经追问过两轮，就换个说法，或者先把它放下——人不会把一句话原地复读三遍。',
   ]
     .filter(Boolean)
     .join('\n')

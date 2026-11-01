@@ -196,6 +196,7 @@ export class MemorySystem {
     scored.sort((a, b) => b.score - a.score)
     return scored.slice(0, limit).map(({ node, r }) => ({
       id: node.id,
+      entityId: node.entityId ?? null,
       title: node.title,
       narrative: node.narrative,
       valence: Number(node.valence.toFixed(3)),

@@ -170,10 +170,12 @@ export class BibaoBrain {
   }
 
   _checkPending() {
-    for (const item of this.pending) {
+    for (const item of [...this.pending]) {
       if (item.fired || this.simMs < item.expireAt) continue
       item.fired = true
       item.firedAt = this.simMs
+      // 想过一次就够了：人不会把同一条没回的消息在脑子里放一整天
+      this.pending = this.pending.filter((row) => row !== item)
       const relation = this.social.get(item.entityId)
       const lines = composeEndogenous({
         kind: 'pending-timeout',
@@ -185,7 +187,7 @@ export class BibaoBrain {
       })
       this.state.applyStimulus(lines.neuro, {
         valenceTarget: lines.valenceTarget,
-        stressor: { name: relation?.name ?? item.entityName, text: `说好会回的，都${clockLabel(this.simMs)}了` },
+        stressor: { name: relation?.name ?? item.entityName, text: '说好会回的，到现在还没回', at: this.simMs },
         at: this.simMs,
       })
       const ignition = this.workspace.ignite(
@@ -548,12 +550,32 @@ export class BibaoBrain {
   /** 注入用摘要：事实 + 两段还能想起的叙事 + 对这个人的态度。 */
   digestFor(relation) {
     const now = this.simMs
-    const facts = (this.store?.listFacts(now, 6) ?? []).map((fact) => fact.text)
-    const episodes = this.memory
-      .list(now, { limit: 60 })
-      .filter((item) => item.tier === 'conscious')
+    const entityId = relation?.id ?? relation?.qq ?? null
+    const name = relation?.name ?? null
+
+    // 事实和情节优先取"和这个人有关"的：否则会把跟甲的旧账算到乙头上
+    const allFacts = this.store?.listFacts(now, 20) ?? []
+    const ownFacts = name ? allFacts.filter((fact) => fact.subject === name) : []
+    const others = this.social
+      .snapshot()
+      .map((row) => row.name)
+      .filter((rowName) => rowName && rowName !== name)
+    // 提到别人的事实一律不带进这段对话：否则会把甲欠的账算到乙头上
+    const neutral = allFacts.filter(
+      (fact) =>
+        (!fact.subject || (name && fact.subject === name)) &&
+        !others.some((other) => String(fact.text).includes(other)),
+    )
+    const facts = (ownFacts.length ? ownFacts : neutral).slice(0, 6).map((fact) => fact.text)
+
+    const conscious = this.memory.episodes.filter((node) => this.memory.tier(node, now) === 'conscious')
+    const own = entityId ? conscious.filter((node) => node.entityId === entityId) : []
+    // 退化顺序：这个人的 → 没有归属的（自己的旧事）→ 不注入别人的
+    const episodes = (own.length ? own : conscious.filter((node) => !node.entityId))
+      .sort((a, b) => b.salience * Math.abs(b.valence) - a.salience * Math.abs(a.valence))
       .slice(0, 2)
-      .map((item) => ({ title: item.title, narrative: String(item.narrative ?? '').slice(0, 110), r: item.r }))
+      .map((node) => ({ title: node.title, narrative: String(node.narrative ?? '').slice(0, 110), r: node.r }))
+
     return { facts, episodes, stance: this.stanceFor(relation), somatic: this.somaticLine() }
   }
 
@@ -734,6 +756,10 @@ export class BibaoBrain {
     const atMe = Boolean(frame.atMe)
 
     // 对方一开口，原来的"等回复"钩子立即销毁
+    // 他一开口，上一段不愉快就过去了
+    if (this.state.lastStressor?.name && this.state.lastStressor.name === relation?.name) {
+      this.state.lastStressor = null
+    }
     const beforePending = this.pending.filter((item) => item.entityId === entityId && !item.fired)
     this.pending = this.pending.filter((item) => item.entityId !== entityId)
 
@@ -899,15 +925,18 @@ export class BibaoBrain {
     const style = maskStyle(relation, this.state)
     const budget = decideBudget({ state: this.state, salience: salienceInfo.salience, style })
     const appraisalHint = await this._appraisalHint({ text, relation, analysis })
-    const memories = this.memory.retrieve({
-      now,
-      entityId,
-      query: text,
-      tags,
-      limit: 3,
-      exclude: episode?.id ?? null,
-      mood: this.state.moodValence,
-    })
+    const memories = this.memory
+      .retrieve({
+        now,
+        entityId,
+        query: text,
+        tags,
+        limit: 6,
+        exclude: episode?.id ?? null,
+        mood: this.state.moodValence,
+      })
+      .filter((item) => !item.entityId || item.entityId === entityId)
+      .slice(0, 3)
     const transferTarget =
       decision.route === 'TRANSFER_PRIVATE_GOSSIP'
         ? this.social.bestGossipTarget([entityId, this.userId])
@@ -986,6 +1015,7 @@ export class BibaoBrain {
         recent: relation.recent ?? [],
         digest: this.digestFor(relation),
         clockLabel: clockLabel(now),
+        now,
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
     )
@@ -1025,6 +1055,7 @@ export class BibaoBrain {
 
     // 预期悬置：只有真的发出去了才挂钩子
     if (dual.expect_reply_within_sec > 0 && (dual.bubbles ?? []).length) {
+      this.pending = this.pending.filter((item) => item.entityId !== entityId)
       this.pending.push({
         id: uid('expect', this.rng),
         entityId,
@@ -1033,7 +1064,8 @@ export class BibaoBrain {
         sentAt: now,
         expireAt: now + dual.expect_reply_within_sec * 1000,
         expectationSec: dual.expect_reply_within_sec,
-        preview: (dual.bubbles ?? []).join(' / ').slice(0, 40),
+        preview: String(text ?? '').slice(0, 40),
+        asked: (dual.bubbles ?? []).join(' / ').slice(0, 40),
         fired: false,
       })
       stages.push({
