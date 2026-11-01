@@ -133,6 +133,24 @@ export class GroupAttentionFunnel {
     return { previous, current: group.id }
   }
 
+  /** 手动指定某个群的三层归属。焦点只能有一个，余光最多三个。 */
+  setLayer(id, layer, now = Date.now()) {
+    const group = this.get(id)
+    if (!group) return null
+    if (layer === 'foveal') return { previous: this.fovealId, current: this.focus(id, now)?.current ?? id }
+    group.layer = layer === 'peripheral' ? 'peripheral' : 'muted'
+    if (this.fovealId === group.id) this.fovealId = null
+    if (layer === 'peripheral') {
+      const peripherals = [...this.groups.values()]
+        .filter((item) => item.layer === 'peripheral')
+        .sort((a, b) => a.lastActivityAt - b.lastActivityAt)
+      for (const extra of peripherals.slice(0, Math.max(0, peripherals.length - 3))) {
+        extra.layer = 'muted'
+      }
+    }
+    return { previous: null, current: group.id, layer: group.layer }
+  }
+
   demote(id, to = 'peripheral') {
     const group = this.get(id)
     if (!group) return

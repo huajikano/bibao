@@ -1002,6 +1002,23 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/group/layer',
+      methods: ['POST'],
+      handler: async (request) => {
+        if (!phase2Open()) return phase2Locked()
+        await boot()
+        const body = await readBody(request)
+        const layer = String(body.layer ?? '')
+        if (!['foveal', 'peripheral', 'muted'].includes(layer)) return fail('layer 只能是 foveal / peripheral / muted', 400)
+        const change = funnel.setLayer(String(body.groupId ?? ''), layer, Date.now())
+        if (!change) return fail('unknown-group', 404)
+        funnel.tick(Date.now())
+        funnel.record({ kind: 'layer', group: funnel.get(body.groupId)?.name ?? '', reason: layer })
+        schedulePersist()
+        return json({ change, group: funnel.snapshot() })
+      },
+    },
+    {
       path: '/group/reset',
       methods: ['POST'],
       handler: async () => {

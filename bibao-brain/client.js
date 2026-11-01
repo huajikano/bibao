@@ -2570,6 +2570,7 @@ window.__ModuleLoader__.load({
         this.loadMemory = this.loadMemory.bind(this)
         this.loadGroups = this.loadGroups.bind(this)
         this.feedGroup = this.feedGroup.bind(this)
+        this.setGroupLayer = this.setGroupLayer.bind(this)
         this.runGate = this.runGate.bind(this)
         this.loadBio = this.loadBio.bind(this)
         this.saveBio = this.saveBio.bind(this)
@@ -2754,6 +2755,18 @@ window.__ModuleLoader__.load({
           if (this.alive) this.setState({ group: data })
         } catch (error) {
           if (this.alive) this.setState({ error: error.message })
+        }
+      }
+
+      async setGroupLayer(groupId, layer) {
+        try {
+          const data = await request('/group/layer', {
+            method: 'POST',
+            body: JSON.stringify({ groupId, layer }),
+          })
+          this.setState((prev) => ({ group: { ...prev.group, group: data.group } }))
+        } catch (error) {
+          this.setState({ error: error.message })
         }
       }
 
@@ -3124,6 +3137,25 @@ window.__ModuleLoader__.load({
                   { key: group.id, className: `bb-group is-${group.layer}${group.id === this.state.groupId ? ' is-picked' : ''}`, onClick: () => this.setState({ groupId: group.id }) },
                   h('div', { className: 'bb-groupHead' }, h('span', { className: 'bb-groupName' }, group.name), h(Chip, { children: t(group.layer), tone: group.layer === 'foveal' ? 'good' : group.layer === 'peripheral' ? 'on' : '' })),
                   h('div', { className: 'bb-slotMeta' }, `${group.memberCount} 人 · ${group.unread} ${t('unread')}`),
+                  h(
+                    'div',
+                    { className: 'bb-layerBtns' },
+                    ['foveal', 'peripheral', 'muted'].map((layer) =>
+                      h(
+                        'button',
+                        {
+                          key: layer,
+                          type: 'button',
+                          className: `bb-layerBtn${group.layer === layer ? ' is-active' : ''}`,
+                          onClick: (event) => {
+                            event.stopPropagation()
+                            this.setGroupLayer(group.id, layer)
+                          },
+                        },
+                        layer === 'foveal' ? '焦点' : layer === 'peripheral' ? '余光' : '免打扰',
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3611,6 +3643,17 @@ window.__ModuleLoader__.load({
 .bb-bioRow { border-block-start: 1px dashed var(--dsw-alias-border-l1); padding-block-start: 8px; display: flex; flex-direction: column; gap: 6px; }
 .bb-bioAge { max-inline-size: 84px; }
 .bb-bioNum { max-inline-size: 76px; }
+.bb-layerBtns { display: flex; gap: 4px; margin-block-start: 6px; }
+.bb-layerBtn {
+  font: inherit; font-size: 10.5px; line-height: 1; padding: 3px 7px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--dsw-alias-border-l1); background: transparent; color: var(--dsw-alias-label-secondary);
+}
+.bb-layerBtn:hover { color: var(--dsw-alias-label-primary); }
+.bb-layerBtn.is-active {
+  color: var(--dsw-alias-label-primary);
+  border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 45%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
+}
 .bb-senseStrip { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }
 .bb-senseChip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
