@@ -190,9 +190,11 @@ export class MemorySystem {
   consolidate({ now, age = 22, mood = 0 } = {}) {
     const pruned = []
     const kept = []
+    // 记忆力被调低时不真删：只是沉到看不见的地方，调回去还能捞出来
+    const allowPrune = (this.stabilityScale ?? 1) >= 0.5
     for (const node of this.episodes) {
       const tier = this.tier(node, now)
-      if (tier === 'pruning' && Math.abs(node.valence) < PARAMS.pruneValence) {
+      if (allowPrune && tier === 'pruning' && Math.abs(node.valence) < PARAMS.pruneValence) {
         pruned.push({ id: node.id, title: node.title, r: Number(this.extractability(node, now).toFixed(3)) })
       } else {
         kept.push(node)
