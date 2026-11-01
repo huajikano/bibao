@@ -500,6 +500,29 @@ window.__ModuleLoader__.load({
 
     const ACTIVE_STATUS = new Set(['pass', 'ignited', 'defense', 'write', 'think', 'send', 'appraise'])
 
+    /**
+     * 没有新的感知帧时（例如刚重启），用当前脑状态反推六节点的灯，
+     * 否则环路上一个模块都不亮，看起来像死机。
+     */
+    function stagesFor(snap) {
+      const pipeline = snap?.pipeline
+      if (Array.isArray(pipeline?.stages) && pipeline.stages.length) return pipeline.stages
+      const slots = snap?.workspace?.slots ?? []
+      const written = slots.filter((slot) => slot.written)
+      const inner = snap?.inner ?? []
+      const lastExternal = [...inner].reverse().find((item) => item.kind === 'external')
+      const pending = (snap?.pending ?? []).length
+      return [
+        { key: 'funnel', status: slots.length ? 'pass' : 'blocked', detail: `${slots.length} 槽有内容` },
+        { key: 'workspace', status: slots.length ? 'ignited' : 'idle', detail: `${slots.length}/${snap?.workspace?.capacity ?? 5}` },
+        { key: 'appraisal', status: written.length ? 'appraise' : 'idle', detail: written.length ? '已评估' : '暂无新刺激' },
+        { key: 'memory', status: written.length ? 'write' : 'skip', detail: written.length ? '有情景落库' : '未达写入阈值' },
+        { key: 'prefrontal', status: lastExternal ? 'think' : 'idle', detail: lastExternal?.source ?? '待命' },
+        { key: 'motor', status: lastExternal?.bubbles?.length ? 'send' : 'hold', detail: lastExternal?.bubbles?.length ? '已发出' : '压住不发' },
+        { key: 'feedback', status: pending ? 'waiting' : 'idle', detail: pending ? `${pending} 个在等` : '没有悬置' },
+      ]
+    }
+
     function LoopMap({ stages, t }) {
       const map = {}
       for (const stage of stages ?? []) map[stage.key] = stage
@@ -878,7 +901,7 @@ window.__ModuleLoader__.load({
               )
             : null,
         ),
-        h('div', { className: 'bb-grid' }, h(LoopMap, { stages: snap.pipeline?.stages, t })),
+        h('div', { className: 'bb-grid' }, h(LoopMap, { stages: stagesFor(snap), t })),
         h('div', { className: 'bb-grid' }, h(NeuroCard, { snap, t }), h(ThresholdCard, { snap, t })),
         h('div', { className: 'bb-grid' }, h(WorkspaceCard, { snap, t }), h(InnerCard, { snap, t })),
         h('div', { className: 'bb-grid' }, h(SchemaCard, { snap, t }), h(SocialCard, { snap, t })),
@@ -1479,10 +1502,14 @@ window.__ModuleLoader__.load({
     /* 设置：每个认知逻辑各用一套模型                                        */
     /* ------------------------------------------------------------------ */
 
+    // 六个认知模块各占一个配置槽；只有 wired: true 的那几个真的会调用模型
     const LOGIC_META = [
-      { name: 'appraisal', label: '潜台词揣测', hint: '每次收到消息前，判断对方真实意图（可用便宜模型）' },
-      { name: 'broca', label: '语言区', hint: '把神经状态翻译成气泡与内心独白（双轨 JSON）' },
-      { name: 'reflection', label: '睡眠归纳', hint: '凌晨 03:00 造梦、把碎片写成叙事' },
+      { name: 'funnel', label: '注意力漏斗', hint: '群消息该不该进脑子：@我 / 叫名字 / 死党 / 兴趣词（规则扫描，暂不调模型）', wired: false },
+      { name: 'ignition', label: '全局点火', hint: '显著性 vs 阈值 Θ 的比较（纯数学，不调模型）', wired: false },
+      { name: 'appraisal', label: '情感评估', hint: '每次收到消息前，判断对方真实意图（可用便宜模型）', wired: true },
+      { name: 'memory', label: '双系统记忆', hint: '凌晨 03:00 造梦、把碎片写成叙事', wired: true },
+      { name: 'broca', label: '语言区', hint: '把神经状态翻译成气泡与内心独白（双轨 JSON）', wired: true },
+      { name: 'feedback', label: '预期悬置', hint: '已读不回时的内耗独白（超时那一刻生成）', wired: true },
     ]
 
     function SettingsTab({ snap, t, act, busy }) {
@@ -3150,6 +3177,17 @@ window.__ModuleLoader__.load({
             LOGIC_META.map((meta) => {
               const row = form.profiles[meta.name] ?? {}
               const status = (snap.llmConfig?.profiles ?? []).find((item) => item.name === meta.name) ?? {}
+              if (meta.wired === false) {
+                return h(
+                  'div',
+                  { key: meta.name, className: 'bb-logicRow is-static' },
+                  h('div', { className: 'bb-inline' },
+                    h('strong', { className: 'bb-logicName' }, meta.label),
+                    h(Chip, { children: '纯数学' }),
+                  ),
+                  h('div', { className: 'bb-muted' }, meta.hint),
+                )
+              }
               return h(
                 'div',
                 { key: meta.name, className: 'bb-logicRow' },

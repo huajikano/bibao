@@ -160,7 +160,7 @@ check(
     cfg.keyMask.includes('…') &&
     cfg.profiles.find((p) => p.name === 'appraisal')?.model === 'cheap-model' &&
     cfg.profiles.find((p) => p.name === 'appraisal')?.baseURL === 'https://cheap.test/v1' &&
-    cfg.profiles.find((p) => p.name === 'reflection')?.enabled === false,
+    cfg.profiles.find((p) => p.name === 'memory')?.enabled === false,
   `${cfg?.model} · ${cfg?.keyMask} · appraisal=${cfg?.profiles?.find((p) => p.name === 'appraisal')?.model}`,
 )
 check(

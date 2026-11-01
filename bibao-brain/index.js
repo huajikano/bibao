@@ -175,12 +175,14 @@ export function apply(ctx, config = {}) {
     return brain
   }
 
-  const LOGICS = ['appraisal', 'broca', 'reflection']
+  // 六个认知模块各一个配置槽；只有真正会调用模型的那几个会用到这里
+  const LOGICS = ['funnel', 'ignition', 'appraisal', 'memory', 'broca', 'feedback']
+  const LEGACY_LOGIC_ALIAS = { reflection: 'memory' }
 
   /** 每个认知逻辑各自解析模型：逻辑级覆盖 > 默认直连 > DSH 默认模型 > 本地布洛卡。 */
   function resolveLogic(name) {
     const base = settings.llm ?? DEFAULTS.llm
-    const override = base.profiles?.[name] ?? {}
+    const override = base.profiles?.[name] ?? base.profiles?.[LEGACY_LOGIC_ALIAS[name]] ?? {}
     const cfg = {
       baseURL: override.baseURL || base.baseURL,
       apiKey: override.apiKey || base.apiKey,
@@ -1123,8 +1125,11 @@ export function apply(ctx, config = {}) {
           }
           if (body.llm.profiles && typeof body.llm.profiles === 'object') {
             settings.llm.profiles = settings.llm.profiles ?? {}
-            for (const name of LOGICS) {
-              const patch = body.llm.profiles[name]
+            const incoming = Object.keys(body.llm.profiles)
+            for (const rawName of new Set([...LOGICS, ...incoming])) {
+              const name = LEGACY_LOGIC_ALIAS[rawName] ?? rawName
+              if (!LOGICS.includes(name)) continue
+              const patch = body.llm.profiles[rawName]
               if (!patch || typeof patch !== 'object') continue
               const current = settings.llm.profiles[name] ?? {}
               settings.llm.profiles[name] = {

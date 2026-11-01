@@ -176,15 +176,45 @@ export class BibaoBrain {
         { state: this.state, silenceMin: this.silenceMin, now: this.simMs },
       )
       this.stats.endogenous += 1
-      this.inner.push({
+      const entry = {
         at: this.simMs,
         kind: 'endogenous',
         source: 'pending-timeout',
         thought: lines.thought,
         ignited: ignition.ignited,
         salience: Number((ignition.salience ?? 0).toFixed(2)),
-      })
+      }
+      this.inner.push(entry)
       this._trimInner()
+      const feedback = this.llms?.feedback
+      if (feedback?.llm && feedback.provider && feedback.model) {
+        void this._rewriteRumination(entry, relation, item).then((text) => {
+          if (text) entry.thought = text
+        })
+      }
+    }
+  }
+
+  /** 超时内耗的那句独白，可以交给 feedback 这一路模型重写。 */
+  async _rewriteRumination(entry, relation, pending) {
+    const feedback = this.llms?.feedback
+    if (!feedback?.llm) return ''
+    const system = '你在写一个人的深夜内心独白。20-45 字，第一人称，具体、难堪、不解释、不总结。'
+    const user = `对方：${relation?.name ?? pending?.entityName ?? '他'}\n我发的最后一句：${pending?.preview ?? ''}\n现在：${clockLabel(this.simMs)}，等了很久没有回复，我还在盯着对话框`
+    try {
+      let text = ''
+      const stream = feedback.llm.stream({
+        provider: feedback.provider,
+        model: feedback.model,
+        system,
+        messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
+        maxTokens: 120,
+        temperature: 0.95,
+      })
+      for await (const chunk of stream) if (chunk.type === 'text-delta') text += chunk.text
+      return text.trim().replace(/^["“]|["”]$/g, '').slice(0, 120)
+    } catch {
+      return ''
     }
   }
 
@@ -269,7 +299,7 @@ export class BibaoBrain {
       this.inner.push(entry)
       this._trimInner()
       // 造梦用的是 reflection 这一路模型；失败就保留模板版本
-      const reflection = this.llms?.reflection
+      const reflection = this.llms?.memory ?? this.llms?.reflection
       if (reflection?.llm && reflection.provider && reflection.model) {
         entry.thought = report.dream.narrative
         void this._rewriteDream(report.dream).then((text) => {
@@ -851,6 +881,7 @@ export class BibaoBrain {
       inner: this.inner.slice(-40),
       stats: this.stats,
       lastPE: this.lastPE,
+      lastPipeline: this.lastPipeline,
       timeline: this.timeline,
     }
   }
@@ -883,6 +914,7 @@ export class BibaoBrain {
     brain.inner = json.inner ?? []
     brain.stats = { ...brain.stats, ...(json.stats ?? {}) }
     brain.lastPE = json.lastPE ?? 0
+    brain.lastPipeline = json.lastPipeline ?? null
     brain.timeline = json.timeline ?? brain.timeline
     // 持久化后按真实时间继续衰老
     brain.virtual = false
