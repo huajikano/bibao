@@ -45,7 +45,7 @@ export const SYSTEM_PROMPT = `你是「比宝」（沈知遥）的语言区，�
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -59,22 +59,32 @@ export function buildPerceptionFrame(ctx) {
     ? `上一段没过去的不愉快：${state.lastStressor.name ?? '某人'}说「${String(state.lastStressor.text ?? '').slice(0, 24)}」`
     : '最近没有卡在心里的冲突'
 
+  const somatic = digest?.somatic ?? ''
+  const stance = digest?.stance ?? ''
+  const facts = (digest?.facts ?? []).slice(0, 6)
+  const episodes = (digest?.episodes ?? []).slice(0, 2)
+
   return [
-    `[内部感知帧 · ${clockLabel}]`,
-    `刚刚收到来自 [对象: ${frame.entityName || frame.entityId || '未知'} | ${relations}] 的外部信号：“${frame.text}”。`,
-    `我现在的生理读数：精力 ${Math.round(state.energy)}%，皮质醇 ${state.cortisol.toFixed(2)}（${state.cortisol > 0.75 ? '杏仁核劫持，烦躁戒备' : state.cortisol > 0.5 ? '明显不耐' : '尚可'}），多巴胺 ${state.dopamine.toFixed(2)}，催产素 ${state.oxytocin.toFixed(2)}，血清素 ${state.serotonin.toFixed(2)}，心境 ${state.moodValence.toFixed(2)}。`,
-    `${stress}。`,
+    `[此刻 · ${clockLabel}]`,
+    `${frame.entityName || frame.entityId || '有人'}刚刚说：「${frame.text}」`,
+    somatic ? `体感：${somatic}。（皮质醇 ${state.cortisol.toFixed(2)} / 精力 ${Math.round(state.energy)}%，只作参考，别照着数字演）` : '',
+    `对这个人的态度：${stance || relations}。`,
+    stress && stress !== '最近没有卡在心里的冲突' ? `${stress}。` : '',
     recent && recent.length
-      ? `刚才这几轮聊到：${recent.slice(-4).map((item) => `${item.role === 'self' ? '我说的' : '他说的'}「${item.text}」`).join('；')}`
+      ? `刚才聊到：${recent.slice(-3).map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
       : '',
-    `潜意识对这个人/这类话题的情绪偏置：${bias >= 0 ? '+' : ''}${bias.toFixed(2)}。`,
-    `能想起的相关记忆：${memoryLine}。`,
-    `核心信念：${schemaLine}。${schemaHits.length ? `这次踩到了：${schemaHits.map((hit) => hit.cue).join('、')}。` : '没有被踩到。'}`,
-    `预测误差 PE=${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。`,
-    appraisalHint?.subtext ? `（负责潜台词的那半边脑子猜：${appraisalHint.subtext}）` : '',
+    facts.length ? `记得的事：\n${facts.map((text) => `  · ${text}`).join('\n')}` : '',
+    episodes.length
+      ? `还想得起的两件事：\n${episodes.map((item) => `  · ${item.title}——${item.narrative}`).join('\n')}`
+      : '',
+    memories.length ? `相关的旧事：${memoryLine}。` : '',
+    `潜意识偏置 ${bias >= 0 ? '+' : ''}${bias.toFixed(2)}；核心信念：${schemaLine}。${schemaHits.length ? `这次踩到了：${schemaHits.map((hit) => hit.cue).join('、')}。` : ''}`,
+    `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,
-    `状态机预判路由：${routeHint}。请以比宝的第一人称视角完成主观意图揣测与反应，不要讨好，不要当助手，不要长篇大论。`,
-  ].join('\n')
+    `状态机预判路由：${routeHint}。以比宝的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 /** 解析并钳制 LLM 输出；任何一处不合法都回落到本地组装器。 */

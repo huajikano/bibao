@@ -21,6 +21,7 @@ import { GroupAttentionFunnel, defaultGroups } from './core/group.js'
 import { runSandbox } from './core/sandbox.js'
 import { SnowlumaBridge } from './core/snowluma.js'
 import { createDirectLlm } from './core/openai.js'
+import { openBrainStore } from './core/store.js'
 import { renderUiHtml } from './core/webui.js'
 
 export const name = 'bibao-brain'
@@ -81,6 +82,7 @@ export function apply(ctx, config = {}) {
 
   let biography = null
   let brain = null
+  let store = null
   let funnel = null
   let gate = null
   let loading = null
@@ -162,6 +164,7 @@ export function apply(ctx, config = {}) {
       llmModel: llms.broca.model,
       userName: settings.userName,
       userId: settings.userId,
+      store,
     })
     brain.llms = llms
     brain.social.upsert({
@@ -237,6 +240,7 @@ export function apply(ctx, config = {}) {
     if (loading) return loading
     loading = (async () => {
       const bio = await loadBiography()
+      store = openBrainStore(path.join(dataDir, 'bibao.sqlite'))
       // 面板里切换过的语言区开关，重启后仍然有效
       try {
         const saved = JSON.parse(await readFile(settingsFile, 'utf8'))
@@ -268,6 +272,7 @@ export function apply(ctx, config = {}) {
           llmModel: llms.broca.model,
           userName: settings.userName,
           userId: settings.userId,
+          store,
         })
       } else {
         brain = new BibaoBrain({
@@ -280,7 +285,9 @@ export function apply(ctx, config = {}) {
           llmModel: llms.broca.model,
           userName: settings.userName,
           userId: settings.userId,
+          store,
         })
+        if (store) store.seedEpisodes(brain.memory.episodes)
         brain.social.upsert({
           qq: settings.userId,
           name: settings.userName,
@@ -394,6 +401,8 @@ export function apply(ctx, config = {}) {
           }
         }),
       },
+      facts: store?.listFacts(brain.simMs, 12) ?? [],
+      archive: { archivedEpisodes: store?.archivedCount() ?? 0 },
       console: {
         url: consoleState.port ? `http://127.0.0.1:${consoleState.port}/?token=${consoleState.token}` : '',
         port: consoleState.port,
@@ -1110,6 +1119,18 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/facts',
+      methods: ['GET'],
+      handler: async () => {
+        await boot()
+        return json({
+          facts: store?.listFacts(brain.simMs, 30) ?? [],
+          archived: store?.archivedCount() ?? 0,
+          archivedEpisodes: store?.archivedEpisodes(20) ?? [],
+        })
+      },
+    },
+    {
       path: '/biography',
       methods: ['GET', 'POST'],
       handler: async (request) => {
@@ -1617,6 +1638,7 @@ export function apply(ctx, config = {}) {
     void startup()
     return () => {
       stopSnow()
+      store?.close()
       consoleState.server?.close()
       for (const timer of timers) clearTimeout(timer)
       timers.clear()

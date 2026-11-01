@@ -36,7 +36,14 @@ export function createRng(seed = 1) {
   }
 }
 
+let uidSeq = 0
+
 export function uid(prefix, rng) {
-  const stamp = Math.floor(rng.next() * 0xffffff).toString(16).padStart(6, '0')
-  return `${prefix}_${stamp}${(rng.int(0xffff) + 1).toString(16).padStart(4, '0')}`
+  // 时间戳 + 进程内自增 + 一点随机：同一 seed 重启也不会生成重复 id
+  uidSeq = (uidSeq + 1) % 0xffffff
+  const stamp = Date.now().toString(36).slice(-5)
+  const rand = Math.floor((rng?.next?.() ?? Math.random()) * 0xffff)
+    .toString(16)
+    .padStart(4, '0')
+  return `${prefix}_${stamp}${uidSeq.toString(36)}${rand}`
 }

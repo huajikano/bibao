@@ -51,10 +51,13 @@ export async function chatCompletion({
     } catch {
       throw new Error(`LLM 返回非 JSON：${text.slice(0, 120)}`)
     }
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content === 'string') return content
-    if (Array.isArray(content)) return content.map((part) => part?.text ?? '').join('')
-    throw new Error('LLM 返回里没有 choices[0].message.content')
+    const message = data?.choices?.[0]?.message ?? {}
+    const content = message.content
+    let reply = typeof content === 'string' ? content : Array.isArray(content) ? content.map((part) => part?.text ?? '').join('') : ''
+    // 推理型模型有时把正文放在 reasoning_content 里，content 为 null
+    if (!reply.trim()) reply = String(message.reasoning_content ?? message.reasoning ?? '')
+    if (reply.trim()) return reply
+    throw new Error('LLM 返回里既没有 content 也没有 reasoning')
   } finally {
     clearTimeout(timer)
   }

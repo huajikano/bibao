@@ -746,6 +746,28 @@ window.__ModuleLoader__.load({
       )
     }
 
+
+    /** 语义层：夜间归纳出来的事实（只读，不参与决策） */
+    function FactsCard({ snap, t }) {
+      const facts = snap?.facts ?? []
+      const archived = snap?.archive?.archivedEpisodes ?? 0
+      return h(
+        Card,
+        { title: '长期记住的事', hint: `语义层 · 已归档 ${archived} 条情景` },
+        facts.length
+          ? facts.map((fact) =>
+              h(
+                'div',
+                { key: fact.id, className: 'bb-a9' },
+                h(Chip, { children: `${Math.round((fact.confidence ?? 0.5) * 100)}%` }),
+                h('span', {}, fact.text),
+                h('span', { className: 'bb-muted' }, `${fact.sourceIds?.length ?? 0} 处出处`),
+              ),
+            )
+          : h('div', { className: 'bb-muted' }, '还没有归纳出事实——每晚 03:00 由记忆模型把当天情景压成几条'),
+      )
+    }
+
     function RecentTalkCard({ snap, t }) {
       const people = (snap.social ?? []).filter((item) => item.recent?.length)
       return h(
@@ -3160,7 +3182,7 @@ window.__ModuleLoader__.load({
                 : h('div', { className: 'bb-muted' }, t('none')),
             ),
           ),
-          h('div', { className: 'bb-grid' }, h(RecentTalkCard, { snap: this.state.snap, t })),
+          h('div', { className: 'bb-grid' }, h(RecentTalkCard, { snap: this.state.snap, t }), h(FactsCard, { snap: this.state.snap, t })),
         )
       }
 

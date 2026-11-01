@@ -13,7 +13,7 @@ import {
   clamp,
   HORMONES,
 } from './constants.js'
-import { createRng, uid } from './rng.js'
+import { createRng, hashString, uid } from './rng.js'
 import { NeuroState, moodWord } from './state.js'
 import { CoreSchema } from './schema.js'
 import { SocialMemory } from './social.js'
@@ -50,7 +50,9 @@ export class BibaoBrain {
     userId = 'owner',
     userName = '你',
     onDream = null,
+    store = null,
   }) {
+    this.store = store
     this.seed = seed
     this.rng = createRng(seed)
     this.virtual = virtual
@@ -71,6 +73,7 @@ export class BibaoBrain {
     this.schema = boot.schema
     this.social = boot.social
     this.memory = boot.memory
+    this.memory.store = store
     this.birth = boot.birth
     this.age = boot.age
     this.timeline = boot.timeline
@@ -98,6 +101,8 @@ export class BibaoBrain {
     this.lastPE = 0
     this.lastPipeline = null
     this.lastLlmError = ''
+    this.lastFactError = ''
+    this.lastFactCount = 0
     this.senses = new SensoryCortex()
     this.tuning = { memoryStrength: 1, talkativeness: 1 }
     this.lastSpokeAt = 0
@@ -292,6 +297,10 @@ export class BibaoBrain {
     )
     this.lastSleepDay = key
     this.stats.dreams += report.dream ? 1 : 0
+    if (this.store) {
+      this.store.expireFacts(this.simMs)
+      void this._extractFacts()
+    }
     if (report.dream) {
       const entry = {
         at: this.simMs,
@@ -322,6 +331,132 @@ export class BibaoBrain {
     }
   }
 
+
+
+  /** 夜间把今天的情景压成事实：带出处、带置信度，低置信 7 天后过期。 */
+  async _extractFacts() {
+    const llm = this.llms?.memory ?? this.llms?.reflection
+    if (!llm?.llm || !llm.provider || !llm.model || !this.store) {
+      this.lastFactError = 'no-llm-or-store'
+      return []
+    }
+    const today = this.memory.episodes.filter((node) => this.simMs - node.at <= 1.1 * DAY_MS && node.at <= this.simMs)
+    if (today.length === 0) {
+      this.lastFactError = 'no-episodes-today'
+      return []
+    }
+    const lines = today
+      .slice(-12)
+      .map((node) => `${node.id} | ${node.title} | ${String(node.narrative).slice(0, 30)}`)
+      .join('\n')
+    const system =
+      '你只做记忆归纳。把给到的事件压成不超过 6 条中文事实，每条 <= 28 字，主语明确（我 / 某人的名字）。只输出 JSON：{"facts":[{"text":"...","confidence":0.0,"sourceIds":["ep_x"]}]}。不要解释，不要编造没有出处的事。'
+    try {
+      let raw = ''
+      const stream = llm.llm.stream({
+        provider: llm.provider,
+        model: llm.model,
+        system,
+        messages: [{ role: 'user', content: [{ type: 'text', text: lines }] }],
+        maxTokens: 1500,
+        temperature: 0.3,
+      })
+      for await (const chunk of stream) if (chunk.type === 'text-delta') raw += chunk.text
+      const parsed = extractJson(raw)
+      if (!parsed) this.lastFactError = `unparsable: ${String(raw).slice(0, 120)}`
+      const facts = Array.isArray(parsed?.facts) ? parsed.facts : []
+      const known = new Set(today.map((node) => node.id))
+      const saved = []
+      for (const fact of facts.slice(0, 6)) {
+        const text = String(fact?.text ?? '').trim().slice(0, 40)
+        const sourceIds = (Array.isArray(fact?.sourceIds) ? fact.sourceIds : []).filter((id) => known.has(id))
+        if (!text || sourceIds.length === 0) continue
+        const confidence = Math.max(0.2, Math.min(1, Number(fact.confidence) || 0.5))
+        const record = {
+          id: `fact_${Math.abs(hashString(text)).toString(16)}`,
+          text,
+          subject: this.memory.episodes.find((n) => n.id === sourceIds[0])?.entityName ?? null,
+          confidence,
+          sourceIds,
+          createdAt: this.simMs,
+          updatedAt: this.simMs,
+          expiresAt: confidence < 0.6 ? this.simMs + 7 * DAY_MS : null,
+        }
+        this.store.insertFact(record)
+        saved.push(record)
+      }
+
+      // 模型没给出可解析的 JSON：用模板兜底，保证语义层不会因为模型抽风而断掉
+      if (saved.length === 0) {
+        const picks = today
+          .slice()
+          .sort((a, b) => b.salience * Math.abs(b.valence) - a.salience * Math.abs(a.valence))
+          .slice(0, 4)
+        for (const node of picks) {
+          const text = String(node.narrative || node.title || '').slice(0, 28)
+          if (!text) continue
+          const record = {
+            id: `fact_${Math.abs(hashString(text)).toString(16)}`,
+            text,
+            subject: node.entityName ?? null,
+            confidence: 0.4,
+            sourceIds: [node.id],
+            createdAt: this.simMs,
+            updatedAt: this.simMs,
+            expiresAt: this.simMs + 7 * DAY_MS,
+          }
+          this.store.insertFact(record)
+          saved.push(record)
+        }
+      }
+
+      this.lastFactCount = saved.length
+      this.lastFactError = saved.length ? '' : `empty: ${String(raw).slice(0, 80)}`
+      return saved
+    } catch (error) {
+      this.lastFactError = String(error?.message ?? error).slice(0, 160)
+      return []
+    }
+  }
+
+  /** 这个人现在值不值得多说两句、以及为什么。 */
+  stanceFor(relation) {
+    if (!relation) return '陌生人，没有任何底账'
+    const parts = []
+    const intimacy = Math.round(relation.intimacy ?? 0)
+    parts.push(`认识 ${relation.interactions ?? 0} 次，亲密度 ${intimacy}`)
+    if (relation.powerFear >= 0.55) parts.push('有点怕他')
+    else if (intimacy >= 60) parts.push('自己人')
+    else if (intimacy <= 15) parts.push('还不熟')
+    if (relation.impression) parts.push(relation.impression)
+    if (relation.lastStressor?.text) parts.push('上次不太愉快')
+    return parts.join('，')
+  }
+
+  /** 一行体感，不报数字：人不会背自己的激素读数。 */
+  somaticLine() {
+    const bits = []
+    if (this.state.cortisol > 0.75) bits.push('胸口发紧，随时会炸')
+    else if (this.state.cortisol > 0.55) bits.push('有点烦，耐性不多')
+    if (this.state.energy < 25) bits.push('困得脑子转不动')
+    if (this.state.moodValence < -0.4) bits.push('心里堵着，不想解释')
+    else if (this.state.moodValence > 0.4) bits.push('心情居然不错，愿意多说两句')
+    if (this.state.oxytocin > 0.55) bits.push('对眼前这个人有点软')
+    if (!bits.length) bits.push('状态平平，没什么特别的')
+    return bits.join('；')
+  }
+
+  /** 注入用摘要：事实 + 两段还能想起的叙事 + 对这个人的态度。 */
+  digestFor(relation) {
+    const now = this.simMs
+    const facts = (this.store?.listFacts(now, 6) ?? []).map((fact) => fact.text)
+    const episodes = this.memory
+      .list(now, { limit: 60 })
+      .filter((item) => item.tier === 'conscious')
+      .slice(0, 2)
+      .map((item) => ({ title: item.title, narrative: String(item.narrative ?? '').slice(0, 110), r: item.r }))
+    return { facts, episodes, stance: this.stanceFor(relation), somatic: this.somaticLine() }
+  }
 
   /**
    * 脑机接口：一条外部感知（看到的画面 / 听到的声音 / 闻到的气味…）。
@@ -736,6 +871,7 @@ export class BibaoBrain {
         forgot,
         appraisalHint,
         recent: relation.recent ?? [],
+        digest: this.digestFor(relation),
         clockLabel: clockLabel(now),
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
@@ -980,6 +1116,7 @@ export class BibaoBrain {
       inner: this.inner.slice(-14),
       pipeline: this.lastPipeline,
       senses: this.senses.snapshot(),
+      factsDebug: { error: this.lastFactError, count: this.lastFactCount },
       tuning: { ...this.tuning },
       stats: { ...this.stats },
       timeline: this.timeline.map((item) => ({
@@ -1023,13 +1160,14 @@ export class BibaoBrain {
       lastPE: this.lastPE,
       lastPipeline: this.lastPipeline,
       lastLlmError: this.lastLlmError,
+      lastFactError: this.lastFactError,
       senses: this.senses.toJSON(),
       tuning: this.tuning,
       timeline: this.timeline,
     }
   }
 
-  static fromJSON(json, { biography, llm, llmProvider, llmModel, interests, userName, userId }) {
+  static fromJSON(json, { biography, llm, llmProvider, llmModel, interests, userName, userId, store = null }) {
     const brain = new BibaoBrain({
       biography,
       seed: json.seed ?? 20261101,
@@ -1041,11 +1179,27 @@ export class BibaoBrain {
       interests,
       userName,
       userId,
+      store,
     })
     brain.state = NeuroState.fromJSON(json.state)
     brain.schema = CoreSchema.fromJSON(json.schema)
     brain.social = SocialMemory.fromJSON(json.social)
-    brain.memory = MemorySystem.fromJSON(json.memory, brain.rng)
+    brain.memory = MemorySystem.fromJSON(json.memory, brain.rng, store)
+    // 历史版本可能生成过重复 id（早期 uid 只依赖种子），读档时补后缀，一条不丢
+    {
+      const seen = new Set()
+      let renamed = 0
+      for (const node of brain.memory.episodes) {
+        let id = node.id
+        let suffix = 2
+        while (seen.has(id)) id = `${node.id}_${suffix++}`
+        if (id !== node.id) renamed += 1
+        seen.add(id)
+        node.id = id
+      }
+      if (renamed > 0) console.warn('[bibao] deduped episode ids:', renamed)
+    }
+    if (store) store.seedEpisodes(brain.memory.episodes)
     brain.workspace = GlobalWorkspace.fromJSON(json.workspace, brain.rng)
     brain.simMs = json.simMs ?? Date.now()
     brain.birth = json.birth ?? brain.birth
@@ -1059,6 +1213,7 @@ export class BibaoBrain {
     brain.lastPE = json.lastPE ?? 0
     brain.lastPipeline = json.lastPipeline ?? null
     brain.lastLlmError = json.lastLlmError ?? ''
+    brain.lastFactError = json.lastFactError ?? ''
     brain.senses = SensoryCortex.fromJSON(json.senses)
     brain.applyTuning(json.tuning ?? {})
     // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大

@@ -13,9 +13,10 @@ import { uid } from './rng.js'
 const PRIMARY_TAGS = ['背叛', '孤立', '羞耻', '被否定', '被比较', '离别', '依靠', '成就', '温柔', '共谋']
 
 export class MemorySystem {
-  constructor({ rng, episodes = [], semantics = [], dreams = [], archived = 0, stabilityScale = 1 } = {}) {
+  constructor({ rng, episodes = [], semantics = [], dreams = [], archived = 0, stabilityScale = 1, store = null } = {}) {
     this.rng = rng
     this.stabilityScale = stabilityScale
+    this.store = store
     this.episodes = episodes
     this.semantics = semantics
     this.dreams = dreams
@@ -81,7 +82,9 @@ export class MemorySystem {
         (input.betaAge ?? 1),
     }
     this.episodes.push(node)
-    this.trim()
+    this.store?.upsertEpisode(node)
+    // 有持久层就不再按 900 条硬截断：归档交给 SQLite，热层只按需裁剪
+    if (!this.store) this.trim()
     return node
   }
 
@@ -131,6 +134,7 @@ export class MemorySystem {
     node.recalled = true
     node.recalls += 1
     node.lastRecallAt = now
+    this.store?.upsertEpisode(node)
 
     const gated = pe > PARAMS.reconsolidationGatePE || Math.abs(moodNow) > PARAMS.reconsolidationGateMood
     if (gated) {
@@ -195,6 +199,8 @@ export class MemorySystem {
     for (const node of this.episodes) {
       const tier = this.tier(node, now)
       if (allowPrune && tier === 'pruning' && Math.abs(node.valence) < PARAMS.pruneValence) {
+        // 软删除：热层移除，SQLite 里只打 archived_at，随时可复盘
+        this.store?.archiveEpisode(node.id, now)
         pruned.push({ id: node.id, title: node.title, r: Number(this.extractability(node, now).toFixed(3)) })
       } else {
         kept.push(node)
@@ -339,9 +345,10 @@ export class MemorySystem {
     }
   }
 
-  static fromJSON(json, rng) {
+  static fromJSON(json, rng, store = null) {
     return new MemorySystem({
       rng,
+      store,
       episodes: json?.episodes ?? [],
       semantics: json?.semantics ?? [],
       dreams: json?.dreams ?? [],
