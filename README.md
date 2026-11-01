@@ -1,5 +1,7 @@
 # 比宝 · 拟人认知内核
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 一个按计算神经科学四条定律运行的「活人脑」，接在 DSH（DeepSeek Harness）里，长着一张 QQ 的嘴。
 
 ```
@@ -33,18 +35,38 @@ node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，2
 node bibao-brain/bin/render-smoke.mjs # 设置页六个标签的渲染冒烟
 ```
 
-安装到 DSH：`plugin_manager install_bundle` 指向 `bibao-brain/` 目录，重启 DSH 后
-在 **设置 → 比宝** 打开；另有一个只监听回环的独立控制台
+安装到 DSH：
+
+```bash
+dsh plugin add huajikano/bibao
+```
+
+或者用 Release 里的预构建包（免构建授权）：
+
+```bash
+dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao.tgz
+```
+
+装好后重启 DSH，在 **设置 → 比宝** 打开；另有一个只监听回环的独立控制台
 （`http://127.0.0.1:3110/?token=…`，地址见 `~/.dsh/bibao/boot-report.json` 的 `consoleUrl`）。
 
 详细文档见 [bibao-brain/README.md](bibao-brain/README.md)。
+
+## 版本
+
+| Tag | 内容 |
+| --- | --- |
+| [`v0.0.3`](https://github.com/huajikano/bibao/releases/tag/v0.0.3) | SQLite 持久层、夜间事实归纳、词法向量检索、时间校准（附 `bibao.tgz`） |
+| [`v0.0.2`](https://github.com/huajikano/bibao/releases/tag/v0.0.2) | 行为滑杆（记忆力 / 说话频率）、群聊三层状态、感官接口 |
+| [`v0.0.1`](https://github.com/huajikano/bibao/releases/tag/v0.0.1) | 首个可运行版本 |
 
 ## 状态
 
 - Phase 1（纯认知沙盒）：6/6 通过
 - Phase 2（snowluma 感知与运动皮层）：已接通 OneBot HTTP/WS，群白名单 + 防抖 + 三层漏斗；
   真实群消息已验证能触发回复
-- 界面：设置页六标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 设置）
+- 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
+- 界面：设置页七标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 感官 / 设置）
 
 ## 许可
 
