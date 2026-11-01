@@ -719,18 +719,56 @@ window.__ModuleLoader__.load({
     }
 
     function SocialCard({ snap, t }) {
+      const people = snap.social ?? []
       return h(
         Card,
-        { title: t('relations'), hint: t('relationsHint') },
-        snap.social.slice(0, 6).map((item) =>
-          h(
-            'div',
-            { key: item.id, className: 'bb-relation' },
-            h('span', { className: 'bb-relationName' }, item.name),
-            h('span', { className: 'bb-muted' }, `亲 ${Math.round(item.intimacy)} · 信 ${Math.round(item.trust)} · 惧 ${fixed(item.powerFear)}`),
-            item.tags?.length ? h(Chip, { children: item.tags[0] }) : null,
+        { title: t('relations'), hint: `${t('relationsHint')} · 共 ${people.length} 人` },
+        h(
+          'div',
+          { className: 'bb-social' },
+          people.map((item) =>
+            h(
+              'div',
+              { key: item.id, className: 'bb-relation' },
+              h('span', { className: 'bb-relationName' }, item.name),
+              h(
+                'span',
+                { className: 'bb-muted' },
+                `亲 ${Math.round(item.intimacy)} · 信 ${Math.round(item.trust)} · 惧 ${fixed(item.powerFear)} · ${item.interactions ?? 0} 次`,
+              ),
+              item.tags?.length ? h(Chip, { children: item.tags[0] }) : null,
+              item.recent?.length
+                ? h('div', { className: 'bb-muted bb-relationSay' }, `${item.recent.at(-1).role === 'self' ? '她说' : '对方'}：${item.recent.at(-1).text}`)
+                : null,
+            ),
           ),
         ),
+      )
+    }
+
+    function RecentTalkCard({ snap, t }) {
+      const people = (snap.social ?? []).filter((item) => item.recent?.length)
+      return h(
+        Card,
+        { title: '最近聊过', hint: '短时缓冲：进提示词，但不进海马体' },
+        people.length
+          ? people
+              .slice()
+              .sort((a, b) => (b.recent.at(-1)?.at ?? 0) - (a.recent.at(-1)?.at ?? 0))
+              .slice(0, 6)
+              .map((item) =>
+                h(
+                  'div',
+                  { key: item.id, className: 'bb-innerItem' },
+                  h('div', { className: 'bb-innerMeta' }, h('span', {}, item.name), h(Chip, { children: `亲 ${Math.round(item.intimacy)}` })),
+                  item.recent
+                    .slice(-3)
+                    .map((line, index) =>
+                      h('div', { key: index, className: 'bb-muted' }, `${line.role === 'self' ? '她说' : '对方'}：${line.text}`),
+                    ),
+                ),
+              )
+          : h('div', { className: 'bb-muted' }, t('none')),
       )
     }
 
@@ -3045,6 +3083,7 @@ window.__ModuleLoader__.load({
                 : h('div', { className: 'bb-muted' }, t('none')),
             ),
           ),
+          h('div', { className: 'bb-grid' }, h(RecentTalkCard, { snap: this.state.snap, t })),
         )
       }
 
@@ -3324,6 +3363,9 @@ window.__ModuleLoader__.load({
                 tone: snap.workspace.hijacked ? 'bad' : '',
               }),
               h(Chip, { children: snap.llm?.enabled ? t('llmOn') : t('llmOff'), tone: snap.llm?.enabled ? 'good' : '' }),
+              snap.llm?.lastError
+                ? h(Chip, { children: '语言区降级：' + snap.llm.lastError.slice(0, 28), tone: 'bad' })
+                : null,
             ),
           ),
           error ? h('div', { className: 'bb-error' }, error) : null,
@@ -3546,6 +3588,8 @@ window.__ModuleLoader__.load({
 .bb-innerMeta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin-block-end: 2px; }
 .bb-relation { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; flex-wrap: wrap; }
 .bb-relationName { font-weight: 600; inline-size: 64px; }
+.bb-social { max-block-size: 340px; overflow: auto; }
+.bb-relationSay { inline-size: 100%; margin-block-start: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bb-pending { padding: 6px 0; border-block-end: 1px dashed var(--dsw-alias-border-l1); font-size: 12px; }
 .bb-pending:last-child { border-block-end: none; }
 .bb-talk { display: flex; flex-direction: column; gap: 10px; }

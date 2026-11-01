@@ -51,7 +51,7 @@ export const PARAMS = {
   fastAlpha: 1.0,
 
   // —— 定律四：遗忘、沉降与再巩固 ——
-  stabilityBaseDays: 3,
+  stabilityBaseDays: 60,
   valenceStabilityGain: 8,
   consciousTier: 0.35,
   subconsciousTier: 0.05,

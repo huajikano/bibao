@@ -96,6 +96,7 @@ export class BibaoBrain {
     }
     this.lastPE = 0
     this.lastPipeline = null
+    this.lastLlmError = ''
   }
 
   get name() {
@@ -335,7 +336,7 @@ export class BibaoBrain {
         model: appraisal.model,
         system,
         messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
-        maxTokens: 160,
+        maxTokens: 260,
         temperature: 0.4,
       })
       for await (const chunk of stream) {
@@ -478,6 +479,7 @@ export class BibaoBrain {
     }
     this.stats.ignitions += 1
 
+    const interactionsBefore = relation.interactions
     const stim = stimulusDelta({ analysis, relation, schemaHits, channel })
     this.state.applyStimulus(stim.delta, {
       valenceTarget: stim.valenceTarget,
@@ -487,6 +489,7 @@ export class BibaoBrain {
           : undefined,
       at: now,
     })
+    this.social.remember(entityId, { at: now, role: 'user', text })
     this.social.adjust(entityId, {
       intimacy: stim.intimacyDelta,
       trust: stim.trustDelta,
@@ -502,6 +505,7 @@ export class BibaoBrain {
       age: this.age,
       arousal: this.state.arousal,
       pe,
+      relational: channel === 'private' && interactionsBefore > 0,
       valence: stim.valenceTarget,
       salience: salienceInfo.salience,
       title: text.slice(0, 16) || '一句话',
@@ -604,6 +608,7 @@ export class BibaoBrain {
         transferTarget,
         forgot,
         appraisalHint,
+        recent: relation.recent ?? [],
         clockLabel: clockLabel(now),
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
@@ -621,6 +626,7 @@ export class BibaoBrain {
       })
     }
 
+    this.lastLlmError = dual.meta?.llmError ?? ''
     if (dual.meta?.source === 'llm') this.stats.llmCalls += 1
     if (dual.meta?.llmError) this.stats.llmFallbacks += 1
 
@@ -630,6 +636,9 @@ export class BibaoBrain {
       this.social.adjust(entityId, { intimacy: dual.neuro_delta.intimacy_delta })
     }
 
+    if ((dual.bubbles ?? []).length) {
+      this.social.remember(entityId, { at: now, role: 'self', text: (dual.bubbles ?? []).join(' ') })
+    }
     const motor = motorPlan(dual.bubbles ?? [], this.state.energy, dual.action_route === 'SILENT_READ' ? 0.5 : 0)
     stages.push({
       key: 'motor',
@@ -856,6 +865,7 @@ export class BibaoBrain {
         enabled: Boolean(this.llm && this.llmProvider && this.llmModel),
         provider: this.llmProvider,
         model: this.llmModel,
+        lastError: this.lastLlmError ?? '',
       },
       biographyMissing: !this.biography,
     }
@@ -863,7 +873,7 @@ export class BibaoBrain {
 
   toJSON() {
     return {
-      version: 1,
+      version: 3,
       seed: this.seed,
       savedAt: this.simMs,
       simMs: this.simMs,
@@ -882,6 +892,7 @@ export class BibaoBrain {
       stats: this.stats,
       lastPE: this.lastPE,
       lastPipeline: this.lastPipeline,
+      lastLlmError: this.lastLlmError,
       timeline: this.timeline,
     }
   }
@@ -915,6 +926,19 @@ export class BibaoBrain {
     brain.stats = { ...brain.stats, ...(json.stats ?? {}) }
     brain.lastPE = json.lastPE ?? 0
     brain.lastPipeline = json.lastPipeline ?? null
+    brain.lastLlmError = json.lastLlmError ?? ''
+    // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大
+    const fromVersion = json.version ?? 1
+    if (fromVersion < 2) {
+      for (const node of brain.memory.episodes) {
+        if (node.source === 'life') node.sDays = (node.sDays ?? 1) * 10
+      }
+    }
+    if (fromVersion < 3) {
+      for (const node of brain.memory.episodes) {
+        if (node.source === 'life') node.sDays = (node.sDays ?? 1) * 2
+      }
+    }
     brain.timeline = json.timeline ?? brain.timeline
     // 持久化后按真实时间继续衰老
     brain.virtual = false

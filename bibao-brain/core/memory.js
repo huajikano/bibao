@@ -48,7 +48,7 @@ export class MemorySystem {
    */
   write(input) {
     const { now, age, arousal, pe } = input
-    if (!(input.force || arousal > PARAMS.writeArousal || pe > PARAMS.writePE)) return null
+    if (!(input.force || input.relational || arousal > PARAMS.writeArousal || pe > PARAMS.writePE)) return null
     const valence = clamp(Number(input.valence ?? 0), -1, 1)
     const node = {
       id: input.id ?? uid('ep', this.rng),

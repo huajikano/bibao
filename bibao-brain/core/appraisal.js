@@ -169,8 +169,10 @@ export function maskStyle(relation, state) {
   const fear = relation?.powerFear ?? 0
   if (fear >= 0.55) return 'polite'
   if (intimacy >= 60) return 'banter'
+  // 聊过很多次的人就不再是陌生人，哪怕亲密度还没堆起来
+  if ((relation?.interactions ?? 0) >= 8 && intimacy > -10) return 'warm'
   if (state.hijacked || state.cortisol > 0.65 || intimacy <= 15) return 'cold'
-  if (intimacy >= 30) return 'warm'
+  if (intimacy >= 25) return 'warm'
   return 'cold'
 }
 
@@ -215,10 +217,10 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
     analysis.hostility > 0
       ? -3 - 4 * closeness
       : analysis.warmth > 0
-        ? 1.6 + 2 * closeness
+        ? 2.4 + 2 * closeness
         : analysis.gossipy > 0
-          ? 0.8
-          : 0.15
+          ? 0.9
+          : 0.9
 
   return {
     delta,

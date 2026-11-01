@@ -45,7 +45,7 @@ export const SYSTEM_PROMPT = `你是「比宝」（沈知遥）的语言区，�
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -64,6 +64,9 @@ export function buildPerceptionFrame(ctx) {
     `刚刚收到来自 [对象: ${frame.entityName || frame.entityId || '未知'} | ${relations}] 的外部信号：“${frame.text}”。`,
     `我现在的生理读数：精力 ${Math.round(state.energy)}%，皮质醇 ${state.cortisol.toFixed(2)}（${state.cortisol > 0.75 ? '杏仁核劫持，烦躁戒备' : state.cortisol > 0.5 ? '明显不耐' : '尚可'}），多巴胺 ${state.dopamine.toFixed(2)}，催产素 ${state.oxytocin.toFixed(2)}，血清素 ${state.serotonin.toFixed(2)}，心境 ${state.moodValence.toFixed(2)}。`,
     `${stress}。`,
+    recent && recent.length
+      ? `刚才这几轮聊到：${recent.slice(-4).map((item) => `${item.role === 'self' ? '我说的' : '他说的'}「${item.text}」`).join('；')}`
+      : '',
     `潜意识对这个人/这类话题的情绪偏置：${bias >= 0 ? '+' : ''}${bias.toFixed(2)}。`,
     `能想起的相关记忆：${memoryLine}。`,
     `核心信念：${schemaLine}。${schemaHits.length ? `这次踩到了：${schemaHits.map((hit) => hit.cue).join('、')}。` : '没有被踩到。'}`,
@@ -164,7 +167,7 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
       model,
       system,
       temperature: 0.9,
-      maxTokens: 480,
+      maxTokens: 900,
       messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
     })
     for await (const chunk of stream) {

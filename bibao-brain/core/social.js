@@ -22,9 +22,10 @@ export class SocialMemory {
       powerFear: clamp(Number(input.powerFear ?? current?.powerFear ?? 0)),
       tags: Array.isArray(input.tags) ? input.tags.slice(0, 6) : (current?.tags ?? []),
       impression: input.impression ?? current?.impression ?? '',
-      interactions: current?.interactions ?? 0,
+      interactions: Number(input.interactions ?? current?.interactions ?? 0),
       lastAt: current?.lastAt ?? null,
       defiances: current?.defiances ?? 0,
+      recent: Array.isArray(input.recent) ? input.recent.slice(-6) : current?.recent ?? [],
     }
     this.relations.set(id, next)
     return next
@@ -77,6 +78,19 @@ export class SocialMemory {
   isCloseFriend(id) {
     const relation = this.get(id)
     return Boolean(relation && relation.intimacy > 60)
+  }
+
+  /** 短时对话缓冲：不是海马体，只是刚才说到哪。 */
+  remember(id, entry, limit = 6) {
+    const relation = this.ensure(id)
+    relation.recent = relation.recent ?? []
+    relation.recent.push({
+      at: entry.at ?? Date.now(),
+      role: entry.role ?? "user",
+      text: String(entry.text ?? "").slice(0, 80),
+    })
+    if (relation.recent.length > limit) relation.recent = relation.recent.slice(-limit)
+    return relation
   }
 
   snapshot() {
