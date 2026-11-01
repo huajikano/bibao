@@ -1,0 +1,37 @@
+{
+  "name": "bibao-brain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "比宝：一个按四大计算神经科学定律运行的拟人认知内核（Phase 1 沙盒）+ 侧边栏脑内面板。",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "core",
+    "bin",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

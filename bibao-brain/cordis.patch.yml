@@ -1,0 +1,42 @@
+# 比宝 · 拟人认知内核
+#
+# 一个 Loader 行同时服务两半：Host 半（index.js）持有唯一一颗大脑并暴露
+# /api/bibao/*；manifest 的 dsh.client 指向 client.js，在左侧栏注册图标、
+# 在主面板注册同 id 的页面。
+#
+# 可调字段（全部有默认值）：
+#   userName   面板里"我"的显示名
+#   userId     面板里"我"的关系 id
+#   useLlm     语言区是否接真实 LLM（false = 本地布洛卡，确定性可复现）
+#   provider   指定 provider（留空沿用 DSH 默认模型）
+#   model      指定 model（留空沿用 DSH 默认模型）
+#   stateFile  大脑存档路径（留空 = $DSH_HOME/bibao/brain-state.json）
+#   gatePhase2 是否用 6 大沙盒结果锁死 Phase 2（默认 true）
+
+- insert:
+    - id: bibao-brain
+      name: bibao-brain
+      config:
+        userName: 你
+        userId: owner
+        useLlm: false
+        gatePhase2: true
+        # Phase 2：snowluma 已安装并运行在本机 3000（HTTP）/ 3001（WS）。
+        # 默认只读观察：收消息、算注意力、写记忆、记录"本来会发什么"，但不真的发。
+        # 想让她真的开口，把 sendEnabled 改成 true（或点面板里的「允许发送」）。
+        snowluma:
+          enabled: true
+          sendEnabled: true
+          configDir: 'D:\XiangMu\snowluma\config'
+          allowGroups: ['576268399']
+          allowPrivate: false
+        # 每个认知逻辑可以各用一套模型（也可在 面板/设置 里改，改完写本机 settings.json）。
+        # 留空 apiKey 就回落 DSH 当前默认模型；再不行就本地布洛卡。
+        llm:
+          baseURL: 'https://api.deepseek.com'
+          model: 'deepseek-chat'
+          apiKey: ''
+          profiles:
+            appraisal: {}
+            broca: {}
+            reflection: {}

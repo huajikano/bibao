@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Bibao">
+  <defs>
+    <linearGradient id="bb-bg" x1="8" y1="6" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6C5CE7"/>
+      <stop offset="0.55" stop-color="#4C6FFF"/>
+      <stop offset="1" stop-color="#00B39A"/>
+    </linearGradient>
+    <linearGradient id="bb-gloss" x1="32" y1="4" x2="32" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#bb-bg)"/>
+  <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#bb-gloss)"/>
+  <path d="M23.6 27.6c0-3.9 2.9-6.9 6.7-6.9 2.5 0 4.5 1.2 5.5 3.1 1-1.9 3-3.1 5.5-3.1 3.8 0 6.7 3 6.7 6.9 0 1.3-.4 2.6-1 3.6 1.7 1.1 2.8 3 2.8 5.2 0 3.4-2.7 6.1-6.1 6.1h-2.4v2.6c0 2.2-1.8 4-4 4h-6.2c-2.2 0-4-1.8-4-4v-2.8c-2.5-.8-4.3-3.1-4.3-5.9 0-2.2 1.2-4.1 3-5.1-.6-1-.8-2-.8-3.1Z"
+        fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M32 25.8v10.2" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" opacity="0.92"/>
+  <path d="M28.2 28.6c1.5.3 2.5 1.5 2.7 3M35.8 28.6c-1.5.3-2.5 1.5-2.7 3M28.6 34.4c1.1 1.1 2.4 1.7 3.7 1.7 1.3 0 2.6-.6 3.7-1.7"
+        stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="47.5" cy="16.5" r="2.4" fill="#ffffff" opacity="0.95"/>
+  <circle cx="53" cy="11.5" r="1.5" fill="#ffffff" opacity="0.72"/>
+</svg>
