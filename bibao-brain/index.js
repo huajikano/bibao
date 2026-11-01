@@ -37,6 +37,8 @@ const DEFAULTS = {
   model: '',
   stateFile: '',
   gatePhase2: true,
+  // 两个行为旋钮：1 = 现在的表现（记忆力最好 / 想说什么就说什么）
+  tuning: { memoryStrength: 1, talkativeness: 1 },
   llm: {
     baseURL: 'https://api.deepseek.com',
     apiKey: '',
@@ -70,6 +72,7 @@ export function apply(ctx, config = {}) {
   const settings = { ...DEFAULTS, ...(config && typeof config === 'object' ? config : {}) }
   settings.snowluma = { ...DEFAULTS.snowluma, ...(config?.snowluma ?? {}) }
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
+  settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
   )
@@ -243,6 +246,7 @@ export function apply(ctx, config = {}) {
           if (typeof saved.snowluma.sendEnabled === 'boolean') settings.snowluma.sendEnabled = saved.snowluma.sendEnabled
           if (Array.isArray(saved.snowluma.allowGroups)) settings.snowluma.allowGroups = saved.snowluma.allowGroups.map(String)
         }
+        if (saved?.tuning && typeof saved.tuning === 'object') settings.tuning = { ...DEFAULTS.tuning, ...saved.tuning }
         if (saved?.llm && typeof saved.llm === 'object') {
           settings.llm = { ...DEFAULTS.llm, ...saved.llm, profiles: { ...(saved.llm.profiles ?? {}) } }
         }
@@ -287,6 +291,7 @@ export function apply(ctx, config = {}) {
         })
       }
       brain.llms = llms
+      brain.applyTuning(settings.tuning)
       funnel = new GroupAttentionFunnel({
         social: brain.social,
         interests: brain.interests,
@@ -1165,6 +1170,15 @@ export function apply(ctx, config = {}) {
             if (typeof body.snowluma[key] === 'string') settings.snowluma[key] = body.snowluma[key].trim()
           }
         }
+        if (body.tuning && typeof body.tuning === 'object') {
+          if (Number.isFinite(Number(body.tuning.memoryStrength))) {
+            settings.tuning.memoryStrength = Math.max(0, Math.min(1, Number(body.tuning.memoryStrength)))
+          }
+          if (Number.isFinite(Number(body.tuning.talkativeness))) {
+            settings.tuning.talkativeness = Math.max(0, Math.min(1, Number(body.tuning.talkativeness)))
+          }
+          brain?.applyTuning(settings.tuning)
+        }
         if (body.llm && typeof body.llm === 'object') {
           for (const key of ['baseURL', 'apiKey', 'model']) {
             if (typeof body.llm[key] === 'string') settings.llm[key] = body.llm[key]
@@ -1205,6 +1219,7 @@ export function apply(ctx, config = {}) {
                 wsToken: settings.snowluma.wsToken,
               },
               llm: settings.llm,
+              tuning: settings.tuning,
             }),
             'utf8',
           )
@@ -1312,6 +1327,7 @@ export function apply(ctx, config = {}) {
                 wsToken: settings.snowluma.wsToken,
               },
               llm: settings.llm,
+              tuning: settings.tuning,
             }),
             'utf8',
           )

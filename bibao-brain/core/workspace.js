@@ -30,8 +30,8 @@ export class GlobalWorkspace {
   }
 
   /** 外源/内源共用的点火入口。 */
-  ignite(candidate, { state, silenceMin, now }) {
-    const theta = this.threshold(state, silenceMin)
+  ignite(candidate, { state, silenceMin, now, thetaBoost = 0 }) {
+    const theta = Math.min(1, this.threshold(state, silenceMin) + thetaBoost)
     const salience = clamp(Number(candidate.salience ?? 0))
     const approved = Boolean(candidate.force) || salience >= theta
     if (!approved) {

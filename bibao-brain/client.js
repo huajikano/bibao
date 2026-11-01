@@ -1540,6 +1540,20 @@ window.__ModuleLoader__.load({
     /* 设置：每个认知逻辑各用一套模型                                        */
     /* ------------------------------------------------------------------ */
 
+    /** 记忆半衰期文案：S 基准 60 天，滑到 0 时压缩到 ~8 分钟。 */
+    function memoryLabel(v) {
+      if (v >= 0.995) return '拉满：按当前设定衰减（近几年的强记忆还认得出来）'
+      const days = 60 * Math.pow(10, (v - 1) * 4)
+      if (days < 1 / 24) return `半衰期约 ${Math.max(1, Math.round(days * 24 * 60))} 分钟`
+      if (days < 1) return `半衰期约 ${Math.round(days * 24)} 小时`
+      return `半衰期约 ${days.toFixed(1)} 天`
+    }
+
+    function talkLabel(v) {
+      if (v >= 0.995) return '拉满：想接就接（现在的样子）'
+      return `两次回复至少隔 ${Math.round((1 - v) * 240)} 秒，点火阈值 +${((1 - v) * 0.5).toFixed(2)}`
+    }
+
     // 六个认知模块各占一个配置槽；只有 wired: true 的那几个真的会调用模型
     const LOGIC_META = [
       { name: 'funnel', label: '注意力漏斗', hint: '群消息该不该进脑子：@我 / 叫名字 / 死党 / 兴趣词（规则扫描，暂不调模型）', wired: false },
@@ -2125,6 +2139,7 @@ window.__ModuleLoader__.load({
             allowGroups: '',
             allowPrivate: false,
             sendEnabled: false,
+            tuning: { memoryStrength: 1, talkativeness: 1 },
           },
         }
         this.load = this.load.bind(this)
@@ -2171,6 +2186,7 @@ window.__ModuleLoader__.load({
             allowGroups: (snow.allowGroups ?? []).join(','),
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
+            tuning: { ...(snap.tuning ?? { memoryStrength: 1, talkativeness: 1 }) },
           },
         }))
       }
@@ -2850,6 +2866,19 @@ window.__ModuleLoader__.load({
         }
       }
 
+      /** 拖完滑块 350ms 自动保存，避免每一格都打一次接口。 */
+      queueTuningSave(tuning) {
+        if (this.tuningTimer) clearTimeout(this.tuningTimer)
+        this.tuningTimer = setTimeout(async () => {
+          try {
+            const data = await request('/settings', { method: 'POST', body: JSON.stringify({ tuning }) })
+            if (this.alive) this.setState({ snap: data.snapshot })
+          } catch (error) {
+            if (this.alive) this.setState({ error: error.message })
+          }
+        }, 350)
+      }
+
       async saveSettings() {
         const { form } = this.state
         this.setState({ saving: '保存中…' })
@@ -3238,6 +3267,53 @@ window.__ModuleLoader__.load({
         return h(
           'div',
           { className: 'bb-stack' },
+          h(
+            Card,
+            { title: '行为调节', hint: '两个旋钮，拉满就是现在的样子' },
+            h(
+              'div',
+              { className: 'bb-tune' },
+              h(
+                'div',
+                { className: 'bb-tuneHead' },
+                h('strong', {}, '记忆力'),
+                h('span', { className: 'bb-muted' }, memoryLabel(form.tuning?.memoryStrength ?? 1)),
+              ),
+              h('input', {
+                type: 'range',
+                className: 'bb-slider',
+                min: '0',
+                max: '1',
+                step: '0.05',
+                value: form.tuning?.memoryStrength ?? 1,
+                onChange: (event) => {
+                  const tuning = { ...(form.tuning ?? {}), memoryStrength: Number(event.target.value) }
+                  this.setField({ tuning })
+                  this.queueTuningSave(tuning)
+                },
+              }),
+              h(
+                'div',
+                { className: 'bb-tuneHead', style: { marginBlockStart: '10px' } },
+                h('strong', {}, '说话频率'),
+                h('span', { className: 'bb-muted' }, talkLabel(form.tuning?.talkativeness ?? 1)),
+              ),
+              h('input', {
+                type: 'range',
+                className: 'bb-slider',
+                min: '0',
+                max: '1',
+                step: '0.05',
+                value: form.tuning?.talkativeness ?? 1,
+                onChange: (event) => {
+                  const tuning = { ...(form.tuning ?? {}), talkativeness: Number(event.target.value) }
+                  this.setField({ tuning })
+                  this.queueTuningSave(tuning)
+                },
+              }),
+              h('div', { className: 'bb-muted' }, '记忆拉低＝只有刚才十几分钟清晰；频率拉低＝更容易装死。都不改四定律，只改这个人的参数。'),
+            ),
+          ),
           h(
             Card,
             { title: '语言区模型', hint: '留空则用 DSH 当前默认模型' },
@@ -3654,6 +3730,8 @@ window.__ModuleLoader__.load({
   border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 45%, transparent);
   background: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
 }
+.bb-tune { display: flex; flex-direction: column; gap: 6px; }
+.bb-tuneHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
 .bb-senseStrip { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }
 .bb-senseChip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;

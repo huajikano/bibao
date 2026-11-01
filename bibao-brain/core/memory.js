@@ -13,8 +13,9 @@ import { uid } from './rng.js'
 const PRIMARY_TAGS = ['背叛', '孤立', '羞耻', '被否定', '被比较', '离别', '依靠', '成就', '温柔', '共谋']
 
 export class MemorySystem {
-  constructor({ rng, episodes = [], semantics = [], dreams = [], archived = 0 } = {}) {
+  constructor({ rng, episodes = [], semantics = [], dreams = [], archived = 0, stabilityScale = 1 } = {}) {
     this.rng = rng
+    this.stabilityScale = stabilityScale
     this.episodes = episodes
     this.semantics = semantics
     this.dreams = dreams
@@ -23,7 +24,9 @@ export class MemorySystem {
 
   /** R(Δt) = exp(-Δt_days / S)，从上次提取/写入锚点起算。 */
   stabilityOf(node) {
-    return Math.max(0.05, node.sDays)
+    // 调低「记忆力」时整体压缩稳定性：拉满 = 原样
+    const scale = Number.isFinite(this.stabilityScale) ? this.stabilityScale : 1
+    return Math.max(0.0004, node.sDays * scale)
   }
 
   extractability(node, now) {

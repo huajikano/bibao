@@ -99,6 +99,8 @@ export class BibaoBrain {
     this.lastPipeline = null
     this.lastLlmError = ''
     this.senses = new SensoryCortex()
+    this.tuning = { memoryStrength: 1, talkativeness: 1 }
+    this.lastSpokeAt = 0
   }
 
   get name() {
@@ -401,6 +403,20 @@ export class BibaoBrain {
     }
   }
 
+
+  /** 两个旋钮：记忆力（稳定性缩放）与说话频率（阈值罚 + 冷却）。拉满 = 原样。 */
+  applyTuning(tuning = {}) {
+    if (Number.isFinite(Number(tuning.memoryStrength))) {
+      this.tuning.memoryStrength = clamp(Number(tuning.memoryStrength), 0, 1)
+    }
+    if (Number.isFinite(Number(tuning.talkativeness))) {
+      this.tuning.talkativeness = clamp(Number(tuning.talkativeness), 0, 1)
+    }
+    const exponent = (this.tuning.memoryStrength - 1) * 4
+    this.memory.stabilityScale = Math.pow(10, exponent)
+    return this.tuning
+  }
+
   _trimInner() {
     if (this.inner.length > 80) this.inner = this.inner.slice(-80)
   }
@@ -514,6 +530,34 @@ export class BibaoBrain {
     this.lastExternalAt = now
     this.stats.turns += 1
 
+    const talk = this.tuning.talkativeness
+    const cooldownMs = (1 - talk) * 240000
+    if (talk < 1 && !atMe && this.lastSpokeAt && now - this.lastSpokeAt < cooldownMs) {
+      this.lastPipeline = {
+        at: now,
+        frame: { ...frame, text },
+        stages: [
+          { key: 'funnel', label: '丘脑门控', status: 'blocked', detail: '刚说过话，还没缓过来' },
+          { key: 'workspace', label: '全局工作空间', status: 'idle', detail: '不进意识' },
+        ],
+        pe,
+        salience: 0.2,
+        theta: this.workspace.threshold(this.state, this.silenceMin),
+        ignited: false,
+      }
+      return {
+        ignited: false,
+        route: 'SILENT_SKIP',
+        reason: '说话频率调低了：刚回过，这次先不接',
+        pe,
+        salience: 0.2,
+        theta: this.workspace.threshold(this.state, this.silenceMin),
+        stages: this.lastPipeline.stages,
+        state: this.state.snapshot({ mood: moodWord(this.state.moodValence) }),
+      }
+    }
+    const thetaBoost = (1 - talk) * 0.5
+
     const ignition = this.workspace.ignite(
       {
         kind: 'external',
@@ -527,7 +571,7 @@ export class BibaoBrain {
         pe,
         tags,
       },
-      { state: this.state, silenceMin: this.silenceMin, now },
+      { state: this.state, silenceMin: this.silenceMin, now, thetaBoost },
     )
     this.stats.evictions += ignition.evicted?.length ?? 0
 
@@ -772,6 +816,7 @@ export class BibaoBrain {
           })
         : null
 
+    if ((dual.bubbles ?? []).length) this.lastSpokeAt = now
     this.inner.push({
       at: now,
       kind: 'external',
@@ -935,6 +980,7 @@ export class BibaoBrain {
       inner: this.inner.slice(-14),
       pipeline: this.lastPipeline,
       senses: this.senses.snapshot(),
+      tuning: { ...this.tuning },
       stats: { ...this.stats },
       timeline: this.timeline.map((item) => ({
         index: item.index,
@@ -978,6 +1024,7 @@ export class BibaoBrain {
       lastPipeline: this.lastPipeline,
       lastLlmError: this.lastLlmError,
       senses: this.senses.toJSON(),
+      tuning: this.tuning,
       timeline: this.timeline,
     }
   }
@@ -1013,6 +1060,7 @@ export class BibaoBrain {
     brain.lastPipeline = json.lastPipeline ?? null
     brain.lastLlmError = json.lastLlmError ?? ''
     brain.senses = SensoryCortex.fromJSON(json.senses)
+    brain.applyTuning(json.tuning ?? {})
     // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大
     const fromVersion = json.version ?? 1
     if (fromVersion < 2) {
