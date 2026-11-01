@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { openBrainStore } from '../core/store.js'
+import { embed, cosine, encodeVector, decodeVector } from '../core/embed.js'
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'bibao-store-'))
 const file = path.join(dir, 'test.sqlite')
@@ -63,6 +64,14 @@ check(
 )
 check('低置信到期后不再返回', store.expireFacts(6500) === 1 && store.listFacts(7000, 10).length === 1, 'expire ok')
 
+const v1 = embed('阿柚说她自己怕黑')
+const v2 = embed('阿柚怕黑，晚上要留灯')
+const v3 = embed('今天股市大涨，成交量放大')
+const same = cosine(v1, v2)
+const diff = cosine(v1, v3)
+check('向量：相近文本相似度更高', same > 0.2 && same > diff * 3, `same=${same.toFixed(2)} diff=${diff.toFixed(2)}`)
+const round = decodeVector(encodeVector(v1))
+check('向量：量化往返误差 < 0.05', Math.abs(cosine(v1, round) - 1) < 0.05, `cos=${cosine(v1, round).toFixed(4)}`)
 store.close()
 await rm(dir, { recursive: true, force: true })
 

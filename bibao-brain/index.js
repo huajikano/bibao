@@ -1275,7 +1275,10 @@ export function apply(ctx, config = {}) {
         }
         if (body.llm && typeof body.llm === 'object') {
           for (const key of ['baseURL', 'apiKey', 'model']) {
-            if (typeof body.llm[key] === 'string') settings.llm[key] = body.llm[key]
+            if (typeof body.llm[key] !== 'string') continue
+            // 空字符串 = 表单没填，保留已保存的（尤其是 apiKey，面板只回显掩码）
+            if (key === 'apiKey' && body.llm[key] === '') continue
+            settings.llm[key] = body.llm[key]
           }
           if (body.llm.profiles && typeof body.llm.profiles === 'object') {
             settings.llm.profiles = settings.llm.profiles ?? {}
@@ -1289,7 +1292,7 @@ export function apply(ctx, config = {}) {
               settings.llm.profiles[name] = {
                 ...current,
                 ...(typeof patch.baseURL === 'string' ? { baseURL: patch.baseURL } : {}),
-                ...(typeof patch.apiKey === 'string' ? { apiKey: patch.apiKey } : {}),
+                ...(typeof patch.apiKey === 'string' && patch.apiKey ? { apiKey: patch.apiKey } : {}),
                 ...(typeof patch.model === 'string' ? { model: patch.model } : {}),
                 ...(typeof patch.enabled === 'boolean' ? { enabled: patch.enabled } : {}),
               }

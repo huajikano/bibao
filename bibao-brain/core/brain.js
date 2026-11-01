@@ -14,6 +14,7 @@ import {
   HORMONES,
 } from './constants.js'
 import { createRng, hashString, uid } from './rng.js'
+import { embed, encodeVector } from './embed.js'
 
 function bigramOverlap(a = '', b = '') {
   const grams = (text) => {
@@ -1266,6 +1267,10 @@ export class BibaoBrain {
         node.id = id
       }
       if (renamed > 0) console.warn('[bibao] deduped episode ids:', renamed)
+    // 老存档没有向量：补齐（一次性，之后随写入更新）
+    for (const node of brain.memory.episodes) {
+      if (!node.vec) node.vec = encodeVector(embed(`${node.title} ${node.narrative} ${(node.tags ?? []).join(' ')}`))
+    }
     }
     if (store) store.seedEpisodes(brain.memory.episodes)
     brain.workspace = GlobalWorkspace.fromJSON(json.workspace, brain.rng)

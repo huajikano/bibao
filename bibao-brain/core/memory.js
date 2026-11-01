@@ -8,6 +8,7 @@
  */
 
 import { PARAMS, DAY_MS, clamp, eta } from './constants.js'
+import { embed, encodeVector, decodeVector, cosine } from './embed.js'
 import { uid } from './rng.js'
 
 const PRIMARY_TAGS = ['背叛', '孤立', '羞耻', '被否定', '被比较', '离别', '依靠', '成就', '温柔', '共谋']
@@ -88,6 +89,7 @@ export class MemorySystem {
         this.store?.upsertEpisode(other)
       }
     }
+    node.vec = encodeVector(embed(`${node.title} ${node.narrative} ${(node.tags ?? []).join(' ')}`))
     this.episodes.push(node)
     this.store?.upsertEpisode(node)
     // 有持久层就不再按 900 条硬截断：归档交给 SQLite，热层只按需裁剪
@@ -167,13 +169,19 @@ export class MemorySystem {
 
   /** 按话题/对象检索显意识层；潜意识层只贡献偏置，不交出文本。 */
   retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0 }) {
+    const queryVector = query ? embed(query) : null
     const tokens = tokenize(query)
     const scored = []
     for (const node of this.episodes) {
       if (exclude && node.id === exclude) continue
       const r = this.extractability(node, now)
       if (r < PARAMS.consciousTier) continue
-      let score = r * 0.6 + node.salience * 0.4
+      let score = r * 0.5 + node.salience * 0.25
+      if (query) {
+        if (!node.vec) node.vec = encodeVector(embed(`${node.title} ${node.narrative}`))
+        const sim = cosine(queryVector, decodeVector(node.vec))
+        if (sim > 0) score += sim * 0.55
+      }
       // 情绪一致回忆：心情差时更容易想起糟心事，反之亦然
       score += 0.18 * mood * node.valence
       if (entityId && node.entityId === entityId) score += 0.35

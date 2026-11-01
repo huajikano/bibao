@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS episodes (
   s_days REAL,
   r_updated_at INTEGER,
   archived_at INTEGER,
-  json TEXT NOT NULL
+  json TEXT NOT NULL,
+  vec TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_episodes_at ON episodes(at);
 CREATE INDEX IF NOT EXISTS idx_episodes_entity ON episodes(entity_id);
@@ -51,10 +52,16 @@ export function openBrainStore(file) {
   try {
     db = new DatabaseSync(file)
     db.exec(SCHEMA)
-    try {
-      db.exec('ALTER TABLE facts ADD COLUMN supersedes TEXT')
-    } catch {
-      /* 已有该列 */
+    // 逐条 ALTER：某列已存在时不能连带跳过后面的迁移
+    for (const statement of [
+      'ALTER TABLE facts ADD COLUMN supersedes TEXT',
+      'ALTER TABLE episodes ADD COLUMN vec TEXT',
+    ]) {
+      try {
+        db.exec(statement)
+      } catch {
+        /* 该列已存在 */
+      }
     }
   } catch (error) {
     console.warn('[bibao] sqlite unavailable, falling back to json:', error?.message ?? error)
@@ -62,13 +69,14 @@ export function openBrainStore(file) {
   }
 
   const upsert = db.prepare(`
-    INSERT INTO episodes (id, at, entity_id, title, valence, arousal, salience, s_days, r_updated_at, archived_at, json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO episodes (id, at, entity_id, title, valence, arousal, salience, s_days, r_updated_at, archived_at, json, vec)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       s_days = excluded.s_days,
       r_updated_at = excluded.r_updated_at,
       valence = excluded.valence,
-      json = excluded.json
+      json = excluded.json,
+      vec = excluded.vec
   `)
   const archive = db.prepare('UPDATE episodes SET archived_at = ? WHERE id = ? AND archived_at IS NULL')
   const insertFact = db.prepare(`
@@ -97,6 +105,7 @@ export function openBrainStore(file) {
           node.rUpdatedAt ?? node.at ?? 0,
           node.archivedAt ?? null,
           JSON.stringify(node),
+          node.vec ?? null,
         )
       } catch (error) {
         console.warn('[bibao] store.upsertEpisode failed:', error?.message ?? error)
@@ -126,6 +135,7 @@ export function openBrainStore(file) {
             node.rUpdatedAt ?? node.at ?? 0,
             null,
             JSON.stringify(node),
+            node.vec ?? null,
           )
         }
         db.exec('COMMIT')
