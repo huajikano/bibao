@@ -367,7 +367,7 @@ window.__ModuleLoader__.load({
     async function request(pathname, options = {}) {
       // 某些链路会把 POST 的 body 丢掉，所以同一份 JSON 再塞进查询串，Host 两边都认
       let url = `${API}${pathname}`
-      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 1500) {
+      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 6000) {
         url += `${url.includes('?') ? '&' : '?'}payload=${encodeURIComponent(options.body)}`
       }
       const response = await fetch(new URL(url, window.location.origin), {
@@ -2874,8 +2874,8 @@ window.__ModuleLoader__.load({
         if (this.tuningTimer) clearTimeout(this.tuningTimer)
         this.tuningTimer = setTimeout(async () => {
           try {
-            const data = await request('/settings', { method: 'POST', body: JSON.stringify({ tuning }) })
-            if (this.alive) this.setState({ snap: data.snapshot })
+            await request('/tuning', { method: 'POST', body: JSON.stringify({ tuning }) })
+            if (this.alive) this.setState({ snap: this.state.snap })
           } catch (error) {
             if (this.alive) this.setState({ error: error.message })
           }
@@ -2910,8 +2910,33 @@ window.__ModuleLoader__.load({
             method: 'POST',
             body: JSON.stringify({ llm, snowluma, tuning: form.tuning }),
           })
-          this.setState({ snap: data.snapshot, saving: '', note: '已保存' })
+          // 滑杆单独走小接口：即使大 body 被链路吞掉，这两个值也能落库
+          let tuningSnapshot = null
+          try {
+            const tuned = await request('/tuning', {
+              method: 'POST',
+              body: JSON.stringify({ tuning: form.tuning ?? {} }),
+            })
+            tuningSnapshot = tuned
+          } catch {
+            tuningSnapshot = null
+          }
+          const sent = form.tuning ?? {}
+          const got = tuningSnapshot?.tuning ?? data.snapshot?.tuning ?? {}
+          const mismatch =
+            Math.abs((sent.memoryStrength ?? 1) - (got.memoryStrength ?? 1)) > 0.001 ||
+            Math.abs((sent.talkativeness ?? 1) - (got.talkativeness ?? 1)) > 0.001
+          this.setState({
+            snap: data.snapshot,
+            saving: '',
+            note: mismatch ? `保存未生效：服务器仍是 记忆 ${got.memoryStrength} / 频率 ${got.talkativeness}` : '已保存',
+          })
           this.syncForm(data.snapshot)
+          if (tuningSnapshot?.tuning) {
+            this.setState((prev) => ({
+              form: { ...prev.form, tuning: { ...prev.tuning, ...tuningSnapshot.tuning } },
+            }))
+          }
         } catch (error) {
           this.setState({ saving: '', error: `保存失败：${error.message}` })
         }

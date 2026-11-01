@@ -1040,6 +1040,47 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/tuning',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          if (body.tuning && typeof body.tuning === 'object') {
+            if (Number.isFinite(Number(body.tuning.memoryStrength))) {
+              settings.tuning.memoryStrength = Math.max(0, Math.min(1, Number(body.tuning.memoryStrength)))
+            }
+            if (Number.isFinite(Number(body.tuning.talkativeness))) {
+              settings.tuning.talkativeness = Math.max(0, Math.min(1, Number(body.tuning.talkativeness)))
+            }
+          }
+          brain.applyTuning(settings.tuning)
+          try {
+            await mkdir(dataDir, { recursive: true })
+            await writeFile(settingsFile, JSON.stringify({
+              useLlm: settings.useLlm,
+              snowluma: {
+                enabled: settings.snowluma.enabled,
+                sendEnabled: settings.snowluma.sendEnabled,
+                allowGroups: settings.snowluma.allowGroups,
+                allowPrivate: settings.snowluma.allowPrivate,
+                httpBase: settings.snowluma.httpBase,
+                httpToken: settings.snowluma.httpToken,
+                wsUrl: settings.snowluma.wsUrl,
+                wsToken: settings.snowluma.wsToken,
+              },
+              llm: settings.llm,
+              tuning: settings.tuning,
+            }), 'utf8')
+          } catch (error) {
+            console.warn('[bibao] tuning save failed:', error?.message ?? error)
+          }
+          await appendSnowLog({ at: Date.now(), kind: 'tuning-in', tuning: settings.tuning })
+        }
+        return json({ tuning: brain.tuning, saved: settings.tuning })
+      },
+    },
+    {
       path: '/senses',
       methods: ['GET', 'POST'],
       handler: async (request) => {
@@ -1154,6 +1195,14 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         const body = await readBody(request)
+        void appendSnowLog({
+          at: Date.now(),
+          kind: 'settings-in',
+          keys: Object.keys(body),
+          tuning: body.tuning ?? null,
+          hasTuning: Boolean(body.tuning),
+          url: request.url,
+        })
         if (typeof body.useLlm === 'boolean') settings.useLlm = body.useLlm
         if (body.snowluma && typeof body.snowluma === 'object') {
           if (typeof body.snowluma.enabled === 'boolean') settings.snowluma.enabled = body.snowluma.enabled
