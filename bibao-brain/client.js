@@ -1551,7 +1551,7 @@ window.__ModuleLoader__.load({
 
     function talkLabel(v) {
       if (v >= 0.995) return '拉满：想接就接（现在的样子）'
-      return `两次回复至少隔 ${Math.round((1 - v) * 240)} 秒，点火阈值 +${((1 - v) * 0.5).toFixed(2)}`
+      return `两次回复至少隔 ${Math.round((1 - v) * 10)} 秒，点火阈值 +${((1 - v) * 0.15).toFixed(2)}`
     }
 
     // 六个认知模块各占一个配置槽；只有 wired: true 的那几个真的会调用模型
@@ -2253,7 +2253,10 @@ window.__ModuleLoader__.load({
         if (form.httpToken) snowluma.httpToken = form.httpToken
         if (form.wsToken) snowluma.wsToken = form.wsToken
         try {
-          const data = await request('/settings', { method: 'POST', body: JSON.stringify({ llm, snowluma }) })
+          const data = await request('/settings', {
+            method: 'POST',
+            body: JSON.stringify({ llm, snowluma, tuning: form.tuning }),
+          })
           this.setState({ snap: data.snapshot, saving: '', note: '已保存', apiKey: '' })
           this.syncForm(data.snapshot)
           setTimeout(() => this.alive && this.setState({ note: '' }), 2400)
@@ -2881,6 +2884,10 @@ window.__ModuleLoader__.load({
 
       async saveSettings() {
         const { form } = this.state
+        if (this.tuningTimer) {
+          clearTimeout(this.tuningTimer)
+          this.tuningTimer = null
+        }
         this.setState({ saving: '保存中…' })
         const llm = { baseURL: form.baseURL, model: form.model, profiles: {} }
         if (form.apiKey) llm.apiKey = form.apiKey

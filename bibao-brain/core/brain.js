@@ -531,7 +531,7 @@ export class BibaoBrain {
     this.stats.turns += 1
 
     const talk = this.tuning.talkativeness
-    const cooldownMs = (1 - talk) * 240000
+    const cooldownMs = (1 - talk) * 10000
     if (talk < 1 && !atMe && this.lastSpokeAt && now - this.lastSpokeAt < cooldownMs) {
       this.lastPipeline = {
         at: now,
@@ -556,7 +556,7 @@ export class BibaoBrain {
         state: this.state.snapshot({ mood: moodWord(this.state.moodValence) }),
       }
     }
-    const thetaBoost = (1 - talk) * 0.5
+    const thetaBoost = (1 - talk) * 0.15
 
     const ignition = this.workspace.ignite(
       {
