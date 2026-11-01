@@ -112,6 +112,25 @@ export function apply(ctx, config = {}) {
     })
   const fail = (message, status = 500, extra = {}) => json({ error: message, ...extra }, status)
 
+  /** POST body：优先读 JSON，读不到再读查询串里的 payload（有的链路会吃掉 body）。 */
+  async function readBody(request) {
+    let body = null
+    try {
+      body = await request.clone().json()
+    } catch {
+      body = null
+    }
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      try {
+        const payload = new URL(request.url).searchParams.get('payload')
+        if (payload) body = JSON.parse(payload)
+      } catch {
+        /* 查询串里也没有合法 JSON */
+      }
+    }
+    return body && typeof body === 'object' ? body : {}
+  }
+
   async function loadBiography() {
     if (biography) return biography
     // 用户改过的人生优先：~/.dsh/bibao/biography.json，其次才是包内原始传记
@@ -340,6 +359,7 @@ export function apply(ctx, config = {}) {
         selfId: snow.cfg?.selfId ?? '',
         selfName: snow.selfName,
         httpBase: snow.cfg?.httpBase ?? '',
+        wsUrl: snow.cfg?.wsUrl ?? '',
         stats: snow.bridge?.stats ?? null,
         lastEvent: snow.lastEvent,
         allowGroups: settings.snowluma.allowGroups ?? [],
@@ -482,6 +502,34 @@ export function apply(ctx, config = {}) {
   /* ------------------------------------------------------------------ */
 
   const snow = { bridge: null, cfg: null, connected: false, reason: '', lastEvent: null, selfName: '' }
+
+  /** 试开一次 WS：能 open 就算通，立刻关掉，不占连接。 */
+  function probeWs(url, token, timeoutMs = 3000) {
+    return new Promise((resolve) => {
+      if (!url) return resolve({ ok: false, error: '没有 wsUrl' })
+      let done = false
+      let socket = null
+      const finish = (result) => {
+        if (done) return
+        done = true
+        try {
+          socket?.close()
+        } catch {
+          /* 已经关了 */
+        }
+        resolve(result)
+      }
+      try {
+        socket = new WebSocket(url, { headers: token ? { Authorization: '' + 'Bearer ' + token } : {} })
+      } catch (error) {
+        return finish({ ok: false, error: String(error?.message ?? error) })
+      }
+      socket.addEventListener('open', () => finish({ ok: true }))
+      socket.addEventListener('error', () => finish({ ok: false, error: '握手失败（端口没开或 token 不对）' }))
+      socket.addEventListener('close', (event) => finish({ ok: false, error: 'closed ' + event.code }))
+      setTimeout(() => finish({ ok: false, error: '超时 ' + timeoutMs + 'ms' }), timeoutMs)
+    })
+  }
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
   async function loadSnowConfig() {
@@ -510,6 +558,8 @@ export function apply(ctx, config = {}) {
     }
     return {
       ...conf,
+      fallbackWsUrl: base.wsUrl,
+      fallbackWsToken: base.wsToken,
       selfId: String(conf.selfId || base.selfId || ''),
       httpBase: conf.httpBase || base.httpBase,
       httpToken: conf.httpToken || base.httpToken,
@@ -543,6 +593,16 @@ export function apply(ctx, config = {}) {
       return
     }
     snow.cfg = cfg
+    let wsOk = await probeWs(cfg.wsUrl, cfg.wsToken)
+    if (!wsOk.ok && cfg.fallbackWsUrl && cfg.fallbackWsUrl !== cfg.wsUrl) {
+      snow.reason = '自定义 WS 连不上（' + cfg.wsUrl + '：' + wsOk.error + '），已回退到 ' + cfg.fallbackWsUrl
+      cfg.wsUrl = cfg.fallbackWsUrl
+      cfg.wsToken = cfg.fallbackWsToken || cfg.wsToken
+      wsOk = await probeWs(cfg.wsUrl, cfg.wsToken)
+    }
+    snow.wsStatus = wsOk
+    if (!wsOk.ok) snow.reason = 'WS 连不上：' + cfg.wsUrl + '（' + wsOk.error + '）'
+    snow.cfg = cfg
     const bridge = new SnowlumaBridge({
       httpBase: cfg.httpBase,
       httpToken: cfg.httpToken,
@@ -552,6 +612,8 @@ export function apply(ctx, config = {}) {
       logger: (line) => console.warn('[bibao:snowluma]', line),
       onStatus: (status) => {
         snow.connected = Boolean(status.connected)
+        if (status.connected) snow.reason = snow.reason.startsWith('自定义 WS') ? snow.reason : ''
+        else if (!snow.reason) snow.reason = 'WS 断开，正在重连'
       },
       onEvent: (event) => {
         void handleSnowEvent(event)
@@ -780,7 +842,7 @@ export function apply(ctx, config = {}) {
       path: '/client-log',
       methods: ['POST'],
       handler: async (request) => {
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         try {
           await mkdir(dataDir, { recursive: true })
           await appendFile(
@@ -808,7 +870,7 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         await boot()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const text = String(body.text ?? '').trim()
         if (!text) return fail('说点什么', 400)
         refreshLlm()
@@ -835,7 +897,7 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         await boot()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const seconds = Math.max(0, Math.min(7 * 86400, Number(body.seconds ?? 60)))
         brain.sync()
         brain.advance(seconds * 1000)
@@ -859,7 +921,7 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         await boot()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const result = brain.recall(String(body.memoryId ?? ''))
         schedulePersist()
         return json({ result, snapshot: snapshot() })
@@ -886,7 +948,7 @@ export function apply(ctx, config = {}) {
       path: '/sandbox/run',
       methods: ['POST'],
       handler: async (request) => {
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const bio = await loadBiography()
         const report = await runSandbox({ biography: bio, only: body.only ?? null })
         gate = { ...report, checkedAt: Date.now() }
@@ -915,7 +977,7 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         if (!phase2Open()) return phase2Locked()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const outcome = await feedGroup(body)
         if (outcome?.locked) return phase2Locked()
         if (outcome?.error) return fail(outcome.error, 400)
@@ -928,7 +990,7 @@ export function apply(ctx, config = {}) {
       handler: async (request) => {
         if (!phase2Open()) return phase2Locked()
         await boot()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const change = funnel.focus(String(body.groupId ?? ''), Date.now())
         if (change) {
           funnel.record({ kind: 'focus', group: funnel.get(body.groupId)?.name ?? '', previous: change.previous })
@@ -971,7 +1033,7 @@ export function apply(ctx, config = {}) {
             relations: biography.relations ?? [],
           })
         }
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const events = Array.isArray(body.events) ? body.events : null
         if (!events || events.length < 1) return fail('至少要有一个人生事件', 400)
         const cleaned = []
@@ -1038,7 +1100,7 @@ export function apply(ctx, config = {}) {
       path: '/settings',
       methods: ['POST'],
       handler: async (request) => {
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         if (typeof body.useLlm === 'boolean') settings.useLlm = body.useLlm
         if (body.snowluma && typeof body.snowluma === 'object') {
           if (typeof body.snowluma.enabled === 'boolean') settings.snowluma.enabled = body.snowluma.enabled
@@ -1122,7 +1184,7 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         await boot()
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const url = new URL(request.url)
         const wantSend = body.send === true || url.searchParams.get('send') === '1'
         const groupId = String(body.groupId ?? (settings.snowluma.allowGroups ?? [])[0] ?? '')
@@ -1145,12 +1207,24 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/snowluma/test-ws',
+      methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const cfg = snow.cfg ?? (await loadSnowConfig()) ?? {}
+        const wsUrl = String(body.wsUrl ?? cfg.wsUrl ?? '')
+        const wsToken = String(body.wsToken ?? cfg.wsToken ?? '')
+        const result = await probeWs(wsUrl, wsToken, 4000)
+        return json({ ...result, wsUrl })
+      },
+    },
+    {
       path: '/snowluma/test',
       methods: ['POST'],
       handler: async (request) => {
         await boot()
         if (!snow.bridge) return fail(`snowluma 未连接：${snow.reason || '未知原因'}`, 409)
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         const groupId = String((settings.snowluma.allowGroups ?? [])[0] ?? '')
         if (!groupId) return fail('没有配置允许的群', 400)
         const text = String(body.text ?? '在 我上线了').slice(0, 60)
@@ -1167,7 +1241,7 @@ export function apply(ctx, config = {}) {
       path: '/snowluma/toggle',
       methods: ['POST'],
       handler: async (request) => {
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         if (typeof body.enabled === 'boolean') settings.snowluma.enabled = body.enabled
         if (typeof body.sendEnabled === 'boolean') settings.snowluma.sendEnabled = body.sendEnabled
         try {
@@ -1203,7 +1277,7 @@ export function apply(ctx, config = {}) {
       path: '/reset',
       methods: ['POST'],
       handler: async (request) => {
-        const body = await request.json().catch(() => ({}))
+        const body = await readBody(request)
         rebuildBrain(await loadBiography(), Number(body.seed ?? 20261101))
         schedulePersist(200)
         return json({ ok: true, snapshot: snapshot() })
@@ -1237,6 +1311,10 @@ export function apply(ctx, config = {}) {
     const ticker = setInterval(() => {
       if (!brain) return
       brain.sync()
+      if (snow.connected && snow.bridge && snow.bridge.stats.lastEventAt > 0 && Date.now() - snow.bridge.stats.lastEventAt > 120000) {
+        snow.connected = false
+        snow.reason = 'WS 已 120 秒没有任何帧（含心跳），按断开处理'
+      }
       if (funnel) funnel.tick(Date.now())
       // 兜底：任何超过 8s 还没结算的防抖帧，强制定点结算，避免定时器丢失导致永远不回
       if (funnel && snow.bridge) {

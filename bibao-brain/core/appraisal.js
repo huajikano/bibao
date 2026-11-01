@@ -98,7 +98,8 @@ export function salienceOf({
     0.05 * Math.max(0, -intimacy)
   if (atMe) value += 0.2
   // 私聊是"有人直接对着你说话"，比群里的公共噪音更容易抢占工作空间
-  if (channel === 'private') value += 0.25
+  // 私聊是有人直接对着你说话，比群里的公共噪音更容易抢占工作空间
+  if (channel === 'private') value += 0.35
   value += clamp(priority, 0, 0.5)
   return {
     salience: clamp(value),

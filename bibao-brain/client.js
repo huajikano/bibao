@@ -365,7 +365,12 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     async function request(pathname, options = {}) {
-      const response = await fetch(new URL(`${API}${pathname}`, window.location.origin), {
+      // 某些链路会把 POST 的 body 丢掉，所以同一份 JSON 再塞进查询串，Host 两边都认
+      let url = `${API}${pathname}`
+      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 1500) {
+        url += `${url.includes('?') ? '&' : '?'}payload=${encodeURIComponent(options.body)}`
+      }
+      const response = await fetch(new URL(url, window.location.origin), {
         headers: { 'content-type': 'application/json' },
         ...options,
       })
@@ -2753,6 +2758,20 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async testWs() {
+        const { form } = this.state
+        this.setState({ note: '正在试连 WS…' })
+        try {
+          const data = await request('/snowluma/test-ws', {
+            method: 'POST',
+            body: JSON.stringify({ wsUrl: form.wsUrl, wsToken: form.wsToken }),
+          })
+          this.setState({ note: data.ok ? `WS 通了：${data.wsUrl}` : `WS 失败：${data.error}（${data.wsUrl}）` })
+        } catch (error) {
+          this.setState({ note: `测试失败：${error.message}` })
+        }
+      }
+
       async saveSettings() {
         const { form } = this.state
         this.setState({ saving: '保存中…' })
@@ -3158,6 +3177,7 @@ window.__ModuleLoader__.load({
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.setField({ sendEnabled: e.target.checked }) }), '允许真的发到 QQ'),
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.allowPrivate, onChange: (e) => this.setField({ allowPrivate: e.target.checked }) }), '允许私聊'),
               snow.connected ? h(Chip, { children: `已连接 · ${snow.selfName || snow.selfId}`, tone: 'good' }) : h(Chip, { children: '未连接', tone: 'bad' }),
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.testWs() }, '测试 WS'),
             ),
             h('div', { className: 'bb-muted' }, snow.reason || '白名单为空 = 谁都不理'),
           ),
