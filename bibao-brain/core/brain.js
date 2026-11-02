@@ -1056,6 +1056,9 @@ export class BibaoBrain {
         transferTarget,
         forgot,
         tip,
+        onRaw: (raw) => {
+          void this.onRawLlm?.(raw)
+        },
         appraisalHint,
         recent: relation.recent ?? [],
         digest: this.digestFor(relation),

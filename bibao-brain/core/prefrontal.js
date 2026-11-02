@@ -182,7 +182,8 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
       model,
       system,
       temperature: 0.9,
-      maxTokens: 900,
+      maxTokens: 1800,
+      reasoningEffort: 'low',
       messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
     })
     for await (const chunk of stream) {
@@ -193,8 +194,34 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
     return { ...local, meta: { ...local.meta, source: 'local', llmError: String(error?.message ?? error).slice(0, 160) } }
   }
 
-  const normalized = normalizeDualTrack(text, ctx)
+  let normalized = normalizeDualTrack(text, ctx)
   if (!normalized) {
+    // 第二次：明确要求"不要思考过程"，温度压低，很多思考型模型这一步才肯给纯 JSON
+    try {
+      let retryText = ''
+      const retry = llm.stream({
+        provider,
+        model,
+        system: `${system}\n重要：只输出 JSON 对象本身，不要任何思考过程、解释或代码块标记。`,
+        temperature: 0.4,
+        maxTokens: 1800,
+        reasoningEffort: 'low',
+        messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
+      })
+      for await (const chunk of retry) if (chunk.type === 'text-delta') retryText += chunk.text
+      normalized = normalizeDualTrack(retryText, ctx)
+      if (!normalized) text = retryText
+    } catch {
+      /* 重试也失败就回本地 */
+    }
+  }
+  if (!normalized) {
+    // 留一条可诊断的痕迹：前 160 字符 + 长度
+    try {
+      ctx.onRaw?.(`${String(text).length}| ${String(text).slice(0, 160)}`)
+    } catch {
+      /* 忽略 */
+    }
     return { ...local, meta: { ...local.meta, source: 'local', llmError: 'unparsable-json' } }
   }
   return { ...normalized, meta: { ...normalized.meta, source: 'llm' } }

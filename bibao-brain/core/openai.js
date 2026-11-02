@@ -13,8 +13,9 @@ export async function chatCompletion({
   user,
   maxTokens = 500,
   temperature = 0.9,
+  reasoningEffort = '',
   signal,
-  timeoutMs = 45_000,
+  timeoutMs = 90_000,
 }) {
   if (!baseURL || !apiKey || !model) throw new Error('缺少 baseURL / apiKey / model')
   const url = `${String(baseURL).replace(/\/+$/, '')}/chat/completions`
@@ -37,6 +38,7 @@ export async function chatCompletion({
         ],
         temperature,
         max_tokens: maxTokens,
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         stream: false,
       }),
       signal: controller.signal,
@@ -82,6 +84,7 @@ export function createDirectLlm(config) {
         system: options.system ?? '',
         user,
         maxTokens: options.maxTokens ?? 500,
+        reasoningEffort: options.reasoningEffort,
         temperature: options.temperature ?? 0.9,
         signal: options.signal,
       })

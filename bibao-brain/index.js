@@ -1282,6 +1282,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              vision: settings.vision,
             }), 'utf8')
           } catch (error) {
             console.warn('[bibao] tuning save failed:', error?.message ?? error)
