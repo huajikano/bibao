@@ -300,6 +300,14 @@ export function apply(ctx, config = {}) {
       }
       brain.llms = llms
       brain.applyTuning(settings.tuning)
+      // 重启会丢掉"上次保存到现在"这段时间：超过一分钟就整条时间轴平移回来
+      {
+        const drift = brain.simMs - Date.now()
+        if (Math.abs(drift) > 60000) {
+          brain.shiftTime(-drift)
+          await appendSnowLog({ at: Date.now(), kind: 'clock-boot-align', driftMs: -drift })
+        }
+      }
       funnel = new GroupAttentionFunnel({
         social: brain.social,
         interests: brain.interests,
@@ -1573,6 +1581,13 @@ export function apply(ctx, config = {}) {
     const ticker = setInterval(() => {
       if (!brain) return
       brain.sync()
+      {
+        const drift = brain.simMs - Date.now()
+        if (Math.abs(drift) > 120000) {
+          brain.shiftTime(-drift)
+          void appendSnowLog({ at: Date.now(), kind: 'clock-auto-align', driftMs: -drift })
+        }
+      }
       if (snow.connected && snow.bridge && snow.bridge.stats.lastEventAt > 0 && Date.now() - snow.bridge.stats.lastEventAt > 120000) {
         snow.connected = false
         snow.reason = 'WS 已 120 秒没有任何帧（含心跳），按断开处理'

@@ -1243,6 +1243,8 @@ export class BibaoBrain {
 
   snapshot() {
     this.sync()
+
+    this.sync()
     const now = this.simMs
     const theta = this.workspace.threshold(this.state, this.silenceMin)
     return {
