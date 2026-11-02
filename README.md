@@ -31,8 +31,10 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 
 ```bash
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，23 项
-node bibao-brain/bin/render-smoke.mjs # 设置页六个标签的渲染冒烟
+node bibao-brain/bin/growth-smoke.mjs # 人格一致 / 自我复盘 / 生活流 / 模糊记忆，28 项
+node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，28 项
+node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 ```
 
 安装到 DSH：
@@ -56,7 +58,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.7.0` | 人格一致提示词、自我复盘/元认知、她自己的生活流、模糊记忆、多脑机接口适配层；修 QQ 表情包发送崩溃 |
+| [`v0.7.0`](https://github.com/huajikano/bibao/releases/tag/v0.7.0) | 人格一致提示词、自我复盘/元认知、她自己的生活流、模糊记忆、多脑机接口适配层；修 QQ 表情包发送崩溃 |
 | [`v0.0.3`](https://github.com/huajikano/bibao/releases/tag/v0.0.3) | SQLite 持久层、夜间事实归纳、词法向量检索、时间校准（附 `bibao.tgz`） |
 | [`v0.0.2`](https://github.com/huajikano/bibao/releases/tag/v0.0.2) | 行为滑杆（记忆力 / 说话频率）、群聊三层状态、感官接口 |
 | [`v0.0.1`](https://github.com/huajikano/bibao/releases/tag/v0.0.1) | 首个可运行版本 |
