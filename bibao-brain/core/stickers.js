@@ -9,6 +9,21 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 
 const MAX = 120
+
+function bigrams(text) {
+  const clean = String(text ?? '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '')
+  const set = new Set()
+  for (let index = 0; index < clean.length - 1; index += 1) set.add(clean.slice(index, index + 2))
+  if (clean.length === 1) set.add(clean)
+  return set
+}
+
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0
+  let hit = 0
+  for (const gram of a) if (b.has(gram)) hit += 1
+  return hit / Math.min(a.size, b.size)
+}
 const MAX_BYTES = 3 * 1024 * 1024
 
 export class StickerBook {
@@ -59,12 +74,24 @@ export class StickerBook {
     return item
   }
 
-  async pick(mood) {
+  /**
+   * 挑一张：情绪标签是底分，和当前对话的字面重合才是主要依据。
+   * 用过很多次的会被压一点，避免翻来覆去就那几张。
+   */
+  async pick(mood, context = '') {
     await this.load()
     if (!this.items.length) return null
-    const same = this.items.filter((item) => item.mood === mood)
-    const pool = same.length ? same : this.items
-    const chosen = pool[Math.floor(Math.random() * pool.length)]
+    const contextGrams = bigrams(context)
+    const scored = this.items.map((item) => {
+      const grams = bigrams(`${item.gist} ${item.text}`)
+      let score = jaccard(contextGrams, grams) * 3.2
+      if (item.mood === mood) score += 1.1
+      score -= Math.min(0.9, (item.uses ?? 0) * 0.09)
+      score += Math.random() * 0.5
+      return { item, score }
+    })
+    scored.sort((a, b) => b.score - a.score)
+    const chosen = scored[0].item
     chosen.uses = (chosen.uses ?? 0) + 1
     await this._flush()
     return chosen

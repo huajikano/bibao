@@ -523,7 +523,8 @@ export function apply(ctx, config = {}) {
       if (!stickers || settings.snowluma.stickers === false) return
       if (Math.random() > 0.22) return
       try {
-        const item = await stickers.pick(stickerMood())
+        const context = `${result.dual?.inner_monologue ?? ''} ${(result.dual?.bubbles ?? []).join(' ')}`
+        const item = await stickers.pick(stickerMood(), context)
         if (!item) return
         const id = groupId ? await snow.bridge.sendGroup(groupId, '', item.file) : await snow.bridge.sendPrivate(to, '', item.file)
         await appendSnowLog({ at: Date.now(), kind: 'sticker-out', groupId: groupId ?? '', target: to ?? '', gist: item.gist, messageId: id })
@@ -1436,7 +1437,7 @@ export function apply(ctx, config = {}) {
             item.uses = (item.uses ?? 0) + 1
             return json({ ok: true, sent: id })
           } else if (body.use) {
-            const item = await stickers.pick(String(body.mood ?? stickerMood()))
+            const item = await stickers.pick(String(body.mood ?? stickerMood()), String(body.context ?? ''))
             return json({ picked: item })
           }
         }
