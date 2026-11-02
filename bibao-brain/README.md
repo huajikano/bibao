@@ -28,6 +28,46 @@
 三者可以指向不同 baseURL / model / apiKey，也可以全用同一个。留空 apiKey 就回落到 DSH 当前默认模型，
 再不行回落本地布洛卡。key 只写进 `~/.dsh/bibao/settings.json`，接口只回显 `sk-a…7890` 这种掩码，不进日志。
 
+## 0.7 成长层：她自己的今天、自己的说法、自己的忘性
+
+0.6 之前的脑已经会"反应"，但反应得再准，也像一个随时待命的客服。0.7 加了三层很便宜、但决定像不像人的东西：
+
+| 层 | 文件 | 它解决什么 |
+| --- | --- | --- |
+| **人格一致** | `core/voice.js` | 系统提示词从当前 `biography.json` 长出来。换成 16 岁高中生，她就不会再说"我毕业了"。旧版写死的 22 岁/毒舌人设已移除。 |
+| **自我复盘** | `core/self.js` | 每轮之后悄悄记一笔"对方接住了 / 变冷了 / 没回"；睡眠或每 6 小时压成 1-2 条经验，微调暖意、玩心、直率、话量、示弱、主动六个维度。单次最多 ±0.06，经验最多 10 条、会衰减。模型只能建议，不能改核心信念。 |
+| **她的一天** | `core/life-stream.js` | 按年龄、关系、爱好生成早读/食堂/放学/写作业/游戏/被妈妈催睡等生活事件。事件进提示词，睡前压成日记和 1-2 条情景记忆；她不主动拿这些刷屏，聊到才提。 |
+| **记不清** | `core/memory.js` | 新增 `fidelity/blur`：旧事不再只有"记得/忘了"两态，而是清晰度连续下降；清晰度低时只交梗概并明确说"记不清"，宁可少说也不编细节。 |
+
+这三层默认都开着，可以在面板「设置」里分别关掉：
+
+```yaml
+growth:
+  selfReview: true   # 把对话反馈变成经验
+  life: true         # 让她有自己的今天
+```
+
+### 自我复盘怎么防跑偏
+
+- 只消费"上次复盘之后"的新证据，同样的冷脸不会被反复计入；
+- 每次风格调整有硬上限，六个维度永远在 `[0,1]`；
+- 经验按字符重合度去重，最多 10 条，60 天后淡出；
+- 复盘提示词明确要求"不要把毒舌磨平、不要改成客服、不要编造记忆"；
+- 核心信念（`CoreSchema`）仍然只在凌晨睡眠回放里、按 `η(Age)` 慢改，复盘碰不到它。
+
+### 多脑机接口
+
+`core/bci-hub.js` 把"感知"和"动作"拆成统一适配器：能力声明、只读/写入策略、确认、限频、审计。当前注册了 `tft`（游戏状态）、`screen`（视觉）、`eeg`（只读生理占位）三个只读通道；`hands` 键鼠工厂已提供，但默认不注册、不打开 `actuation`。详见 [docs/BCI.md](../docs/BCI.md)。
+
+### 一次验成长
+
+```bash
+node bin/growth-smoke.mjs     # 28 项：人格一致 / 复盘 / 生活流 / 模糊记忆 / 存档
+node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
+```
+
+---
+
 ## snowluma 测试边界
 
 默认只观察群 `576268399`，私聊关闭，`sendEnabled=false`（不真的发）。
@@ -80,6 +120,8 @@ LLM 只能返回双轨 JSON，且 `neuro_delta` 被限幅、`bubbles` 被预算�
 ```bash
 node bin/sandbox.mjs          # 全部 6 项
 node bin/sandbox.mjs T3 T4    # 只跑指定项
+node bin/growth-smoke.mjs     # 成长层 28 项
+node bin/bci-hub-smoke.mjs    # 多脑机接口 12 项
 ```
 
 输出示例：
@@ -145,7 +187,10 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
 | GET | `/api/bibao/group/state` | 漏斗状态 / 群列表 / 裁决日志 |
 | POST | `/api/bibao/group/feed` | `{groupId, senderId, text, atMe}` |
 | POST | `/api/bibao/group/focus` | 手动改焦点群 |
-| POST | `/api/bibao/settings` | `{useLlm}` 切换语言区并持久化 |
+| POST | `/api/bibao/settings` | `{useLlm, tuning, growth}` 切换语言区 / 行为滑杆 / 成长层并持久化 |
+| POST | `/api/bibao/self/review` | 立刻做一次自我复盘（`force:false` 时只在有新证据时跑） |
+| GET | `/api/bibao/bci` | 已注册的脑机接口、能力、策略与最近审计 |
+| POST | `/api/bibao/bci/sense` | `{adapter, payload}` 只读拉一次外部感知 |
 | POST | `/api/bibao/reset` | `{seed}` 重新出生 |
 
 `cordis.patch.yml` 里的 config：
@@ -180,9 +225,13 @@ bibao-brain/
 │  ├─ memory.js          CLS、三态分层、重巩固涂抹、睡眠回放与造梦
 │  ├─ workspace.js       5/2 槽、点火阈值、挤出与永久丢失
 │  ├─ appraisal.js       文本线索、PE、显著性、路由、社会面具
+│  ├─ voice.js           从当前 biography 生成人格一致的 System Prompt
+│  ├─ self.js            自我模型：证据 → 经验 → 六维说话倾向微调
+│  ├─ life-stream.js     她自己的今天：生活事件、提示词、睡前日记
+│  ├─ bci-hub.js         多脑机接口：能力声明、只读/动作策略、限频、审计
 │  ├─ broca.js           本地语言组装（双轨 JSON、去标点、预算）
-│  ├─ prefrontal.js      System Prompt、感知帧、LLM 输出钳制
-│  ├─ brain.js           门面：perceive / advance / sleep / recall / snapshot
+│  ├─ prefrontal.js      感知帧、LLM 输出钳制、双轨生成
+│  ├─ brain.js           门面：perceive / advance / sleep / recall / reviewSelf / snapshot
 │  ├─ life.js            生命周期快进编译器
 │  ├─ sandbox.js         6 大基准测试
 │  ├─ group.js           Phase 2 预演：防抖 + 三层漏斗
@@ -206,8 +255,10 @@ bibao-brain/
 
 | 项目 | 结果 |
 | --- | --- |
-| `node bin/sandbox.mjs` | 6/6 通过，约 19ms |
-| `node bin/host-smoke.mjs` | 18/18 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制与回落） |
+| `node bin/sandbox.mjs` | 6/6 通过，约 40ms |
+| `node bin/growth-smoke.mjs` | 28/28 通过（人格一致、自我复盘、生活流、模糊记忆、存档） |
+| `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
+| `node bin/host-smoke.mjs` | 28/28 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制、自我复盘与 BCI） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |
 | 客户端槽位 | `sidebar.panellist` 出现 `bibao`（order 6），`main` 出现 `bibao` 面板注册 |

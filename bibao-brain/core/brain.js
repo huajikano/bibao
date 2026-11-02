@@ -54,6 +54,8 @@ import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
 import { HabitMemory } from './learn.js'
 import { AttentionPool } from './bci.js'
 import { decideHesitation } from './hesitate.js'
+import { SelfModel } from './self.js'
+import { LifeStream } from './life-stream.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
@@ -70,6 +72,7 @@ export class BibaoBrain {
     userName = '你',
     onDream = null,
     store = null,
+    growth = {},
   }) {
     this.store = store
     this.seed = seed
@@ -129,6 +132,23 @@ export class BibaoBrain {
     this.senses = new SensoryCortex()
     this.tuning = { memoryStrength: 1, talkativeness: 1 }
     this.lastSpokeAt = 0
+
+    // 自我模型与生活流：一个管"我怎么说话"，一个管"我今天在过什么日子"
+    this.growth = {
+      selfReview: growth?.selfReview !== false,
+      life: growth?.life !== false,
+    }
+    this.selfModel = SelfModel.fromJSON({})
+    this.selfModel.narrative = String(biography?.oneLine ?? '').slice(0, 120)
+    this.life = new LifeStream({ seed: this.seed })
+    this.life.ensureDay({
+      now: this.simMs,
+      biography: this.biography,
+      relations: this.social.snapshot(),
+      interests: this.interests,
+    })
+    this.lastLifeEventAt = this.life.current(this.simMs)?.at ?? 0
+    this.lastSelfReviewLlmAt = 0
   }
 
   get name() {
@@ -173,6 +193,8 @@ export class BibaoBrain {
 
     this._checkPending()
     this._maybeDmn(parts)
+    this._maybeLife(parts)
+    this._maybeSelfReview()
     this._maybeSleep(parts)
   }
 
@@ -184,6 +206,8 @@ export class BibaoBrain {
       // 想过一次就够了：人不会把同一条没回的消息在脑子里放一整天
       this.pending = this.pending.filter((row) => row !== item)
       const relation = this.social.get(item.entityId)
+      // 等了很久没回：不是对方的错，先记成"我可能追得太紧"的证据
+      this.selfModel?.observeIgnored?.({ relation, now: this.simMs })
       const lines = composeEndogenous({
         kind: 'pending-timeout',
         state: this.state,
@@ -300,6 +324,42 @@ export class BibaoBrain {
     this._trimInner()
   }
 
+  _maybeLife(parts) {
+    if (!this.growth?.life) return
+    // 生物钟是分钟步进；生活流十分钟补一次就够，不必每分钟重排
+    if (this.simMs - (this.lastLifeTick ?? 0) < 10 * MIN_MS) return
+    this.lastLifeTick = this.simMs
+    this.life.ensureDay({
+      now: this.simMs,
+      biography: this.biography,
+      relations: this.social.snapshot(),
+      interests: this.interests,
+    })
+  }
+
+  /**
+   * 白天的轻量复盘：只读证据，不调模型。
+   * 夜里安静下来时，再让 reflection 模型写一次更细的自我观察。
+   * 这样不依赖"凌晨 3 点电脑还开着"也能持续长大。
+   */
+  _maybeSelfReview() {
+    if (!this.growth?.selfReview) return
+    if (this.simMs - (this.selfModel?.lastReviewAt ?? 0) < 6 * 60 * MIN_MS) return
+    if ((this.selfModel?.evidence?.length ?? 0) < 2) return
+    this.selfModel.learnFromEvidence({ now: this.simMs })
+    const hour = localParts(this.simMs).hour
+    const night = hour >= 22 || hour <= 4
+    if (
+      night &&
+      this.silenceMin >= 30 &&
+      this.simMs - (this.lastSelfReviewLlmAt ?? 0) > 12 * 60 * MIN_MS &&
+      (this.selfModel?.evidence?.length ?? 0) > 0
+    ) {
+      this.lastSelfReviewLlmAt = this.simMs
+      void this.reviewSelf({ reason: 'night-quiet' }).catch(() => {})
+    }
+  }
+
   _maybeSleep(parts) {
     if (parts.hour !== 3 || parts.minute !== 0) return
     const key = dayKey(this.simMs)
@@ -310,6 +370,13 @@ export class BibaoBrain {
   /** 睡眠交叉回放：唯一允许修改 CoreSchema 的时刻。 */
   sleep({ dayKey: key = dayKey(this.simMs) } = {}) {
     const report = this.memory.consolidate({ now: this.simMs, age: this.age, mood: this.state.moodValence })
+    const life = this.growth?.life
+      ? this.life.consolidate({ now: this.simMs, memory: this.memory, age: this.age })
+      : null
+    if (life?.diary) {
+      this.inner.push({ at: this.simMs, kind: 'life', source: 'day-diary', thought: life.diary, ignited: false, salience: 0.24 })
+      this._trimInner()
+    }
     const applied = this.schema.updateFromConsolidation(report.schemaDeltas)
     // 睡一觉就该是睡够了：至少回到 70，而不是只加 16
     this.state.energy = clamp(Math.max(this.state.energy, 70) + 8, 0, 100)
@@ -350,11 +417,62 @@ export class BibaoBrain {
         })
       }
     }
+    // 睡前一复盘：先把白天的证据压成经验，有模型再写一次更细的自我观察
+    void this.reviewSelf({ reason: 'sleep' }).catch(() => {})
     return {
       ...report,
       schemaApplied: applied,
+      life,
       at: this.simMs,
       label: `${key} 03:00 睡眠归纳`,
+    }
+  }
+
+  /**
+   * 自我复盘：先跑确定性部分，再让 reflection 模型提 1-2 条经验。
+   * 模型只能建议，落库要过 SelfModel 的限幅；失败就保留确定性结果。
+   */
+  async reviewSelf({ reason = 'manual', force = false } = {}) {
+    if (!this.selfModel) return null
+    const now = this.simMs
+    if (!force && !this.growth?.selfReview) return null
+    const heuristic = this.selfModel.learnFromEvidence({ now })
+    const reflection = this.llms?.reflection ?? this.llms?.memory
+    if (!reflection?.llm || !reflection.provider || !reflection.model) {
+      return { ...heuristic, reason, llm: null }
+    }
+    if (!force && this.selfModel.evidence.length < 2) return { ...heuristic, reason, llm: null }
+
+    const recent = []
+    for (const relation of this.social.snapshot()) {
+      for (const item of relation.recent ?? []) {
+        if (now - (item.at ?? 0) > 1.5 * DAY_MS) continue
+        recent.push({
+          at: item.at,
+          role: item.role,
+          text: item.text,
+          relationName: relation.name,
+          intimacy: Math.round(relation.intimacy ?? 0),
+        })
+      }
+    }
+    recent.sort((a, b) => a.at - b.at)
+    this.lastSelfReviewLlmAt = now
+    const reviewed = await this.selfModel.reviewWithLlm({
+      llm: reflection.llm,
+      provider: reflection.provider,
+      model: reflection.model,
+      biography: this.biography ?? {},
+      recent,
+      now,
+    })
+    return {
+      ...heuristic,
+      reason,
+      observations: reviewed?.observations ?? [],
+      lessons: reviewed?.lessons?.length ? reviewed.lessons : heuristic.notes,
+      llmChanges: reviewed?.changes ?? {},
+      llm: Boolean(reviewed),
     }
   }
 
@@ -651,12 +769,21 @@ export class BibaoBrain {
     const conscious = this.memory.episodes.filter((node) => this.memory.tier(node, now) === 'conscious')
     const own = entityId ? conscious.filter((node) => node.entityId === entityId) : []
     // 退化顺序：这个人的 → 没有归属的（自己的旧事）→ 不注入别人的
-    const episodes = (own.length ? own : conscious.filter((node) => !node.entityId))
+    const pickedEpisodes = (own.length ? own : conscious.filter((node) => !node.entityId))
       .sort((a, b) => b.salience * Math.abs(b.valence) - a.salience * Math.abs(a.valence))
       .slice(0, 6)
       .filter((node) => now - node.at < 7 * DAY_MS || node.salience > 0.65)
       .slice(0, 2)
-      .map((node) => ({ title: node.title, narrative: String(node.narrative ?? '').slice(0, 28), r: node.r }))
+    const episodes = pickedEpisodes.map((node) => {
+      const blurred = this.memory.blur(node, now)
+      return {
+        title: node.title,
+        narrative: String(blurred.narrative ?? '').slice(0, 60),
+        r: Number(this.memory.extractability(node, now).toFixed(3)),
+        fidelity: Number(blurred.fidelity.toFixed(2)),
+        uncertain: blurred.uncertain,
+      }
+    })
 
     return {
       facts,
@@ -665,6 +792,7 @@ export class BibaoBrain {
       implicit: showExplicit ? '' : this.attitudeFor(relation),
       stance: this.stanceFor(relation),
       somatic: this.somaticLine(),
+      fuzzy: episodes.filter((item) => item.uncertain).length,
     }
   }
 
@@ -839,6 +967,14 @@ export class BibaoBrain {
     this.sync()
     const now = this.simMs
     const text = String(frame.text ?? '').trim()
+    if (this.growth?.life) {
+      this.life.ensureDay({
+        now,
+        biography: this.biography,
+        relations: this.social.snapshot(),
+        interests: this.interests,
+      })
+    }
     const entityId = String(frame.entityId ?? this.userId)
     const relation = this.social.ensure(entityId, frame.entityName || this.userName)
     const channel = frame.channel === 'group' ? 'group' : 'private'
@@ -855,6 +991,8 @@ export class BibaoBrain {
     this.pending = this.pending.filter((item) => item.entityId !== entityId)
 
     const analysis = analyzeText(text)
+    // 对方开口的这一刻，也是上一条回复的"成绩单"
+    this.selfModel?.observeOutcome?.({ relation, text, analysis, now })
     const cues = coreCues(text)
     const schemaHits = this.schema.touchedBy(cues)
     const tags = tagsFor(analysis, schemaHits)
@@ -943,6 +1081,9 @@ export class BibaoBrain {
       }
     }
 
+    // 私聊和群里被点名是"直接对着我说话"：不该被显著性阈值卡掉。
+    // 阈值仍然决定背景噪音与内源点火，但一个人走到你面前开口，你至少会听见。
+    const directAddress = channel === 'private' || atMe
     const ignition = this.workspace.ignite(
       {
         kind: 'external',
@@ -955,6 +1096,7 @@ export class BibaoBrain {
         arousal: this.state.arousal,
         pe,
         tags,
+        force: directAddress,
       },
       { state: this.state, silenceMin: this.silenceMin, now, thetaBoost },
     )
@@ -965,7 +1107,9 @@ export class BibaoBrain {
         key: 'funnel',
         label: '丘脑门控',
         status: ignition.ignited ? 'pass' : 'blocked',
-        detail: `salience ${salienceInfo.salience.toFixed(2)} ${ignition.ignited ? '≥' : '<'} Θ ${theta.toFixed(2)}`,
+        detail: directAddress
+          ? `直接点我，绕过 Θ ${theta.toFixed(2)}（salience ${salienceInfo.salience.toFixed(2)}）`
+          : `salience ${salienceInfo.salience.toFixed(2)} ${ignition.ignited ? '≥' : '<'} Θ ${theta.toFixed(2)}`,
       },
       {
         key: 'workspace',
@@ -1063,7 +1207,7 @@ export class BibaoBrain {
     }
 
     const style = maskStyle(relation, this.state)
-    const budget = decideBudget({ state: this.state, salience: salienceInfo.salience, style })
+    const budget = decideBudget({ state: this.state, salience: salienceInfo.salience, style, selfModel: this.selfModel })
     // 说话频率也管"一次说几句"：拉低就只发一句
     const talkScale = 0.35 + 0.65 * this.tuning.talkativeness
     budget.maxBubbles = Math.max(1, Math.round(budget.maxBubbles * talkScale))
@@ -1169,6 +1313,13 @@ export class BibaoBrain {
         digest: Object.assign(this.digestFor(relation, { pe, explicit: recallProbe }), { tension: this.tensionFor(relation, pe) }),
         clockLabel: clockLabel(now),
         now,
+        biography: this.biography,
+        selfModel: this.selfModel,
+        life: {
+          today: this.growth?.life ? this.life.promptLines(now) : [],
+          current: this.growth?.life ? this.life.current(now) : null,
+          moodHint: this.growth?.life ? this.life.moodHint(now) : '',
+        },
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
     )
@@ -1460,6 +1611,9 @@ export class BibaoBrain {
       inner: this.inner.slice(-14),
       pipeline: this.lastPipeline,
       senses: this.senses.snapshot(),
+      self: this.selfModel.snapshot(),
+      life: this.growth?.life ? this.life.snapshot(now) : null,
+      growth: { ...this.growth, reviews: this.selfModel.reviews },
       factsDebug: { error: this.lastFactError, count: this.lastFactCount },
       tuning: { ...this.tuning },
       attention: this.attention.snapshot(),
@@ -1485,7 +1639,7 @@ export class BibaoBrain {
 
   toJSON() {
     return {
-      version: 3,
+      version: 4,
       seed: this.seed,
       savedAt: this.simMs,
       simMs: this.simMs,
@@ -1510,6 +1664,10 @@ export class BibaoBrain {
       tuning: this.tuning,
       habits: this.habits.toJSON(),
       timeline: this.timeline,
+      self: this.selfModel.toJSON(),
+      life: this.life.toJSON(),
+      growth: { ...this.growth },
+      lastSelfReviewLlmAt: this.lastSelfReviewLlmAt,
     }
   }
 
@@ -1567,6 +1725,20 @@ export class BibaoBrain {
     brain.senses = SensoryCortex.fromJSON(json.senses)
     brain.applyTuning(json.tuning ?? {})
     if (json.habits) brain.habits = new HabitMemory(json.habits)
+    brain.growth = {
+      ...brain.growth,
+      ...(json.growth && typeof json.growth === 'object' ? { selfReview: json.growth.selfReview !== false, life: json.growth.life !== false } : {}),
+    }
+    brain.selfModel = SelfModel.fromJSON(json.self)
+    if (!brain.selfModel.narrative) brain.selfModel.narrative = String(brain.biography?.oneLine ?? '').slice(0, 120)
+    brain.life = LifeStream.fromJSON(json.life, brain.seed)
+    brain.life.ensureDay({
+      now: brain.simMs,
+      biography: brain.biography,
+      relations: brain.social.snapshot(),
+      interests: brain.interests,
+    })
+    brain.lastSelfReviewLlmAt = json.lastSelfReviewLlmAt ?? 0
     // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大
     const fromVersion = json.version ?? 1
     if (fromVersion < 2) {

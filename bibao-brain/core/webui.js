@@ -83,6 +83,11 @@ input[type=range] { width:100%; accent-color:var(--brand); }
       <div class="card"><h2>神经状态 <span id="clock"></span></h2><div id="neuro"></div></div>
       <div class="card"><h2>工作空间 <span id="threshold"></span></h2><div id="slots" class="list"></div></div>
     </div>
+    <div class="grid">
+      <div class="card"><h2>她今天 <span id="lifeDay"></span></h2><div class="list" id="life"></div></div>
+      <div class="card"><h2>自我复盘 <span id="selfMeta"></span></h2><div class="list" id="self"></div></div>
+    </div>
+    <div class="card"><h2>接口 <span id="bciCount"></span></h2><div class="list" id="bci"></div></div>
     <div class="card"><h2>内心独白</h2><div class="list" id="inner"></div></div>
   </section>
 
@@ -130,6 +135,8 @@ input[type=range] { width:100%; accent-color:var(--brand); }
       <h2>行为调节 <span>拉满就是当前表现</span></h2>
       <label class="field">记忆力 <span id="memLabel"></span><input type="range" id="memoryStrength" min="0" max="1" step="0.05" /></label>
       <label class="field">说话频率 <span id="talkLabel"></span><input type="range" id="talkativeness" min="0" max="1" step="0.05" /></label>
+      <label class="field"><input type="checkbox" id="growthSelfReview" /> 自我复盘（把对话里的反馈变成说话经验）</label>
+      <label class="field"><input type="checkbox" id="growthLife" /> 生活流（让她有自己的今天）</label>
     </div>
     <div class="card">
       <h2>对话模型 <span>必须写 provider/model</span></h2>
@@ -218,6 +225,30 @@ function renderHeader(state) {
   if (state.vision) chips.push('<span class="chip">视觉 ' + esc(state.vision.model) + '</span>');
   el('chips').innerHTML = chips.join('');
 }
+function renderGrowth(state) {
+  const life = state.life || {};
+  el('lifeDay').textContent = life.dayKey || '';
+  const rows = (life.today || []).slice(-5).map((item) => ({ label: item.label, text: item.text }));
+  if (life.current) rows.push({ label: '刚才', text: life.current.text });
+  el('life').innerHTML = rows.length
+    ? rows.map((item) => '<div class="item"><span class="muted">' + esc(item.label) + '</span><span class="grow">' + esc(item.text) + '</span></div>').join('')
+    : '<div class="muted">今天还没发生什么</div>';
+  const self = state.self || {};
+  el('selfMeta').textContent = (self.reviews || 0) + ' 次复盘';
+  const lines = [];
+  if (self.styleLine) lines.push({ label: '倾向', text: self.styleLine });
+  if (self.narrative) lines.push({ label: '自述', text: self.narrative });
+  for (const lesson of (self.lessons || []).slice(0, 4)) lines.push({ label: '学到', text: lesson.text });
+  el('self').innerHTML = lines.length
+    ? lines.map((item) => '<div class="item"><span class="muted">' + esc(item.label) + '</span><span class="grow">' + esc(item.text) + '</span></div>').join('')
+    : '<div class="muted">还没复盘过</div>';
+  const bci = state.bci || {};
+  el('bciCount').textContent = (bci.adapters || []).length + ' 个通道 · 动作默认关闭';
+  el('bci').innerHTML = (bci.adapters || []).length
+    ? bci.adapters.map((adapter) => '<div class="item"><span class="grow">' + esc(adapter.label) + ' <span class="muted">' + esc((adapter.capabilities || []).join(' / ')) + '</span></span><span class="muted">' + (adapter.readOnly ? '只读' : '可动作') + '</span></div>').join('')
+    : '<div class="muted">还没有注册接口</div>';
+}
+
 function renderBrain(state) {
   const n = state.neuro;
   el('neuro').innerHTML = [
@@ -255,6 +286,7 @@ async function refresh() {
     snap = state;
     renderHeader(state);
     renderBrain(state);
+    renderGrowth(state);
     fillSettings(state);
   } catch (error) {
     toast('读取失败：' + error.message);
@@ -276,6 +308,8 @@ function fillSettings(state) {
     if (node && !node.dataset.dirty) node.value = form[key];
   }
   el('visionEnabled').checked = !!(state.vision && state.vision.enabled);
+  el('growthSelfReview').checked = !state.growth || state.growth.selfReview !== false;
+  el('growthLife').checked = !state.growth || state.growth.life !== false;
   el('sendEnabled').checked = !!(state.snow && state.snow.sendEnabled);
   el('recallEnabled').checked = !!(state.snow && state.snow.recallEnabled);
   el('stickersEnabled').checked = !state.snow || state.snow.stickers !== false;
@@ -322,6 +356,7 @@ el('save').onclick = async () => {
         stickers: el('stickersEnabled').checked,
       },
       tuning: { memoryStrength: Number(el('memoryStrength').value), talkativeness: Number(el('talkativeness').value) },
+      growth: { selfReview: el('growthSelfReview').checked, life: el('growthLife').checked },
     };
     if (el('apiKey').value) body.llm.apiKey = el('apiKey').value;
     if (el('httpToken').value) body.snowluma.httpToken = el('httpToken').value;

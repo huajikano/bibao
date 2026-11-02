@@ -48,6 +48,39 @@ export class MemorySystem {
   }
 
   /**
+   * 记忆清晰度：不是"记不记得"，是"记不记得清"。
+   * 刚发生的事接近 1；时间越久、越接近意识阈值，细节越糊。
+   * 这是提示词里"可以不确定"的物理依据，不是让模型自由发挥。
+   */
+  fidelity(node, now) {
+    const r = this.extractability(node, now)
+    const ageDays = Math.max(0, now - (node.at ?? now)) / DAY_MS
+    const sourcePenalty = node.source === 'life-day' ? 0.08 : 0
+    return clamp(0.18 + 0.82 * r - 0.008 * Math.min(60, ageDays) - sourcePenalty, 0, 1)
+  }
+
+  /**
+   * 模糊召回：清晰度低时只交出一个梗概，并明确标注"记不清"。
+   * 宁可少说，也不把旧事编成亲眼看见的细节。
+   */
+  blur(node, now) {
+    const fidelity = this.fidelity(node, now)
+    if (fidelity >= 0.55) {
+      return { narrative: node.narrative, fidelity, uncertain: false }
+    }
+    const first = String(node.narrative ?? '')
+      .split(/[。！？!?]/)[0]
+      .slice(0, 22)
+      .replace(/[，,、\s]+$/, '')
+    const gist = first || String(node.title ?? '').slice(0, 16)
+    return {
+      narrative: `${gist}……再往后就记不清了`,
+      fidelity,
+      uncertain: true,
+    }
+  }
+
+  /**
    * 快系统写入。返回 null 表示这次刺激没有达到海马体写入阈值
    * （也就是"被打断后忘词"的物理基础：从未落库）。
    */

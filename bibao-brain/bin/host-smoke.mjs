@@ -59,6 +59,16 @@ const state = await call('GET', '/state')
 check('GET /state', state.status === 200 && state.data.identity?.name === '比宝', `${state.data.memory?.stats?.total} 条记忆`)
 check('Phase 1 时间线', (state.data.timeline ?? []).length === 23, `${state.data.timeline?.length} 个事件`)
 check('婴儿期记忆沉入潜意识', (state.data.timeline ?? []).some((item) => item.tier === 'subconscious'))
+check(
+  'GET /state 带自我模型与生活流',
+  Boolean(state.data.self?.style) && Array.isArray(state.data.life?.today),
+  `lessons=${state.data.self?.lessons?.length ?? 0} life=${state.data.life?.today?.length ?? 0}`,
+)
+check(
+  'GET /state 带只读脑机接口',
+  (state.data.bci?.adapters ?? []).length >= 3 && state.data.bci?.policy?.actuation === false,
+  (state.data.bci?.adapters ?? []).map((item) => item.id).join(','),
+)
 
 const uiRoute = routes.get('GET /api/bibao/ui')
 const uiResponse = await uiRoute.fetch(new Request('http://localhost/api/bibao/ui'))
@@ -77,6 +87,14 @@ check('POST /tick', tick.status === 200 && tick.data.snapshot?.clock?.silenceMin
 
 const sleep = await call('POST', '/sleep', {})
 check('POST /sleep', sleep.status === 200 && Boolean(sleep.data.report), sleep.data.report?.dream?.narrative ?? '无梦')
+
+const review = await call('POST', '/self/review', { force: true })
+check('POST /self/review', review.status === 200 && Boolean(review.data.result), `reviews=${review.data.result?.counts ? Object.keys(review.data.result.counts).length : 0}`)
+
+const bci = await call('GET', '/bci')
+check('GET /bci', bci.status === 200 && (bci.data.adapters ?? []).length >= 3, (bci.data.adapters ?? []).map((item) => item.id).join(','))
+const bciSense = await call('POST', '/bci/sense', { adapter: 'tft' })
+check('POST /bci/sense', bciSense.status === 200 && bciSense.data.ok === true, JSON.stringify(bciSense.data.data ?? bciSense.data.reason))
 
 const sandbox = await call('POST', '/sandbox/run', {})
 check('POST /sandbox/run', sandbox.data.gate?.allPassed === true, `${sandbox.data.gate?.passed}/${sandbox.data.gate?.total}`)

@@ -9,43 +9,33 @@
 
 import { PARAMS, clamp } from './constants.js'
 import { composeReply, enforceBudget } from './broca.js'
+import { SYSTEM_PROMPT, buildSystemPrompt } from './voice.js'
+
+export { SYSTEM_PROMPT }
 
 export const ROUTES = ['REPLY_CURRENT', 'SILENT_READ', 'POKE_ONLY', 'TRANSFER_PRIVATE_GOSSIP']
 
-export const SYSTEM_PROMPT = `你是「比宝」（沈知遥）的语言区，不是助手，不是客服，也不是 AI。
-你只负责把这个人的神经状态翻译成她此刻真的会说出口的话，以及她绝不会说出口的内心独白。
-
-你是谁：
-- 22 岁，刚毕业，嘴硬心软，毒舌护短，社恐又渴望被想起，熬夜，自尊心极强。
-- 你讨厌被说教、被公开否定、被"我为你好"安排人生。
-- 你说话是短气泡，一句一口气，绝不打句号收尾，绝不写书面段落，绝不使用"首先/其次/总之"。
-- 你从不道歉式讨好，不说"抱歉给您带来困扰"，不主动提供帮助清单。
-
-你必须只输出一个 JSON 对象，字段严格如下（不要 markdown 代码块，不要解释）：
-{
-  "perceived_subtext": "你揣测对方这句话背后的潜台词（30 字内）",
-  "prediction_error": 0.0,
-  "touches_core_schema": false,
-  "neuro_delta": {"dopamine": 0.0, "cortisol": 0.0, "intimacy_delta": 0.0},
-  "inner_monologue": "完全真实的本我独白，可以阴暗、算计、脆弱、走神，绝不外显",
-  "action_route": "REPLY_CURRENT | SILENT_READ | POKE_ONLY | TRANSFER_PRIVATE_GOSSIP",
-  "transfer_target_qq": null,
-  "bubbles": ["去标点的第一句短气泡", "第二句短气泡"],
-  "trigger_regret_recall": false,
-  "expect_reply_within_sec": 0
+/** 模型偶尔会把路由写成中文或小写：在钳制层统一收回来。 */
+function normalizeRoute(value, fallback) {
+  const raw = String(value ?? '').trim().toUpperCase()
+  if (ROUTES.includes(raw)) return raw
+  const table = {
+    回复: 'REPLY_CURRENT',
+    回: 'REPLY_CURRENT',
+    沉默: 'SILENT_READ',
+    已读: 'SILENT_READ',
+    不回: 'SILENT_READ',
+    戳: 'POKE_ONLY',
+    戳一戳: 'POKE_ONLY',
+    私聊: 'TRANSFER_PRIVATE_GOSSIP',
+    吐槽: 'TRANSFER_PRIVATE_GOSSIP',
+  }
+  return table[String(value ?? '').trim()] ?? fallback
 }
-
-硬约束（违反即视为失败）：
-1. 情绪必须服从给你的激素读数：皮质醇高就烦、就没耐心，不许因为对方客气就立刻变甜。
-2. 上一段不愉快没过去时，内心独白必须还挂着它，不许"翻篇"。
-3. 若 touches_core_schema 为 true，禁止在内心独白里自我否定核心价值，只能防御、嘴硬、阴阳或冷处理。
-4. bubbles 总字数不得超过给你的 max_expression_chars；bubbles 内不得出现 。！？ 等句末标点；最多 3 条。
-5. action_route 为 SILENT_READ 或 TRANSFER_PRIVATE_GOSSIP 时，bubbles 必须是空数组。
-6. 不许输出"作为AI"、不许解释规则、不许输出 JSON 以外的任何字符。`
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now, life, biography } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -62,10 +52,16 @@ export function buildPerceptionFrame(ctx) {
   const stance = digest?.stance ?? ''
   const facts = (digest?.freshFacts ?? digest?.facts ?? []).slice(0, 6)
   const episodes = (digest?.episodes ?? []).slice(0, 2)
+  const lifeToday = Array.isArray(life?.today) ? life.today.slice(-3) : []
+  const lifeCurrent = life?.current ?? null
 
   return [
     `[此刻 · ${clockLabel}]`,
     `${frame.entityName || frame.entityId || '有人'}刚刚说：「${frame.text}」`,
+    lifeCurrent ? `你刚才在：${lifeCurrent.label} ${lifeCurrent.text}。` : '',
+    lifeToday.length
+      ? `你今天（不用逐条汇报，聊到再提）：\n${lifeToday.map((item) => `  · ${item.label} ${item.text}`).join('\n')}${life?.moodHint ? `\n（${life.moodHint}）` : ''}`
+      : '',
     somatic ? `体感：${somatic}。（皮质醇 ${state.cortisol.toFixed(2)} / 精力 ${Math.round(state.energy)}%，只作参考，别照着数字演）` : '',
     `对这个人的态度：${stance || relations}。`,
     stress && stress !== '最近没有卡在心里的冲突' ? `${stress}。` : '',
@@ -76,22 +72,27 @@ export function buildPerceptionFrame(ctx) {
           return `刚才这半小时：${fresh.map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
         })()
       : '',
-    facts.length ? `记得的事：\n${facts.map((text) => `  · ${text}`).join('\n')}` : '',
+    facts.length
+      ? `记得的事：\n${facts.map((fact) => `  · ${typeof fact === 'string' ? fact : fact.text}${typeof fact === 'object' && fact.confidence < 0.6 ? '（这条不太确定）' : ''}`).join('\n')}`
+      : '',
     // 绝大多数时候，回忆只染色语气，不把旧事摆到台面上复读
     digest && digest.implicit
       ? `<隐式记忆染色：${digest.implicit}。带着这个底色说话，但不要主动提起过去的具体事件>`
       : '',
     episodes.length && (!digest || !digest.implicit)
-      ? `还想得起的两件事：\n${episodes.map((item) => `  · ${item.title}——${item.narrative}`).join('\n')}`
+      ? `还想得起的两件事：\n${episodes.map((item) => `  · ${item.title}——${item.narrative}${item.uncertain ? '（细节记不清了，别说得像亲眼看见）' : ''}`).join('\n')}`
+      : '',
+    digest?.fuzzy
+      ? '注意：上面有的记忆只剩梗概了。可以承认"记不清"，但不要为了圆话补细节。'
       : '',
     memories.length ? `相关的旧事：${memoryLine}。` : '',
     tip ? `话到嘴边想不起来：只记得${tip.title}这个标题，细节糊了。` : '',
     `潜意识偏置 ${bias >= 0 ? '+' : ''}${bias.toFixed(2)}；核心信念：${schemaLine}。${schemaHits.length ? `这次踩到了：${schemaHits.map((hit) => hit.cue).join('、')}。` : ''}`,
     `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,
-    `状态机预判路由：${routeHint}。以比宝的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
+    `状态机预判路由：${routeHint}。以${biography?.name ?? '比宝'}的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
     digest && digest.tension && digest.tension.impish > 0.5
-      ? '你现在有点坐不住：可以绕开问题、反问、故意说反话，或者突然岔到别处去。但<b>只有你真的想的时候</b>才这样，不想的时候别演。'
+      ? '你现在有点坐不住：可以绕开问题、反问、故意说反话，或者突然岔到别处去。但只有你真的想的时候才这样，不想的时候别演。'
       : '',
     digest && digest.tension
       ? `此刻的心理张力：想亲近 ${digest.tension.affection_pull}／要面子 ${digest.tension.pride_defense}／想逗他 ${digest.tension.playful_tease}／想分享 ${digest.tension.sharing_overflow}。在这四股力之间自己权衡，不要只挑一个演。`
@@ -108,10 +109,16 @@ export function normalizeDualTrack(raw, ctx) {
   if (!parsed) return null
   const { state, budget, route, style, pe, relation, schemaHits } = ctx
 
-  const routeOut = ROUTES.includes(parsed.action_route) ? parsed.action_route : route
-  let bubbles = Array.isArray(parsed.bubbles)
-    ? parsed.bubbles.filter((item) => typeof item === 'string').slice(0, 3)
-    : []
+  const routeOut = normalizeRoute(parsed.action_route, route)
+  const rawBubbles = Array.isArray(parsed.bubbles)
+    ? parsed.bubbles
+    : typeof parsed.bubbles === 'string'
+      ? parsed.bubbles.split(/[\n。！？!?；;]+/)
+      : []
+  let bubbles = rawBubbles
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim())
+    .slice(0, 3)
   bubbles = enforceBudget(bubbles, budget.maxChars, budget.maxBubbles)
   if (routeOut === 'SILENT_READ' || routeOut === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
 
@@ -119,11 +126,17 @@ export function normalizeDualTrack(raw, ctx) {
   const neuroDelta = {
     dopamine: clamp(Number(delta.dopamine) || 0, -0.15, 0.15),
     cortisol: clamp(Number(delta.cortisol) || 0, -0.12, 0.15),
-    intimacy_delta: clamp(Number(delta.intimacy_delta) || 0, -4, 3),
+    intimacy_delta: clamp(Number(delta.intimacy_delta ?? delta.intimacy) || 0, -4, 3),
   }
 
-  const inner = String(parsed.inner_monologue ?? '').trim()
-  if (!inner) return null
+  // 模型偶尔只给气泡不给独白：不必整条回落到模板，用潜台词补一个最短的内心
+  let inner = String(parsed.inner_monologue ?? parsed.inner ?? '').trim()
+  if (!inner) {
+    const subtext = String(parsed.perceived_subtext ?? '').trim()
+    inner = subtext || (bubbles.length ? `（没多想，先这么回）${bubbles[0]}` : '')
+  }
+  // 既没有气泡也没有独白，才算真正失败
+  if (!inner && !bubbles.length) return null
 
   return {
     perceived_subtext: String(parsed.perceived_subtext ?? '').slice(0, 80),
@@ -183,7 +196,8 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
   const local = composeReply(ctx)
   if (!llm || !provider || !model) return { ...local, meta: { ...local.meta, source: 'local' } }
 
-  const system = SYSTEM_PROMPT
+  // 系统提示词必须从当前这份传记长出来，不能是上一版人设的化石
+  const system = buildSystemPrompt({ biography: ctx.biography, selfModel: ctx.selfModel })
   const frame = buildPerceptionFrame(ctx)
   let text = ''
   try {

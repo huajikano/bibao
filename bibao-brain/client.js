@@ -832,6 +832,58 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function LifeSelfCard({ snap, t, act, busy }) {
+      const life = snap.life ?? {}
+      const self = snap.self ?? {}
+      const today = (life.today ?? []).slice(-5)
+      const lessons = (self.lessons ?? []).slice(0, 4)
+      return h(
+        'div',
+        { className: 'bb-grid' },
+        h(
+          Card,
+          { title: '她今天', hint: life.dayKey ?? '生活流' },
+          today.length
+            ? today.map((item) =>
+                h(
+                  'div',
+                  { key: `${item.at}`, className: 'bb-innerItem' },
+                  h(
+                    'div',
+                    { className: 'bb-innerMeta' },
+                    h('span', {}, item.label),
+                    item.written ? h('span', {}, '已归档') : null,
+                  ),
+                  h('div', {}, item.text),
+                ),
+              )
+            : h('div', { className: 'bb-muted' }, '今天还没发生什么'),
+          life.current ? h('div', { className: 'bb-muted' }, `刚才：${life.current.label} ${life.current.text}`) : null,
+        ),
+        h(
+          Card,
+          { title: '自我复盘', hint: `${self.reviews ?? 0} 次 · 只改说话方式` },
+          self.styleLine ? h('div', { className: 'bb-quote' }, self.styleLine) : null,
+          self.narrative ? h('div', { className: 'bb-muted' }, self.narrative) : null,
+          lessons.length
+            ? lessons.map((lesson) =>
+                h(
+                  'div',
+                  { key: lesson.text, className: 'bb-innerItem' },
+                  h('div', { className: 'bb-innerMeta' }, h('span', {}, '学到'), h('span', {}, `${Math.round((lesson.weight ?? 0) * 100)}%`)),
+                  h('div', {}, lesson.text),
+                ),
+              )
+            : h('div', { className: 'bb-muted' }, '还没从对话里学到新东西'),
+          h(
+            'button',
+            { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => act('/self/review', { force: true }) },
+            '现在复盘一次',
+          ),
+        ),
+      )
+    }
+
     function PendingCard({ snap, t }) {
       const list = snap.pending ?? []
       return h(
@@ -991,6 +1043,7 @@ window.__ModuleLoader__.load({
               )
             : null,
         ),
+        h(LifeSelfCard, { snap, t, act, busy }),
         h('div', { className: 'bb-grid' }, h(LoopMap, { stages: stagesFor(snap), t })),
         h('div', { className: 'bb-grid' }, h(NeuroCard, { snap, t }), h(ThresholdCard, { snap, t })),
         h('div', { className: 'bb-grid' }, h(WorkspaceCard, { snap, t }), h(InnerCard, { snap, t })),

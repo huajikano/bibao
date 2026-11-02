@@ -84,8 +84,9 @@ for (const file of files) {
   tree.push({ path: file.rel, mode: '100644', type: 'blob', sha: blob.sha })
 }
 const created = await call('POST', `/repos/${OWNER}/${REPO}/git/trees`, { tree })
+const message = process.env.GH_MESSAGE || `backup ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`
 const commit = await call('POST', `/repos/${OWNER}/${REPO}/git/commits`, {
-  message: `backup ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
+  message,
   tree: created.sha,
   parents: parentSha ? [parentSha] : [],
   author: { name: user.login, email: `${user.login}@users.noreply.github.com` },

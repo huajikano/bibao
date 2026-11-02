@@ -23,7 +23,7 @@ const fresh = (seed = 7) => {
   await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '我最近在准备考研', channel: 'private' })
   brain.advance(2 * 60 * 60 * 1000)
   const relation = brain.social.get('u1')
-  const freshLines = (relation.recent ?? []).filter((item) => Date.now() - (item.at ?? 0) < 30 * 60 * 1000)
+  const freshLines = (relation.recent ?? []).filter((item) => brain.simMs - (item.at ?? 0) < 30 * 60 * 1000)
   check('两小时前的对话不再算"刚才"', freshLines.length === 0, `recent=${relation.recent?.length ?? 0} fresh=${freshLines.length}`)
 }
 

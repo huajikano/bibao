@@ -25,6 +25,7 @@ import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
+import { BciHub, tftAdapter, screenVisionAdapter, biometricAdapter } from './core/bci-hub.js'
 import { ensureHands, handsAlive } from './core/hands.js'
 import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
@@ -53,6 +54,8 @@ const DEFAULTS = {
   gatePhase2: true,
   // 两个行为旋钮：1 = 现在的表现（记忆力最好 / 想说什么就说什么）
   tuning: { memoryStrength: 1, talkativeness: 1 },
+  // 成长：自我复盘与生活流；关掉任何一项都不会影响纯认知内核
+  growth: { selfReview: true, life: true },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
   // 手：默认关着；开着就会真的动鼠标键盘
@@ -94,6 +97,7 @@ export function apply(ctx, config = {}) {
   settings.snowluma = { ...DEFAULTS.snowluma, ...(config?.snowluma ?? {}) }
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
   settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
+  settings.growth = { ...DEFAULTS.growth, ...(config?.growth ?? {}) }
   settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
   settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   const dataDir = path.dirname(
@@ -112,6 +116,28 @@ export function apply(ctx, config = {}) {
   let stickers = null
   const tft = new TftAdapter()
   const motor = new MotorModel()
+  // 多脑机接口的发现层：现在只有只读通道；真正的动作要显式打开 policy
+  const bci = new BciHub({ policy: { actuation: false, requireConfirmation: true, maxActionsPerMin: 12 } })
+  bci.register(tftAdapter(tft))
+  bci.register(
+    screenVisionAdapter(async (payload = {}) => {
+      if (!vision) return { ok: false, reason: 'vision-not-ready' }
+      const url = String(payload.url ?? payload.imageUrl ?? '')
+      if (!url) return { ok: false, reason: 'no-image-url' }
+      const described = await vision.describe(url, { prompt: String(payload.prompt ?? '') })
+      return { text: String(described?.text ?? '').slice(0, 800), gist: String(described?.text ?? '').slice(0, 80) }
+    }),
+  )
+  bci.register(
+    biometricAdapter({
+      read: async () => ({
+        energy: Math.round(brain?.state.energy ?? 0),
+        cortisol: Number((brain?.state.cortisol ?? 0).toFixed(2)),
+        mood: Number((brain?.state.moodValence ?? 0).toFixed(2)),
+        note: '由内在状态导出的只读近似，不是真实 EEG/眼动硬件',
+      }),
+    }),
+  )
   let inputAgent = null
   let handsTimer = null
   const auto = { running: false, step: 0, log: [], startedAt: 0, lastError: '', bought: 0 }
@@ -216,6 +242,7 @@ export function apply(ctx, config = {}) {
       userName: settings.userName,
       userId: settings.userId,
       store,
+      growth: settings.growth,
     })
     brain.llms = llms
     brain.social.upsert({
@@ -309,6 +336,7 @@ export function apply(ctx, config = {}) {
           if (Array.isArray(saved.snowluma.allowGroups)) settings.snowluma.allowGroups = saved.snowluma.allowGroups.map(String)
         }
         if (saved?.tuning && typeof saved.tuning === 'object') settings.tuning = { ...DEFAULTS.tuning, ...saved.tuning }
+        if (saved?.growth && typeof saved.growth === 'object') settings.growth = { ...DEFAULTS.growth, ...saved.growth }
         if (saved?.vision && typeof saved.vision === 'object') {
     settings.vision = { ...DEFAULTS.vision, ...saved.vision }
   }
@@ -334,7 +362,9 @@ export function apply(ctx, config = {}) {
           userName: settings.userName,
           userId: settings.userId,
           store,
+          growth: settings.growth,
         })
+        brain.growth = { ...brain.growth, ...settings.growth }
       } else {
         brain = new BibaoBrain({
           biography: bio,
@@ -347,6 +377,7 @@ export function apply(ctx, config = {}) {
           userName: settings.userName,
           userId: settings.userId,
           store,
+          growth: settings.growth,
         })
         if (store) store.seedEpisodes(brain.memory.episodes)
         brain.social.upsert({
@@ -498,6 +529,7 @@ export function apply(ctx, config = {}) {
         allowPrivate: Boolean(settings.snowluma.allowPrivate),
       },
       vision: { ...settings.vision },
+      bci: bci.snapshot(),
       asleep: brain.isAsleep(),
       llmConfig: {
         useLlm: settings.useLlm,
@@ -574,20 +606,6 @@ export function apply(ctx, config = {}) {
     })
 
     const transfer = result.dual?.action_route === 'TRANSFER_PRIVATE_GOSSIP'
-    // 发完文字后，有一定概率补一张表情包（按当下情绪挑一张收藏的）
-    const maybeSticker = async (to) => {
-      if (!stickers || settings.snowluma.stickers === false) return
-      if (Math.random() > 0.22) return
-      try {
-        const context = `${result.dual?.inner_monologue ?? ''} ${(result.dual?.bubbles ?? []).join(' ')}`
-        const item = await stickers.pick(stickerMood(), context)
-        if (!item) return
-        const id = groupId ? await snow.bridge.sendGroup(groupId, '', item.file) : await snow.bridge.sendPrivate(to, '', item.file)
-        await appendSnowLog({ at: Date.now(), kind: 'sticker-out', groupId: groupId ?? '', target: to ?? '', gist: item.gist, messageId: id })
-      } catch (error) {
-        await appendSnowLog({ at: Date.now(), kind: 'sticker-error', message: String(error?.message ?? error).slice(0, 120) })
-      }
-    }
 
     if (transfer) {
       funnel.stats.transfers += 1
@@ -809,6 +827,32 @@ export function apply(ctx, config = {}) {
     snow.reason = '已断开'
   }
 
+  /** 发完文字后，有一定概率补一张表情包（按当下情绪挑一张收藏的）。 */
+  async function maybeSticker({ targetId = null, groupId = null, context = '' } = {}) {
+    if (!stickers || settings.snowluma.stickers === false) return false
+    if (!snow.bridge) return false
+    if (Math.random() > 0.22) return false
+    try {
+      const item = await stickers.pick(stickerMood(), context)
+      if (!item) return false
+      const id = groupId
+        ? await snow.bridge.sendGroup(groupId, '', item.file)
+        : await snow.bridge.sendPrivate(targetId, '', item.file)
+      await appendSnowLog({
+        at: Date.now(),
+        kind: 'sticker-out',
+        groupId: groupId ?? '',
+        target: targetId ?? '',
+        gist: item.gist,
+        messageId: id,
+      })
+      return true
+    } catch (error) {
+      await appendSnowLog({ at: Date.now(), kind: 'sticker-error', message: String(error?.message ?? error).slice(0, 120) })
+      return false
+    }
+  }
+
   async function deliver(result, { targetId, groupId, dry = false }) {
     const bubbles = result.dual?.bubbles ?? []
     if (dry) {
@@ -859,7 +903,11 @@ export function apply(ctx, config = {}) {
     }
     if ((result.motor ?? []).length) {
       await wait(900)
-      await maybeSticker(targetId)
+      await maybeSticker({
+        targetId,
+        groupId,
+        context: `${result.dual?.inner_monologue ?? ''} ${(result.dual?.bubbles ?? []).join(' ')}`,
+      })
       // 犹豫的第三种：发完忍不住补一句
       const tail = result.dual?.afterthought
       if (tail) {
@@ -1438,6 +1486,41 @@ export function apply(ctx, config = {}) {
         const report = brain.sleep()
         schedulePersist()
         return json({ report, snapshot: snapshot() })
+      },
+    },
+    {
+      path: '/bci',
+      methods: ['GET'],
+      handler: async () => {
+        await boot()
+        return json({
+          ...bci.snapshot(),
+          note: '只读感知默认开启；actuation 需要在 core/bci-hub 的 policy 里显式打开，并逐次确认',
+        })
+      },
+    },
+    {
+      path: '/bci/sense',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        const id = String(body.adapter ?? body.id ?? '')
+        if (!id) return fail('缺少 adapter', 400)
+        const result = await bci.sense(id, body.payload ?? body)
+        return json(result)
+      },
+    },
+    {
+      path: '/self/review',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        brain.sync()
+        const body = await readBody(request)
+        const result = await brain.reviewSelf({ reason: 'manual', force: body.force !== false })
+        schedulePersist(200)
+        return json({ result, snapshot: snapshot() })
       },
     },
     {
@@ -2442,6 +2525,11 @@ export function apply(ctx, config = {}) {
           }
           brain?.applyTuning(settings.tuning)
         }
+        if (body.growth && typeof body.growth === 'object') {
+          if (typeof body.growth.selfReview === 'boolean') settings.growth.selfReview = body.growth.selfReview
+          if (typeof body.growth.life === 'boolean') settings.growth.life = body.growth.life
+          if (brain) brain.growth = { ...brain.growth, ...settings.growth }
+        }
         if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
@@ -2502,6 +2590,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              growth: settings.growth,
               vision: settings.vision,
             }),
             'utf8',
@@ -2630,6 +2719,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              growth: settings.growth,
               vision: settings.vision,
             }),
             'utf8',

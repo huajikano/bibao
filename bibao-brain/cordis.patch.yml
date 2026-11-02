@@ -12,6 +12,8 @@
 #   model      指定 model（留空沿用 DSH 默认模型）
 #   stateFile  大脑存档路径（留空 = $DSH_HOME/bibao/brain-state.json）
 #   gatePhase2 是否用 6 大沙盒结果锁死 Phase 2（默认 true）
+#   growth.selfReview  是否把对话反馈压成说话经验（默认 true）
+#   growth.life        是否生成"她自己的今天"（默认 true）
 
 - insert:
     - id: bibao-brain
@@ -21,6 +23,9 @@
         userId: owner
         useLlm: false
         gatePhase2: true
+        growth:
+          selfReview: true
+          life: true
         # Phase 2：snowluma 已安装并运行在本机 3000（HTTP）/ 3001（WS）。
         # 默认只读观察：收消息、算注意力、写记忆、记录"本来会发什么"，但不真的发。
         # 想让她真的开口，把 sendEnabled 改成 true（或点面板里的「允许发送」）。

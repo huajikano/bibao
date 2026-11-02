@@ -84,7 +84,7 @@ const INNER = {
   flat: ['没什么想说的', '回个嗯就够了', '今天真的累'],
 }
 
-export function decideBudget({ state, salience, style }) {
+export function decideBudget({ state, salience, style, selfModel = null }) {
   let maxChars
   // 只有没劲、或对纯背景噪音才压到一句话；有人点名叫我时不该被这个门槛卡住
   if (state.energy < 30 || (salience < 0.55 && style === 'cold')) maxChars = 12
@@ -92,6 +92,12 @@ export function decideBudget({ state, salience, style }) {
   if (state.exhausted) maxChars = Math.min(maxChars, 20)
   let maxBubbles = style === 'cold' ? 1 : state.energy < 40 ? 2 : 3
   if (style === 'polite') maxBubbles = 2
+  // 自我模型学到的"话量"：不覆盖情绪预算，只在此基础上收一点或放一点
+  const verbosity = Number(selfModel?.style?.verbosity)
+  if (Number.isFinite(verbosity)) {
+    maxChars = Math.round(clamp(maxChars * (0.75 + 0.5 * verbosity), 12, 90))
+    maxBubbles = Math.round(clamp(maxBubbles * (0.75 + 0.5 * verbosity), 1, 3))
+  }
   return { maxChars, maxBubbles }
 }
 
@@ -114,6 +120,7 @@ export function composeReply(ctx) {
     transferTarget = null,
     forgot = null,
     tip = null,
+    selfModel = null,
   } = ctx
 
   const category = pickCategory(analysis)
@@ -145,6 +152,20 @@ export function composeReply(ctx) {
   if (route === 'POKE_ONLY') parts.push('懒得打字 戳一下算了')
 
   let bubbles = buildBubbles({ style, category, analysis, route, rng })
+  // 自我模型只微调"说多少、要不要逗"，不改关系与情绪本身
+  const learned = selfModel?.style
+  if (learned && route === 'REPLY_CURRENT') {
+    if (learned.verbosity < 0.35 && bubbles.length > 1) bubbles = bubbles.slice(0, 1)
+    if (learned.verbosity > 0.7 && bubbles.length < budget.maxBubbles && rng.chance(0.35)) {
+      bubbles.push(rng.pick(['还有', '算了不说了', '你猜']))
+    }
+    if (learned.playfulness > 0.7 && (category === 'flat' || category === 'question') && rng.chance(0.4)) {
+      bubbles.push(rng.pick(['嘿嘿', '才不告诉你', '你猜呀', '骗你的']))
+    }
+    if (learned.warmth > 0.7 && category === 'care' && bubbles.length < budget.maxBubbles && rng.chance(0.4)) {
+      bubbles.push(rng.pick(['我在', '嗯 你说']))
+    }
+  }
   bubbles = enforceBudget(bubbles, budget.maxChars, budget.maxBubbles)
 
   if (route === 'SILENT_READ' || route === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
