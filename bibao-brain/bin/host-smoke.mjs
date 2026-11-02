@@ -142,7 +142,7 @@ await call('POST', '/settings', { useLlm: false })
 const llmSettings = await call('POST', '/settings', {
   llm: {
     baseURL: 'https://example.test/v1',
-    model: 'demo-model',
+    model: 'demo/demo-model',
     apiKey: 'sk-test-1234567890',
     profiles: {
       appraisal: { enabled: true, model: 'cheap-model', baseURL: 'https://cheap.test/v1', apiKey: 'sk-cheap-0000' },

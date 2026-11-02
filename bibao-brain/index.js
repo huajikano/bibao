@@ -327,6 +327,23 @@ export function apply(ctx, config = {}) {
         })
       }
       brain.llms = llms
+      // 模型名缺 provider/ 前缀时自动补全：网关只认 provider/model
+      if (settings.llm.model && !settings.llm.model.includes('/')) {
+        try {
+          const res = await fetch(`${settings.llm.baseURL.replace(/\/+$/, '')}/models`, {
+            headers: { authorization: `Bearer ${settings.llm.apiKey}` },
+            signal: AbortSignal.timeout(4000),
+          })
+          const list = (await res.json())?.data ?? []
+          const hit = list.find((row) => String(row.id).toLowerCase().endsWith(`/${settings.llm.model}`.toLowerCase()))
+          if (hit) {
+            await appendSnowLog({ at: Date.now(), kind: 'model-repair', from: settings.llm.model, to: hit.id })
+            settings.llm.model = hit.id
+          }
+        } catch {
+          /* 网关不可达就先留着，等用户自己改 */
+        }
+      }
       brain.applyTuning(settings.tuning)
       stickers = stickers || new StickerBook(path.join(dataDir, 'stickers'))
       vision = createVision({
@@ -1646,6 +1663,9 @@ export function apply(ctx, config = {}) {
           brain?.applyTuning(settings.tuning)
         }
         if (body.llm && typeof body.llm === 'object') {
+          if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/')) {
+            return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
+          }
           for (const key of ['baseURL', 'apiKey', 'model']) {
             if (typeof body.llm[key] !== 'string') continue
             // 空字符串 = 表单没填，保留已保存的（尤其是 apiKey，面板只回显掩码）
