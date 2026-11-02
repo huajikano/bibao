@@ -29,7 +29,7 @@ import { ensureHands, handsAlive } from './core/hands.js'
 import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
 import { anchorsFor, anchorsFromWindows } from './core/layout.js'
-import { planPlacements, planPickups } from './core/board.js'
+import { planPlacements, planPickups, planDeploys } from './core/board.js'
 import { pickItemFor } from './core/items.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
@@ -1114,10 +1114,23 @@ export function apply(ctx, config = {}) {
           const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: cards, bench })
           auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage, cards: cards.length, plan: plan.reason })
           for (const action of plan.actions.slice(0, 6)) {
-            if (action.type === 'place' && settings.game.layout?.bench && settings.game.layout?.board) {
+            if ((action.type === 'place' || action.type === 'deploy') && settings.game.layout?.bench) {
               const from = settings.game.layout.bench[action.benchSlot ?? 0]
-              const to = settings.game.layout.board[action.row ?? 0]?.[action.col ?? 3]
-              if (from && to) await inputAgent.drag(from[0], from[1], to[0], to[1], 220)
+              if (from) {
+                // 选中 + W：比拖拽快一个量级
+                await inputAgent.click(from[0], from[1])
+                await sleep(60)
+                await inputAgent.key('w')
+                await sleep(90)
+              }
+            } else if (action.type === 'sell' && settings.game.layout?.bench) {
+              const from = settings.game.layout.bench[action.benchSlot ?? 0]
+              if (from) {
+                await inputAgent.click(from[0], from[1])
+                await sleep(60)
+                await inputAgent.key('e')
+                await sleep(90)
+              }
             } else if (action.type === 'equip' && settings.game.layout?.items && settings.game.layout?.board) {
               const from = settings.game.layout.items[action.itemSlot ?? 0]
               const to = settings.game.layout.board[action.row ?? 0]?.[action.col ?? 3]
@@ -1158,7 +1171,7 @@ export function apply(ctx, config = {}) {
               const rawBoard = String(seenBoard.text ?? '')
               const info2 = JSON.parse(rawBoard.slice(rawBoard.indexOf('{'), rawBoard.lastIndexOf('}') + 1))
               const layout = settings.game.layout
-              for (const action of planPlacements({ benchFilled: info2.benchFilled ?? [], boardEmpty: info2.boardEmpty ?? [], max: 2 })) {
+              for (const action of planDeploys({ benchFilled: info2.benchFilled ?? [], max: 2 })) {
                 const from = layout.bench[action.benchSlot]
                 const to = layout.board[action.row]?.[action.col]
                 if (from && to) {

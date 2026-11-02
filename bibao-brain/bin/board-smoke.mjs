@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** 上场与捡球的决策自检。 */
-import { planPlacements, planPickups } from '../core/board.js'
+import { planPlacements, planPickups, planDeploys, planSell } from '../core/board.js'
 
 const results = []
 const check = (name, ok, detail = '') => results.push({ name, ok, detail })
@@ -36,6 +36,16 @@ const check = (name, ok, detail = '') => results.push({ name, ok, detail })
 {
   const plan = planPickups({ orbs: [] })
   check('没球就等', plan.length === 0)
+}
+
+{
+  const plan = planDeploys({ benchFilled: [0, 2, 5], max: 2 })
+  check('快捷键上阵：点一下按 W', plan.length === 2 && plan[0].keys[0] === 'w', JSON.stringify(plan[0]))
+}
+
+{
+  const plan = planSell({ benchFilled: [1, 4] })
+  check('快捷键卖棋子：点一下按 E', plan.length === 2 && plan[0].keys[0] === 'e', JSON.stringify(plan[0]))
 }
 
 for (const item of results) console.log(`${item.ok ? 'PASS' : 'FAIL'}  ${item.name}  —  ${item.detail}`)

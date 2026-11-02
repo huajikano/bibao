@@ -38,3 +38,21 @@ export function planPickups({ orbs = [], max = 3 } = {}) {
       y: Number(point?.[1] ?? point.y),
     }))
 }
+
+/**
+ * 快捷键上阵：点一下备战席的棋子选中它，按 W 直接上场。
+ * 比拖拽快（一次点击 + 一次按键），也不用知道棋盘哪格空着。
+ */
+export function planDeploys({ benchFilled = [], max = 3 } = {}) {
+  return (benchFilled ?? []).slice(0, Math.max(0, max)).map((benchSlot) => ({
+    type: 'deploy',
+    benchSlot,
+    keys: ['w'],
+  }))
+}
+
+/** 卖棋子：选中它按 E。用来给备战席腾地方。 */
+export function planSell({ benchFilled = [], slots = [] } = {}) {
+  const targets = (slots.length ? slots : benchFilled).slice(0, 2)
+  return targets.map((benchSlot) => ({ type: 'sell', benchSlot, keys: ['e'] }))
+}
