@@ -68,7 +68,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
         const data = await res.json()
         const text = String(data?.choices?.[0]?.message?.content ?? '').trim()
         if (!text) throw new Error(data?.error?.message ?? '模型没有返回内容')
-        const clean = text.replace(/\s+/g, ' ').slice(0, 200)
+        const clean = text.replace(/\s+/g, ' ').slice(0, 1600)
         cache.set(hash, clean)
         if (cache.size > 200) cache.delete(cache.keys().next().value)
         stats.last = { text: clean, at: Date.now(), hash }
