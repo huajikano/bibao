@@ -1065,6 +1065,11 @@ export function apply(ctx, config = {}) {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     // 一开始就把游戏钉在最上层：否则 DSH 窗口会盖住它，点击全打在聊天窗口上
     const winName = settings.game.window ?? 'TFT'
+    // 固定摆位：窗口化 1920×1080 落在左上角，之后所有裁剪与点击共用这个矩形
+    const place = settings.game.place ?? { x: 0, y: 0, w: 1920, h: 1080 }
+    await inputAgent
+      .request('/place', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ match: winName, ...place }) })
+      .catch(() => null)
     await inputAgent
       .request('/topmost', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ match: winName, on: true }) })
       .catch(() => null)
@@ -1101,9 +1106,9 @@ export function apply(ctx, config = {}) {
             const hudFile = path.join(dataDir, 'screens', 'hud.jpg')
             const hudRect = {
               x: Math.round(winRect.x + winRect.w * 0.12),
-              y: Math.round(winRect.y + winRect.h * 0.86),
-              w: Math.round(winRect.w * 0.76),
-              h: Math.round(winRect.h * 0.14),
+              y: Math.round(winRect.y + winRect.h * 0.80),
+              w: Math.round(winRect.w * 0.70),
+              h: Math.round(winRect.h * 0.18),
             }
             await inputAgent.shot(hudFile, { maxWidth: 900, format: 'jpeg', rect: hudRect })
             const hud64 = (await readFile(hudFile)).toString('base64')
