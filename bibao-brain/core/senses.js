@@ -7,7 +7,7 @@
  */
 
 export const SENSE_CHANNELS = [
-  { key: 'vision', label: '视觉', glyph: '眼', modality: '看', hint: '摄像头 / 屏幕画面 → 一段语义描述' },
+  { key: 'vision', label: '视觉', glyph: '眼', modality: '看', hint: '焦点群或 @我 时，用已配好的视觉模型看图' },
   { key: 'hearing', label: '听觉', glyph: '耳', modality: '听', hint: '麦克风 / 系统声音 → 转写文本' },
   { key: 'smell', label: '嗅觉', glyph: '鼻', modality: '闻', hint: '气味传感器 → 气味标签（硬件尚未接入）' },
   { key: 'system', label: '本体感觉', glyph: '机', modality: '用电脑', hint: '进程 / 窗口 / 电量 / 网络 → 体感描述' },

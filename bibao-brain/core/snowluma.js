@@ -142,6 +142,16 @@ export class SnowlumaBridge {
   }
 
   /** OneBot 消息段（array 格式）→ 纯文本。 */
+  /** 取出所有图片段的 url（OneBot 里可能是 http、file:// 或本地路径）。 */
+  static imagesOf(message) {
+    if (!Array.isArray(message)) return []
+    return message
+      .filter((segment) => segment?.type === 'image')
+      .map((segment) => String(segment?.data?.url ?? segment?.data?.file ?? ''))
+      .filter((url) => url && (url.startsWith('http') || url.startsWith('file')))
+      .slice(0, 3)
+  }
+
   static textOf(message) {
     if (typeof message === 'string') return message
     if (!Array.isArray(message)) return ''
@@ -165,8 +175,10 @@ export class SnowlumaBridge {
     if (!senderId || senderId === String(selfId)) return null
     const senderName =
       event.sender?.card || event.sender?.nickname || event.sender?.name || senderId
+    const images = SnowlumaBridge.imagesOf(event.message)
     const text = SnowlumaBridge.textOf(event.message).trim()
-    if (!text) return null
+    // 只有图片、没有文字的消息也要进来：她要能看见
+    if (!text && images.length === 0) return null
     const group = event.message_type === 'group'
     return {
       kind: group ? 'group' : 'private',
@@ -174,7 +186,8 @@ export class SnowlumaBridge {
       groupName: '',
       senderId,
       senderName,
-      text,
+      text: text || (images.length ? '[图片]' : ''),
+      images,
       atMe: group && Array.isArray(event.message)
         ? event.message.some((segment) => segment?.type === 'at' && String(segment?.data?.qq ?? '') === String(selfId))
         : false,

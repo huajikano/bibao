@@ -22,6 +22,7 @@ import { runSandbox } from './core/sandbox.js'
 import { SnowlumaBridge } from './core/snowluma.js'
 import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
+import { createVision } from './core/vision.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
 
@@ -41,6 +42,8 @@ const DEFAULTS = {
   gatePhase2: true,
   // 两个行为旋钮：1 = 现在的表现（记忆力最好 / 想说什么就说什么）
   tuning: { memoryStrength: 1, talkativeness: 1 },
+  // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
+  vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
   llm: {
     baseURL: 'https://api.deepseek.com',
     apiKey: '',
@@ -75,6 +78,7 @@ export function apply(ctx, config = {}) {
   settings.snowluma = { ...DEFAULTS.snowluma, ...(config?.snowluma ?? {}) }
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
   settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
+  settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
   )
@@ -87,6 +91,8 @@ export function apply(ctx, config = {}) {
   // AI 生成的人物草稿：应用时只发 id，避免把几 KB 的 JSON 塞进 URL（会 431）
   let personaDraft = null
   let personaDraftId = ''
+  let vision = null
+  let visionHour = { hour: -1, count: 0 }
   let funnel = null
   let gate = null
   let loading = null
@@ -320,6 +326,11 @@ export function apply(ctx, config = {}) {
       }
       brain.llms = llms
       brain.applyTuning(settings.tuning)
+      vision = createVision({
+        baseURL: settings.llm.baseURL,
+        apiKey: settings.llm.apiKey,
+        model: settings.vision.model,
+      })
       {
         const owner = brain.social.get(settings.userId)
         if (owner) owner.friend = true
@@ -539,6 +550,10 @@ export function apply(ctx, config = {}) {
       atMe: Boolean(payload.atMe),
     }
     brain.sync()
+    const focusGroup = funnel.get(message.groupId)
+    if (message.images?.length && (message.atMe || focusGroup?.layer === 'foveal')) {
+      void perceiveImage(message)
+    }
     const decision = funnel.ingest(message, { now: Date.now(), energy: brain.state.energy })
     funnel.tick(Date.now())
     funnel.record({
@@ -853,6 +868,26 @@ export function apply(ctx, config = {}) {
     }, delay)
     timers.add(timer)
     void appendSnowLog({ at: Date.now(), kind: 'flush-scheduled', key, delay })
+  }
+
+  /** 让"她"看一眼这张图：只写进感知，不产生回复。 */
+  async function perceiveImage(message) {
+    if (!settings.vision.enabled || !message.images?.length) return
+    const hour = new Date().getHours()
+    if (visionHour.hour !== hour) visionHour = { hour, count: 0 }
+    if (visionHour.count >= settings.vision.maxPerHour) return
+    if (!vision) return
+    const url = message.images[0]
+    try {
+      visionHour.count += 1
+      const result = await vision.describe(url)
+      const line = `${message.senderName ?? '群里有人'}发来一张图：${result.text}`
+      brain.perceiveSense({ channel: 'vision', text: line, intensity: 0.6 })
+      funnel.record({ kind: 'vision', group: funnel.get(message.groupId)?.name ?? '', text: line.slice(0, 60) })
+      await appendSnowLog({ kind: 'vision', at: Date.now(), cached: result.cached, text: result.text.slice(0, 120) })
+    } catch (error) {
+      await appendSnowLog({ kind: 'vision-error', at: Date.now(), message: String(error?.message ?? error).slice(0, 120) })
+    }
   }
 
   async function handleSnowEvent(event) {
@@ -1557,9 +1592,13 @@ export function apply(ctx, config = {}) {
           senderId: String(body.senderId ?? 'sim-user'),
           senderName: String(body.senderName ?? '模拟群友'),
           text: String(body.text ?? '在吗'),
+          images: (Array.isArray(body.images) ? body.images : []).map(String).slice(0, 3),
           atMe: Boolean(body.atMe),
           messageId: 0,
           at: Date.now(),
+        }
+        if (message.images.length && (message.atMe || funnel.get(groupId)?.layer === 'foveal')) {
+          void perceiveImage(message)
         }
         const decision = funnel.ingest(message, { now: Date.now(), energy: brain.state.energy })
         const outcome = await snowFlush(`${groupId}:${message.senderId}`, { dry: !wantSend })
