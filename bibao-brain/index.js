@@ -1029,7 +1029,7 @@ export function apply(ctx, config = {}) {
         probe = await vision.describe(url, {
           prompt:
             '只输出 JSON：{"kind":"sticker 或 photo","gist":"这张图在表达什么，20 字内","mood":"笑|无语|安慰|生气|可爱|日常","text":"图上的字，最多10字"}',
-          maxTokens: 400,
+          maxTokens: 1400,
         })
       } catch {
         // 模型没给 JSON 也不要紧：退回纯描述，当作普通图片
@@ -1114,7 +1114,7 @@ export function apply(ctx, config = {}) {
             const hud64 = (await readFile(hudFile)).toString('base64')
             const hudSeen = await vision.describe(`data:image/jpeg;base64,${hud64}`, {
               prompt: '这是云顶之弈底部状态栏。只输出 JSON：{"gold":0,"level":0,"health":0}。gold 是金币数字，level 是等级，health 是血量（没有就 null）。只输出数字，不要解释。',
-              maxTokens: 80,
+              maxTokens: 220,
             })
             const rawHud = String(hudSeen.text ?? '')
             hud = JSON.parse(rawHud.slice(rawHud.indexOf('{'), rawHud.lastIndexOf('}') + 1))
@@ -1130,7 +1130,7 @@ export function apply(ctx, config = {}) {
         let seen = null
         for (let attempt = 0; attempt < 2; attempt += 1) {
           try {
-            seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
+            seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 1400 })
             break
           } catch (error) {
             const message = String(error?.message ?? error)
@@ -1251,7 +1251,7 @@ export function apply(ctx, config = {}) {
               await inputAgent.shot(boardFile, { maxWidth: 1024, format: 'jpeg' })
               const board64 = (await readFile(boardFile)).toString('base64')
               const boardAsk = '只输出 JSON：{"benchFilled":[0],"boardUnits":[{"name":"英雄名","row":1,"col":3}],"traits":[{"name":"羁绊名","count":2}],"orbs":[[0.5,0.6]]}。benchFilled 是备战席有棋子的下标（0~8）；boardUnits 是我方棋盘上的棋子（row 0~3 从上到下，col 0~6 从左到右）；traits 是左侧羁绊面板的条目；orbs 是地上掉落球的相对坐标（0~1）。没有就给空数组。'
-              const seenBoard = await vision.describe(`data:image/jpeg;base64,${board64}`, { prompt: boardAsk, maxTokens: 400 })
+              const seenBoard = await vision.describe(`data:image/jpeg;base64,${board64}`, { prompt: boardAsk, maxTokens: 1400 })
               const rawBoard = String(seenBoard.text ?? '')
               const info2 = JSON.parse(rawBoard.slice(rawBoard.indexOf('{'), rawBoard.lastIndexOf('}') + 1))
               const layout = settings.game.layout
@@ -1860,7 +1860,7 @@ export function apply(ctx, config = {}) {
             probe = await vision.describe(dataUrl, {
               prompt:
                 '只输出 JSON：{"kind":"sticker 或 photo","gist":"这张图在表达什么，20 字内","mood":"笑|无语|安慰|生气|可爱|日常","text":"图上的字，最多10字"}',
-              maxTokens: 400,
+              maxTokens: 1400,
             })
           } catch {
             probe = await vision.describe(dataUrl)
