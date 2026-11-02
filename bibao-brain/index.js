@@ -32,6 +32,7 @@ import { anchorsFor, anchorsFromWindows } from './core/layout.js'
 import { planPlacements, planPickups, planDeploys } from './core/board.js'
 import { pickItemFor } from './core/items.js'
 import { planPositioning } from './core/position.js'
+import { traitBonus } from './core/traits.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1112,7 +1113,8 @@ export function apply(ctx, config = {}) {
         auto.lastPlan = scene === 'shop' ? 'shop' : 'other'
         if (scene === 'shop' && cards.length >= 3) {
           // 决策层：留钱 / 升级 / 买牌 / 残血 D 牌
-          const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: cards, bench })
+          const boosted = cards.map((card) => ({ ...card, value: (Number(card.cost ?? 1) || 1) + traitBonus(card.name, auto.traits ?? []) }))
+          const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: boosted, bench })
           auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage, cards: cards.length, plan: plan.reason })
           for (const action of plan.actions.slice(0, 6)) {
             if ((action.type === 'place' || action.type === 'deploy') && settings.game.layout?.bench) {
