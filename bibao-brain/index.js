@@ -31,6 +31,7 @@ import { decideTft } from './core/tft.js'
 import { anchorsFor, anchorsFromWindows } from './core/layout.js'
 import { planPlacements, planPickups, planDeploys } from './core/board.js'
 import { pickItemFor } from './core/items.js'
+import { planPositioning } from './core/position.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1148,15 +1149,25 @@ export function apply(ctx, config = {}) {
               auto.bought += 1
               await appendSnowLog({ at: Date.now(), kind: 'auto-buy', name: String(card.name ?? ''), x, y, gold }).catch(() => {})
               await sleep(160)
-            } else if (action.type === 'level' && settings.game.layout?.level) {
-              const point = settings.game.layout.level
-              await inputAgent.click(point[0], point[1])
-              await sleep(600)
-            } else if (action.type === 'roll' && settings.game.layout?.roll) {
-              const point = settings.game.layout.roll
+            } else if (action.type === 'level') {
+              // F：买经验
+              for (let index = 0; index < Math.min(2, action.times ?? 1); index += 1) {
+                await inputAgent.key('f')
+                await sleep(120)
+              }
+            } else if (action.type === 'roll') {
+              // D：刷新商店
               for (let index = 0; index < Math.min(3, action.times ?? 1); index += 1) {
-                await inputAgent.click(point[0], point[1])
-                await sleep(500)
+                await inputAgent.key('d')
+                await sleep(120)
+              }
+            } else if (action.type === 'reposition' && settings.game.layout?.board) {
+              const from = settings.game.layout.board[action.fromRow]?.[action.fromCol]
+              const to = settings.game.layout.board[action.row]?.[action.col]
+              if (from && to) {
+                await inputAgent.drag(from[0], from[1], to[0], to[1], 180)
+                await appendSnowLog({ at: Date.now(), kind: 'auto-move', name: action.name, role: action.role, row: action.row, col: action.col }).catch(() => {})
+                await sleep(150)
               }
             }
           }
@@ -1166,7 +1177,7 @@ export function apply(ctx, config = {}) {
               const boardFile = path.join(dataDir, 'screens', `board-${Date.now()}.jpg`)
               await inputAgent.shot(boardFile, { maxWidth: 1024, format: 'jpeg' })
               const board64 = (await readFile(boardFile)).toString('base64')
-              const boardAsk = '只输出 JSON：{"benchFilled":[0,3],"boardEmpty":[[1,3]],"orbs":[[0.5,0.6]]}。benchFilled 是备战席九个格子里有棋子的下标（0~8），boardEmpty 是我方棋盘空位的行列（row 0~3, col 0~6），orbs 是地上掉落球的相对坐标（0~1）。没有就给空数组。'
+              const boardAsk = '只输出 JSON：{"benchFilled":[0],"boardUnits":[{"name":"英雄名","row":1,"col":3}],"traits":[{"name":"羁绊名","count":2}],"orbs":[[0.5,0.6]]}。benchFilled 是备战席有棋子的下标（0~8）；boardUnits 是我方棋盘上的棋子（row 0~3 从上到下，col 0~6 从左到右）；traits 是左侧羁绊面板的条目；orbs 是地上掉落球的相对坐标（0~1）。没有就给空数组。'
               const seenBoard = await vision.describe(`data:image/jpeg;base64,${board64}`, { prompt: boardAsk, maxTokens: 400 })
               const rawBoard = String(seenBoard.text ?? '')
               const info2 = JSON.parse(rawBoard.slice(rawBoard.indexOf('{'), rawBoard.lastIndexOf('}') + 1))
@@ -1179,6 +1190,21 @@ export function apply(ctx, config = {}) {
                   await appendSnowLog({ at: Date.now(), kind: 'auto-place', from: action.benchSlot, row: action.row, col: action.col }).catch(() => {})
                   await sleep(220)
                 }
+              }
+              // 站位：前排顶前、后排退后
+              for (const action of planPositioning({ units: info2.boardUnits ?? [], max: 3 })) {
+                const from = layout.board[action.fromRow]?.[action.fromCol]
+                const to = layout.board[action.row]?.[action.col]
+                if (from && to) {
+                  await inputAgent.drag(from[0], from[1], to[0], to[1], 180)
+                  await appendSnowLog({ at: Date.now(), kind: 'auto-move', name: action.name, role: action.role, row: action.row, col: action.col }).catch(() => {})
+                  await sleep(150)
+                }
+              }
+              // 羁绊：先记录，暂不参与决策
+              if (Array.isArray(info2.traits) && info2.traits.length) {
+                auto.traits = info2.traits.slice(0, 8).map((trait) => ({ name: String(trait?.name ?? ''), count: Number(trait?.count ?? 0) }))
+                auto.log.push({ at: Date.now(), step: auto.step, traits: auto.traits.map((trait) => `${trait.name}${trait.count}`).join(' ') })
               }
               for (const orb of planPickups({ orbs: info2.orbs ?? [] })) {
                 await inputAgent.click(Math.round(orb.x * size.width), Math.round(orb.y * size.height))
