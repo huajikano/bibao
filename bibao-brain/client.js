@@ -4115,7 +4115,17 @@ window.__ModuleLoader__.load({
           h(
             Card,
             { title: '手部服务', hint: '需要你先启动一次' },
-            h('p', { className: 'bb-quote' }, '双击 bibao-brain/bin/start-hands.bat，窗口留着别关。插件通过 127.0.0.1:8788 跟它说话；服务没起时，上面所有按钮都会报"手还没启动"。'),
+            h('p', { className: 'bb-quote' }, '插件会自动启动手部服务（每 30 秒探活一次），你不用手动开。它跑在 127.0.0.1:8788，负责截图和鼠标键盘；如果一直起不来，点下面的按钮重试。'),
+            h('div', { className: 'bb-actions' },
+              h('button', { type: 'button', className: 'bb-btn', onClick: async () => {
+                try {
+                  const data = await request('/game/hands', { method: 'POST', body: '{}' })
+                  this.setState({ note: data.alive ? '手部服务已就绪' : '还是没起来，看看 bin/hands-server.ps1 是不是被杀软拦了' })
+                } catch (error) {
+                  this.setState({ note: '启动失败：' + error.message })
+                }
+              } }, '启动 / 重启手部服务'),
+            ),
             auto?.log?.length
               ? h('div', { className: 'bb-list' },
                   auto.log.slice(-8).reverse().map((entry, index) =>

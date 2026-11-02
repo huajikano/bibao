@@ -25,6 +25,7 @@ import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
+import { ensureHands, handsAlive } from './core/hands.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -105,6 +106,7 @@ export function apply(ctx, config = {}) {
   const tft = new TftAdapter()
   const motor = new MotorModel()
   let inputAgent = null
+  let handsTimer = null
   const auto = { running: false, step: 0, log: [], startedAt: 0, lastError: '', bought: 0 }
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
@@ -278,6 +280,13 @@ export function apply(ctx, config = {}) {
   }
 
   async function boot() {
+    // 手：插件自己负责起；起不来只记日志，永远不抛
+    if (!handsTimer) {
+      handsTimer = setInterval(() => {
+        void ensureHands({ log: (line) => void appendSnowLog({ at: Date.now(), kind: 'hands', line }).catch(() => {}) }).catch(() => {})
+      }, 30000)
+      void ensureHands({ log: (line) => void appendSnowLog({ at: Date.now(), kind: 'hands', line }).catch(() => {}) }).catch(() => {})
+    }
     if (brain) return brain
     if (loading) return loading
     loading = (async () => {
@@ -1692,6 +1701,18 @@ export function apply(ctx, config = {}) {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
         })
+      },
+    },
+    {
+      path: '/game/hands',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          await ensureHands({ log: (...args) => void appendSnowLog({ at: Date.now(), kind: 'hands', line: args.join(' ') }) })
+        }
+        const alive = await handsAlive(1500)
+        return json({ ok: true, alive, port: 8788, autoStart: settings.game.autoStart !== false })
       },
     },
     {
