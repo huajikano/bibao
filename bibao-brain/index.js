@@ -715,7 +715,7 @@ export function apply(ctx, config = {}) {
       const id = await send(step.text, targetId)
       if (firstId === null) firstId = id
     }
-    if (result.dual?.trigger_regret_recall && firstId) {
+    if (result.dual?.trigger_regret_recall && firstId && settings.snowluma.recallEnabled === true) {
       await wait(3800)
       try {
         await snow.bridge.deleteMessage(firstId)

@@ -791,32 +791,36 @@ export class BibaoBrain {
     this.stats.turns += 1
 
     const talk = this.tuning.talkativeness
-    const cooldownMs = (1 - talk) * 10000
-    if (talk < 1 && !atMe && this.lastSpokeAt && now - this.lastSpokeAt < cooldownMs) {
+    const cooldownMs = (1 - talk) * 30000
+    // 刚说过话还在冷却期：不是不回，而是只说一句
+    const cooldownLeft = this.lastSpokeAt ? cooldownMs - (now - this.lastSpokeAt) : 0
+    const cooling = talk < 1 && !atMe && cooldownLeft > 0
+    const thetaBoost = (1 - talk) * 0.15
+    // 说话频率真的决定"接不接"：拉满必然接，拉低大概率装没看见
+    if (talk < 0.99 && channel === 'group' && !atMe && this.rng.next() > 0.15 + 0.85 * talk) {
       this.lastPipeline = {
         at: now,
         frame: { ...frame, text },
         stages: [
-          { key: 'funnel', label: '丘脑门控', status: 'blocked', detail: '刚说过话，还没缓过来' },
-          { key: 'workspace', label: '全局工作空间', status: 'idle', detail: '不进意识' },
+          { key: 'funnel', label: '丘脑门控', status: 'blocked', detail: '看到了，但不想接' },
+          { key: 'workspace', label: '全局工作空间', status: 'idle', detail: '没进意识' },
         ],
         pe,
-        salience: 0.2,
+        salience: 0.15,
         theta: this.workspace.threshold(this.state, this.silenceMin),
         ignited: false,
       }
       return {
         ignited: false,
         route: 'SILENT_SKIP',
-        reason: '说话频率调低了：刚回过，这次先不接',
+        reason: '说话频率调低了：这条先不回',
         pe,
-        salience: 0.2,
+        salience: 0.15,
         theta: this.workspace.threshold(this.state, this.silenceMin),
         stages: this.lastPipeline.stages,
         state: this.state.snapshot({ mood: moodWord(this.state.moodValence) }),
       }
     }
-    const thetaBoost = (1 - talk) * 0.15
 
     const ignition = this.workspace.ignite(
       {
@@ -924,6 +928,14 @@ export class BibaoBrain {
 
     const style = maskStyle(relation, this.state)
     const budget = decideBudget({ state: this.state, salience: salienceInfo.salience, style })
+    // 说话频率也管"一次说几句"：拉低就只发一句
+    const talkScale = 0.35 + 0.65 * this.tuning.talkativeness
+    budget.maxBubbles = Math.max(1, Math.round(budget.maxBubbles * talkScale))
+    budget.maxChars = Math.max(10, Math.round(budget.maxChars * (0.6 + 0.4 * this.tuning.talkativeness)))
+    if (cooling) {
+      budget.maxBubbles = 1
+      budget.maxChars = Math.min(budget.maxChars, 16)
+    }
     const appraisalHint = await this._appraisalHint({ text, relation, analysis })
     const memories = this.memory
       .retrieve({
@@ -1019,6 +1031,22 @@ export class BibaoBrain {
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
     )
+
+    // 复读过滤：最近三句自己说过的，高度重合就丢掉，避免"原地追问"
+    const selfRecent = (relation.recent ?? [])
+      .filter((item) => item.role === 'self')
+      .slice(-3)
+      .map((item) => item.text)
+    if (selfRecent.length && (dual.bubbles ?? []).length) {
+      const scored = dual.bubbles.map((bubble) => ({
+        bubble,
+        overlap: Math.max(0, ...selfRecent.map((old) => bigramOverlap(old, bubble))),
+      }))
+      const fresh = scored.filter((item) => item.overlap < 0.75)
+      dual.bubbles = (fresh.length ? fresh : [scored.sort((a, b) => a.overlap - b.overlap)[0]])
+        .map((item) => item.bubble)
+        .slice(0, budget.maxBubbles)
+    }
 
     if (appraisalHint?.subtext && dual.meta?.source !== 'llm') {
       dual.perceived_subtext = appraisalHint.subtext
