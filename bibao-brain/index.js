@@ -1094,6 +1094,29 @@ export function apply(ctx, config = {}) {
         auto.lastHash = thumbHash
         const file = path.join(dataDir, 'screens', `auto-${Date.now()}.jpg`)
         const winRect = (await inputAgent.rect(settings.game.window ?? 'TFT')) ?? null
+        // 金币/等级/血量在底部 HUD：单独裁一条窄带问，准确率比整屏高得多
+        let hud = null
+        if (winRect) {
+          try {
+            const hudFile = path.join(dataDir, 'screens', 'hud.jpg')
+            const hudRect = {
+              x: Math.round(winRect.x + winRect.w * 0.12),
+              y: Math.round(winRect.y + winRect.h * 0.86),
+              w: Math.round(winRect.w * 0.76),
+              h: Math.round(winRect.h * 0.14),
+            }
+            await inputAgent.shot(hudFile, { maxWidth: 900, format: 'jpeg', rect: hudRect })
+            const hud64 = (await readFile(hudFile)).toString('base64')
+            const hudSeen = await vision.describe(`data:image/jpeg;base64,${hud64}`, {
+              prompt: '这是云顶之弈底部状态栏。只输出 JSON：{"gold":0,"level":0,"health":0}。gold 是金币数字，level 是等级，health 是血量（没有就 null）。只输出数字，不要解释。',
+              maxTokens: 80,
+            })
+            const rawHud = String(hudSeen.text ?? '')
+            hud = JSON.parse(rawHud.slice(rawHud.indexOf('{'), rawHud.lastIndexOf('}') + 1))
+          } catch {
+            hud = null
+          }
+        }
         await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg', rect: winRect })
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
@@ -1132,9 +1155,11 @@ export function apply(ctx, config = {}) {
         if (scene === 'other' && Array.isArray(info?.cards) && info.cards.filter((card) => Number.isFinite(Number(card?.x))).length >= 3) scene = 'shop'
         // 只有商店/战斗画面上的数字才可信；加载画面模型会编数
         const reliable = scene === 'shop' || scene === 'combat'
-        const gold = reliable ? Number(info?.gold ?? 0) : 0
-        const level = reliable ? Number(info?.level ?? 0) || 1 : 0
-        const health = reliable ? Number(info?.health ?? 100) || 100 : 0
+        // 优先用 HUD 窄带读出来的数字，读不到才退回整屏结果
+        const hudGold = Number(hud?.gold)
+        const gold = reliable ? (Number.isFinite(hudGold) && hudGold >= 0 ? hudGold : Number(info?.gold ?? 0)) : 0
+        const level = reliable ? Number(hud?.level ?? info?.level ?? 0) || 1 : 0
+        const health = reliable ? Number(hud?.health ?? info?.health ?? 100) || 100 : 0
         const stage = String(info?.stage ?? '')
         const bench = Number(info?.bench ?? 0) || 0
         const cards = (Array.isArray(info?.cards) ? info.cards : [])

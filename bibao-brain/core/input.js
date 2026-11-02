@@ -43,14 +43,19 @@ export class InputAgent {
     }
   }
 
-  /** 找到标题匹配的可见窗口，取面积最大的那个。 */
+  /**
+   * 找到游戏窗口。换分辨率/切无边框全屏后标题可能变，所以：
+   * 先按标题找；如果它比"屏幕里最大的窗口"小很多，就用最大的那个。
+   */
   async rect(match = 'TFT') {
     const data = await this.request('/windows')
-    const list = Array.isArray(data.list) ? data.list : []
-    const hits = list.filter((item) => item.visible && String(item.title).includes(match))
-    if (!hits.length) return null
-    hits.sort((a, b) => b.w * b.hgt - a.w * a.hgt)
-    const win = hits[0]
+    const list = (Array.isArray(data.list) ? data.list : []).filter((item) => item.visible && item.w > 200 && item.hgt > 150)
+    if (!list.length) return null
+    const area = (item) => item.w * item.hgt
+    list.sort((a, b) => area(b) - area(a))
+    const biggest = list[0]
+    const titled = list.find((item) => String(item.title).includes(match)) ?? null
+    const win = titled && area(titled) >= area(biggest) * 0.6 ? titled : biggest
     return { x: win.x, y: win.y, w: win.w, h: win.hgt, title: win.title }
   }
 

@@ -36,13 +36,14 @@ export function startHands({ log = () => {} } = {}) {
   return new Promise((resolve) => {
     let child
     try {
-      // 经 cmd 的 start 起：父进程只是 cmd，powershell 由系统 shell 拉起，
-      // 这样不会继承宿主进程那套受限的作业/控制台环境。
-      child = spawn(
-        'cmd.exe',
-        ['/c', 'start', '', powershellPath(), '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SERVER],
-        { detached: true, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
-      )
+      // 用 wscript 拉起：窗口样式 0，完全不可见。
+      // 仍然不是 DSH 的直接子进程，所以不会继承宿主那套受限的控制台环境。
+      const vbs = path.join(HERE, '..', 'bin', 'hands-hidden.vbs')
+      child = spawn('wscript.exe', [vbs, SERVER], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      })
     } catch (error) {
       log(`spawn failed: ${error.message}`)
       resolve(false)
