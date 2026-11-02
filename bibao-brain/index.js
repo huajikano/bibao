@@ -1655,14 +1655,11 @@ export function apply(ctx, config = {}) {
         const base64 = (await readFile(file)).toString('base64')
         const ask = [
           '这是电脑屏幕截图，里面可能有《云顶之弈》或《金铲铲之战》。',
-          '只输出 JSON，不要解释：',
-          '{"found":true,"phase":"prep 或 combat 或 idle","gold":0,"health":0,"level":0,',
-          '"shop":[{"slot":0,"name":"棋子名","x":0.5,"y":0.5}],',
-          '"buttons":{"roll":{"x":0.5,"y":0.5},"level":{"x":0.5,"y":0.5}},',
-          '"note":"一句话描述你看到的界面"}',
-          '坐标必须是 0~1 的相对值（相对整张图），找不到的项给 null。',
+          '只输出一个 JSON，不要解释、不要 markdown：',
+          '{"gold":0,"cards":[[0.2,0.94],[0.35,0.94]],"roll":[0.9,0.95]}',
+          'cards 是从左到右五张商店卡的中心点，坐标是相对整张图的 0~1 小数；看不清就给空数组。',
         ].join('\n')
-        const result = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 1600 })
+        const result = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 2600 })
         let parsed = null
         try {
           const raw = String(result.text ?? '')
@@ -1674,9 +1671,13 @@ export function apply(ctx, config = {}) {
           point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
             ? { x: Math.round(Number(point.x) * size.width), y: Math.round(Number(point.y) * size.height) }
             : null
+        const cards = Array.isArray(parsed?.cards) ? parsed.cards : []
+        const rollRaw = parsed?.roll ?? parsed?.buttons?.roll
         const view = parsed
           ? {
-              found: Boolean(parsed.found),
+              found: Boolean(parsed.found) || cards.length > 0,
+              cards: cards.map((pair) => toPixels({ x: pair?.[0], y: pair?.[1] })).filter(Boolean),
+              rollRaw: toPixels(Array.isArray(rollRaw) ? { x: rollRaw[0], y: rollRaw[1] } : rollRaw),
               phase: parsed.phase ?? '',
               gold: parsed.gold ?? null,
               health: parsed.health ?? null,
@@ -1692,11 +1693,11 @@ export function apply(ctx, config = {}) {
             }
           : null
         const auto = body.remember !== false && view
-        if (auto && view.roll) {
+        if (auto && (view.rollRaw || view.cards.length)) {
           settings.game.layout = {
             ...(settings.game.layout ?? {}),
-            roll: [view.roll.x, view.roll.y],
-            shop: view.shop.map((card) => (card.pixel ? [card.pixel.x, card.pixel.y] : null)).filter(Boolean),
+            roll: view.rollRaw ? [view.rollRaw.x, view.rollRaw.y] : settings.game.layout?.roll ?? null,
+            shop: view.cards.map((card) => [card.x, card.y]),
           }
           schedulePersist(200)
         }
