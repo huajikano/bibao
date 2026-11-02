@@ -919,6 +919,11 @@ window.__ModuleLoader__.load({
             { className: 'bb-actions' },
             h(
               'button',
+              { type: 'button', className: 'bb-btn', disabled: busy, onClick: () => act('/forget', {}) },
+              '让她翻篇（清掉悬置与心事）',
+            ),
+            h(
+              'button',
               { type: 'button', className: 'bb-btn', disabled: busy, onClick: () => act('/clock', { mode: 'shift' }) },
               '平移对齐（保留记忆年龄）',
             ),

@@ -304,7 +304,8 @@ export class BibaoBrain {
   sleep({ dayKey: key = dayKey(this.simMs) } = {}) {
     const report = this.memory.consolidate({ now: this.simMs, age: this.age, mood: this.state.moodValence })
     const applied = this.schema.updateFromConsolidation(report.schemaDeltas)
-    this.state.energy = clamp(this.state.energy + 16, 0, 100)
+    // 睡一觉就该是睡够了：至少回到 70，而不是只加 16
+    this.state.energy = clamp(Math.max(this.state.energy, 70) + 8, 0, 100)
     this.state.moodBaseline = clamp(
       0.05 +
         0.45 * this.schema.get('self_worth') +
@@ -316,6 +317,7 @@ export class BibaoBrain {
     this.lastSleepDay = key
     this.stats.dreams += report.dream ? 1 : 0
     if (this.store) {
+      this.store.decayFacts(this.simMs)
       this.store.expireFacts(this.simMs)
       void this._extractFacts()
     }
@@ -443,7 +445,7 @@ export class BibaoBrain {
       .map((node) => `${node.id} | ${node.title} | ${String(node.narrative).slice(0, 30)}`)
       .join('\n')
     const system =
-      '你只做记忆归纳。把给到的事件压成不超过 6 条中文事实，每条 <= 28 字，主语明确（我 / 某人的名字）。只输出 JSON：{"facts":[{"text":"...","confidence":0.0,"sourceIds":["ep_x"]}]}。不要解释，不要编造没有出处的事。'
+      '你只做记忆归纳。把给到的事件压成不超过 6 条中文事实，每条 <= 24 字，用自己的话概括（不要引用原话、不要用引号）。只输出 JSON：{"facts":[{"text":"...","confidence":0.0,"sourceIds":["ep_x"]}]}。不要解释，不要编造没有出处的事。'
     try {
       let raw = ''
       const stream = llm.llm.stream({
@@ -489,12 +491,14 @@ export class BibaoBrain {
 
       // 模型没给出可解析的 JSON：用模板兜底，保证语义层不会因为模型抽风而断掉
       if (saved.length === 0) {
+        // 只归纳"有分量的事"：闲聊原话不进事实层
         const picks = today
-          .slice()
+          .filter((node) => node.source !== 'chat' || node.arousal > 0.6)
           .sort((a, b) => b.salience * Math.abs(b.valence) - a.salience * Math.abs(a.valence))
-          .slice(0, 4)
+          .slice(0, 3)
         for (const node of picks) {
-          const text = String(node.narrative || node.title || '').slice(0, 28)
+          const gist = String(node.title ?? '').replace(/^我说：/, '').slice(0, 18)
+          const text = gist ? `${node.entityName ? `${node.entityName}：` : ''}${gist}` : ''
           if (!text) continue
           const record = {
             id: `fact_${Math.abs(hashString(text)).toString(16)}`,
@@ -566,17 +570,24 @@ export class BibaoBrain {
         (!fact.subject || (name && fact.subject === name)) &&
         !others.some((other) => String(fact.text).includes(other)),
     )
-    const facts = (ownFacts.length ? ownFacts : neutral).slice(0, 6).map((fact) => fact.text)
+    const picked = (ownFacts.length ? ownFacts : neutral)
+    // 旧的、低置信的事实就不该天天出现在"还记得的事"里
+    const freshFacts = picked
+      .filter((fact) => !fact.createdAt || now - fact.createdAt < 3 * DAY_MS || fact.confidence >= 0.7)
+      .slice(0, 6)
+    const facts = freshFacts.map((fact) => fact.text)
 
     const conscious = this.memory.episodes.filter((node) => this.memory.tier(node, now) === 'conscious')
     const own = entityId ? conscious.filter((node) => node.entityId === entityId) : []
     // 退化顺序：这个人的 → 没有归属的（自己的旧事）→ 不注入别人的
     const episodes = (own.length ? own : conscious.filter((node) => !node.entityId))
       .sort((a, b) => b.salience * Math.abs(b.valence) - a.salience * Math.abs(a.valence))
+      .slice(0, 6)
+      .filter((node) => now - node.at < 7 * DAY_MS || node.salience > 0.65)
       .slice(0, 2)
-      .map((node) => ({ title: node.title, narrative: String(node.narrative ?? '').slice(0, 110), r: node.r }))
+      .map((node) => ({ title: node.title, narrative: String(node.narrative ?? '').slice(0, 28), r: node.r }))
 
-    return { facts, episodes, stance: this.stanceFor(relation), somatic: this.somaticLine() }
+    return { facts, freshFacts, episodes, stance: this.stanceFor(relation), somatic: this.somaticLine() }
   }
 
   /**

@@ -200,6 +200,26 @@ export function openBrainStore(file) {
         expiresAt: row.expires_at,
       }))
     },
+    /** 每睡一觉，旧事实就淡一点：没有人反复确认的细节本来就该忘。 */
+    decayFacts(now = Date.now()) {
+      try {
+        // 以前那种逐字引用原话的事实，一律清掉
+        db.prepare(
+          "UPDATE facts SET archived_at = ? WHERE archived_at IS NULL AND (text LIKE '%说：「%' OR text LIKE '%我说过%')",
+        ).run(now)
+        const rows = db.prepare('SELECT id, confidence, created_at FROM facts WHERE archived_at IS NULL').all()
+        const update = db.prepare('UPDATE facts SET confidence = ?, archived_at = ? WHERE id = ?')
+        for (const row of rows) {
+          const ageDays = (now - (row.created_at ?? now)) / 86400000
+          if (ageDays < 1) continue
+          const confidence = Math.max(0, Number(row.confidence) * 0.82)
+          const archivedAt = confidence < 0.3 && ageDays > 5 ? now : null
+          update.run(confidence, archivedAt ?? null, row.id)
+        }
+      } catch (error) {
+        console.warn('[bibao] decayFacts failed:', error?.message ?? error)
+      }
+    },
     expireFacts(now = Date.now()) {
       try {
         const info = db

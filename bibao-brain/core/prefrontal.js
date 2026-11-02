@@ -55,15 +55,12 @@ export function buildPerceptionFrame(ctx) {
   const memoryLine = memories?.length
     ? memories.map((item) => `「${item.title}」(${item.valence >= 0 ? '好' : '坏'}感${item.valence.toFixed(2)})`).join('；')
     : '没有能想起来的完整情节'
-  // 心事会过期：45 分钟没有新刺激就翻篇，否则会变成口头禅
-  const stressAge = state.lastStressor?.at ? now - state.lastStressor.at : Number.POSITIVE_INFINITY
-  const stress = state.lastStressor && stressAge < 45 * 60 * 1000
-    ? `心里还压着一件没过去的事：${state.lastStressor.name ?? '某人'}那句话之后，到现在都没个结果`
-    : '最近没有卡在心里的冲突'
+  // 心事只影响体感，不在提示词里复述——人不会每轮都念同一句台词
+  const stress = '最近没有卡在心里的冲突'
 
   const somatic = digest?.somatic ?? ''
   const stance = digest?.stance ?? ''
-  const facts = (digest?.facts ?? []).slice(0, 6)
+  const facts = (digest?.freshFacts ?? digest?.facts ?? []).slice(0, 6)
   const episodes = (digest?.episodes ?? []).slice(0, 2)
 
   return [
@@ -73,7 +70,11 @@ export function buildPerceptionFrame(ctx) {
     `对这个人的态度：${stance || relations}。`,
     stress && stress !== '最近没有卡在心里的冲突' ? `${stress}。` : '',
     recent && recent.length
-      ? `刚才聊到：${recent.slice(-2).map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
+      ? (() => {
+          const fresh = recent.filter((item) => !item.at || now - item.at < 30 * 60 * 1000).slice(-3)
+          if (!fresh.length) return ''
+          return `刚才这半小时：${fresh.map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
+        })()
       : '',
     facts.length ? `记得的事：\n${facts.map((text) => `  · ${text}`).join('\n')}` : '',
     episodes.length

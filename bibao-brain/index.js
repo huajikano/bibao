@@ -1058,6 +1058,26 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/forget',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        brain.pending = []
+        brain.state.lastStressor = null
+        for (const relation of brain.social.snapshot()) {
+          const row = brain.social.get(relation.id)
+          if (row) row.recent = []
+        }
+        if (body?.mood !== false) {
+          brain.state.moodBaseline = Math.max(-0.3, Math.min(0.3, brain.state.moodBaseline + 0.15))
+          brain.state.cortisol = Math.max(0.2, brain.state.cortisol * 0.6)
+        }
+        schedulePersist(200)
+        return json({ ok: true, snapshot: snapshot() })
+      },
+    },
+    {
       path: '/clock',
       methods: ['GET', 'POST'],
       handler: async (request) => {

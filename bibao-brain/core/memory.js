@@ -210,6 +210,11 @@ export class MemorySystem {
 
   /** 睡眠交叉回放：修剪、语义化、极慢的新皮层更新、造梦。 */
   consolidate({ now, age = 22, mood = 0 } = {}) {
+    // 睡一觉，昨天的事就没那么扎眼了（显著性缓慢回落）
+    for (const node of this.episodes) {
+      if (now - node.rUpdatedAt > DAY_MS) node.salience = Math.max(0.2, node.salience * 0.9)
+    }
+
     const pruned = []
     const kept = []
     // 记忆力被调低时不真删：只是沉到看不见的地方，调回去还能捞出来
