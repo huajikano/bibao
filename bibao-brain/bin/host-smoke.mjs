@@ -186,6 +186,19 @@ check(
   (llmSettings.data.snapshot?.snow?.allowGroups ?? []).join(',') === '576268399',
   (llmSettings.data.snapshot?.snow?.allowGroups ?? []).join(','),
 )
+const wsSave = await call('POST', '/settings', {
+  snowluma: { enabled: false, wsUrl: 'ws://127.0.0.1:3009/', wsToken: 'tok-test', pokeReply: false },
+})
+check(
+  'WS 配置能保存并回显',
+  wsSave.data.snapshot?.snow?.wsUrl === 'ws://127.0.0.1:3009/' &&
+    wsSave.data.snapshot?.snow?.hasWsToken === true &&
+    wsSave.data.snapshot?.snow?.pokeReply === false,
+  `${wsSave.data.snapshot?.snow?.wsUrl} · token=${wsSave.data.snapshot?.snow?.hasWsToken} · pokeReply=${wsSave.data.snapshot?.snow?.pokeReply}`,
+)
+await call('POST', '/settings', {
+  snowluma: { enabled: false, wsUrl: '', wsToken: '', pokeReply: true },
+})
 await call('POST', '/settings', {
   llm: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat', apiKey: '', profiles: {} },
 })

@@ -364,6 +364,39 @@ window.__ModuleLoader__.load({
     /* 基础工具                                                            */
     /* ------------------------------------------------------------------ */
 
+    /**
+     * 浏览器端把图片缩到 320px 再上传：贴纸/表情包动辄几 MB，
+     * 原图直接塞进 body 会被网关或 DSH 代理截断。
+     */
+    function shrinkImage(file, maxSide = 320) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onerror = () => reject(new Error('读取图片失败'))
+        reader.onload = () => {
+          const img = new Image()
+          img.onerror = () => reject(new Error('不是浏览器能识别的图片'))
+          img.onload = () => {
+            try {
+              const scale = Math.min(1, maxSide / Math.max(1, img.width, img.height))
+              const canvas = document.createElement('canvas')
+              canvas.width = Math.max(1, Math.round(img.width * scale))
+              canvas.height = Math.max(1, Math.round(img.height * scale))
+              const ctx = canvas.getContext('2d')
+              if (!ctx) return reject(new Error('浏览器不支持 canvas'))
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+              // 有透明通道的贴纸保留 PNG；照片用 JPEG 压体积
+              const alpha = /png|webp|gif|svg/i.test(String(file.type ?? ''))
+              resolve(canvas.toDataURL(alpha ? 'image/png' : 'image/jpeg', 0.88))
+            } catch (error) {
+              reject(error)
+            }
+          }
+          img.src = String(reader.result ?? '')
+        }
+        reader.readAsDataURL(file)
+      })
+    }
+
     async function request(pathname, options = {}) {
       // 某些链路会把 POST 的 body 丢掉，所以同一份 JSON 再塞进查询串，Host 两边都认
       let url = `${API}${pathname}`
@@ -1718,6 +1751,7 @@ window.__ModuleLoader__.load({
             sendEnabled: form.sendEnabled,
           recallEnabled: form.recallEnabled === true,
           pokeReact: form.pokeReact !== false,
+          pokeReply: form.pokeReply !== false,
           pokeBack: form.pokeBack === true,
             allowGroups: form.allowGroups
               .split(/[\s,，]+/)
@@ -2301,7 +2335,9 @@ window.__ModuleLoader__.load({
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
             pokeReact: snow.pokeReact !== false,
+            pokeReply: snow.pokeReply !== false,
             pokeBack: snow.pokeBack === true,
+            outreachEnabled: snap.outreach?.enabled === true,
             tuning: { ...(snap.tuning ?? { memoryStrength: 1, talkativeness: 1 }) },
           },
         }))
@@ -2363,6 +2399,11 @@ window.__ModuleLoader__.load({
           sendEnabled: form.sendEnabled,
           allowPrivate: form.allowPrivate,
           allowGroups: form.allowGroups.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean),
+          pokeReact: form.pokeReact !== false,
+          pokeReply: form.pokeReply !== false,
+          pokeBack: form.pokeBack === true,
+          recallEnabled: form.recallEnabled === true,
+          stickers: form.stickers !== false,
           httpBase: form.httpBase,
           wsUrl: form.wsUrl,
         }
@@ -2371,7 +2412,12 @@ window.__ModuleLoader__.load({
         try {
           const data = await request('/settings', {
             method: 'POST',
-            body: JSON.stringify({ llm, snowluma, tuning: form.tuning }),
+            body: JSON.stringify({
+              llm,
+              snowluma,
+              tuning: form.tuning,
+              outreach: { enabled: form.outreachEnabled === true },
+            }),
           })
           this.setState({ snap: data.snapshot, saving: '', note: '已保存', apiKey: '' })
           this.syncForm(data.snapshot)
@@ -2527,6 +2573,8 @@ window.__ModuleLoader__.load({
                 h(Field, { label: 'WS token' }, h('input', { className: 'bb-input', type: 'password', value: form.wsToken, placeholder: snow.hasWsToken ? '已有 token（留空不变）' : 'WS accessToken', onChange: (e) => this.set({ wsToken: e.target.value }) })),
                 h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.recallEnabled === true, onChange: (event) => this.setField({ recallEnabled: event.target.checked }) }), '允许冲动撤回（她偶尔会撤回刚发的那句）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReact !== false, onChange: (event) => this.setField({ pokeReact: event.target.checked }) }), '被戳一戳时会有感觉（触觉通道）'),
+            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReply !== false, onChange: (event) => this.setField({ pokeReply: event.target.checked }) }), '被戳之后真的回一句（默认开）'),
+            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.outreachEnabled === true, onChange: (event) => this.setField({ outreachEnabled: event.target.checked }) }), '允许她偶尔主动私聊你（默认关，每天最多一条）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '允许她偶尔戳回去（默认关，避免无限互戳）'),
             h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '576268399', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
                 h('div', { className: 'bb-inline bb-inline--wrap' },
@@ -2788,6 +2836,7 @@ window.__ModuleLoader__.load({
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
             pokeReact: snow.pokeReact !== false,
+            pokeReply: snow.pokeReply !== false,
             pokeBack: snow.pokeBack === true,
             tuning: {
               memoryStrength: Number(snap.tuning?.memoryStrength ?? 1),
@@ -3086,6 +3135,11 @@ window.__ModuleLoader__.load({
           sendEnabled: form.sendEnabled,
           allowPrivate: form.allowPrivate,
           allowGroups: form.allowGroups.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean),
+          pokeReact: form.pokeReact !== false,
+          pokeReply: form.pokeReply !== false,
+          pokeBack: form.pokeBack === true,
+          recallEnabled: form.recallEnabled === true,
+          stickers: form.stickers !== false,
           httpBase: form.httpBase,
           wsUrl: form.wsUrl,
         }
@@ -3094,7 +3148,12 @@ window.__ModuleLoader__.load({
         try {
           const data = await request('/settings', {
             method: 'POST',
-            body: JSON.stringify({ llm, snowluma, tuning: form.tuning }),
+            body: JSON.stringify({
+              llm,
+              snowluma,
+              tuning: form.tuning,
+              outreach: { enabled: form.outreachEnabled === true },
+            }),
           })
           // 滑杆单独走小接口：即使大 body 被链路吞掉，这两个值也能落库
           let tuningSnapshot = null
@@ -3817,18 +3876,26 @@ window.__ModuleLoader__.load({
         this.setState({ busy: true, note: `导入 0/${files.length}…` })
         let done = 0
         let failed = 0
+        let lastError = ''
         for (const file of files) {
           try {
             const dataUrl = await shrinkImage(file, 320)
             const res = await request('/stickers/import', { method: 'POST', body: JSON.stringify({ dataUrl, name: file.name }) })
             if (res?.item) done += 1
-            else failed += 1
-          } catch {
+            else {
+              failed += 1
+              lastError = '服务器没有返回收藏项'
+            }
+          } catch (error) {
             failed += 1
+            lastError = error?.message ?? String(error)
           }
           this.setState({ note: `导入 ${done + failed}/${files.length}…` })
         }
-        this.setState({ busy: false, note: `导入完成：成功 ${done} 张${failed ? `，失败 ${failed} 张` : ''}` })
+        this.setState({
+          busy: false,
+          note: `导入完成：成功 ${done} 张${failed ? `，失败 ${failed} 张${lastError ? `（${lastError}）` : ''}` : ''}`,
+        })
         await this.load()
       }
 

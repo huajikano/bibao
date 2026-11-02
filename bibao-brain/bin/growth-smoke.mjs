@@ -15,6 +15,9 @@ import { SelfModel } from '../core/self.js'
 import { buildSystemPrompt } from '../core/voice.js'
 import { analyzeText } from '../core/appraisal.js'
 import { dayKey } from '../core/clock.js'
+import { ThreadMemory } from '../core/threads.js'
+import { planOutreach } from '../core/outreach.js'
+import { wsUrlWithToken } from '../core/snowluma.js'
 
 const builtin = JSON.parse(await readFile(new URL('../core/biography.json', import.meta.url), 'utf8'))
 const bio16 = {
@@ -186,6 +189,67 @@ function fresh({ biography = bio16, startMs = Date.UTC(2026, 10, 2, 14, 0, 0), s
   check('自我经验能存档', restored.selfModel.lessons.length === brain.selfModel.lessons.length, `lessons=${restored.selfModel.lessons.length}`)
   check('生活流能存档', restored.life.today(restored.simMs).length > 0, `events=${restored.life.today(restored.simMs).length}`)
   check('成长开关能存档', restored.growth.selfReview === brain.growth.selfReview && restored.growth.life === brain.growth.life, JSON.stringify(restored.growth))
+}
+
+/* G. 对话线程：没聊完的事会留一条线，过期会放下 */
+{
+  const brain = fresh()
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '你答应我的事呢', channel: 'private' })
+  const thread = brain.threads.openFor('u1', brain.simMs)[0]
+  check('没答应的问句会留下线程', Boolean(thread?.unresolved), thread?.topic ?? 'none')
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '算了 不说这个 今天食堂好咸', channel: 'private' })
+  check('线程不会因为下一句闲聊就消失', brain.threads.openFor('u1', brain.simMs).length >= 1, `threads=${brain.threads.openFor('u1', brain.simMs).length}`)
+  const digest = brain.digestFor(brain.social.get('u1'), { pe: 0.2 })
+  check('线程会进提示词', Array.isArray(digest.threads) && digest.threads.length > 0, JSON.stringify(digest.threads.map((item) => item.topic)))
+  brain.simMs += 3 * 24 * 60 * 60 * 1000
+  check('两天后线程会自己放下', brain.threads.openFor('u1', brain.simMs).length === 0, `threads=${brain.threads.openFor('u1', brain.simMs).length}`)
+  const restored = ThreadMemory.fromJSON(JSON.parse(JSON.stringify(brain.threads.toJSON())))
+  check('线程能存档', Array.isArray(restored.threads), `threads=${restored.threads.length}`)
+}
+
+/* H. 主动分享：默认关；打开后也要过亲密度、沉默、生活事件三道闸 */
+{
+  const brain = fresh()
+  brain.social.setRelation('owner', { intimacy: 82, trust: 80, friend: true })
+  brain.state.energy = 70
+  brain.state.hormones.cortisol = 0.2
+  brain.state.moodValence = 0.15
+  brain.selfModel.style.initiative = 0.6
+  brain.lastExternalAt = brain.simMs - 7 * 60 * 60 * 1000
+  const off = brain.outreachProposal({ settings: { enabled: false } })
+  check('主动分享默认关闭', off.ok === false && off.reason === 'disabled', off.reason)
+  const on = brain.outreachProposal({ settings: { enabled: true, minSilenceMin: 360, minIntimacy: 55, maxPerDay: 1 } })
+  check('打开后会挑亲近的人说一句', on.ok === true && Boolean(on.targetId) && Boolean(on.text), JSON.stringify(on))
+  brain.markOutreach({ proposal: on })
+  const again = brain.outreachProposal({ settings: { enabled: true, minSilenceMin: 360, minIntimacy: 55, maxPerDay: 1 } })
+  check('每天最多一条', again.ok === false && ['daily-limit', 'cooldown'].includes(again.reason), again.reason)
+  const strict = planOutreach({ enabled: true, now: brain.simMs, relation: { id: 'u1', name: '阿岚', intimacy: 20 }, life: { today: brain.life.today(brain.simMs) }, state: brain.state, selfModel: brain.selfModel, silenceMin: 999, cfg: { minIntimacy: 55 } })
+  check('不够亲近不会主动', strict.ok === false && strict.reason === 'not-close-enough', strict.reason)
+}
+
+/* I. 被戳：合成感知不进线程，但会走完整语言区 */
+{
+  const brain = fresh()
+  const before = brain.threads.threads.length
+  const poke = await brain.perceive({
+    entityId: 'u1',
+    entityName: '阿岚',
+    text: '（戳了你一下）',
+    channel: 'group',
+    atMe: true,
+    groupId: 'g1',
+    groupName: '班级群',
+  })
+  check('被戳会走完语言区', poke.ignited === true && Array.isArray(poke.dual?.bubbles), JSON.stringify(poke.dual?.bubbles ?? []))
+  check('合成感知不会被当成聊天线程', brain.threads.threads.length === before, `threads=${brain.threads.threads.length}`)
+}
+
+/* J. WS 鉴权 URL：token 不能只放在被忽略的 header 里 */
+{
+  const url = wsUrlWithToken('ws://127.0.0.1:3001/', 'abc xyz')
+  check('WS token 会进查询串', url.includes('access_token=') && url.includes('abc'), url)
+  const plain = wsUrlWithToken('ws://127.0.0.1:3001/', '')
+  check('没有 token 不加参数', plain === 'ws://127.0.0.1:3001/', plain)
 }
 
 for (const item of results) console.log(`${item.ok ? 'PASS' : 'FAIL'}  ${item.name}  —  ${item.detail}`)

@@ -72,6 +72,11 @@ export function buildPerceptionFrame(ctx) {
           return `刚才这半小时：${fresh.map((item) => `${item.role === 'self' ? '我说' : '他说'}「${item.text}」`).join('；')}`
         })()
       : '',
+    digest?.threads?.length
+      ? `你们还没聊完的：\n${digest.threads
+          .map((item) => `  · ${item.topic}${item.unresolved ? `（还欠一句：${item.text}）` : item.awaitingReply ? '（你刚问了他，等他回）' : ''}`)
+          .join('\n')}\n（如果他自己绕回来，就接上；不要主动翻旧账查岗。）`
+      : '',
     facts.length
       ? `记得的事：\n${facts.map((fact) => `  · ${typeof fact === 'string' ? fact : fact.text}${typeof fact === 'object' && fact.confidence < 0.6 ? '（这条不太确定）' : ''}`).join('\n')}`
       : '',

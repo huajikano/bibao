@@ -62,9 +62,43 @@ growth:
 ### 一次验成长
 
 ```bash
-node bin/growth-smoke.mjs     # 28 项：人格一致 / 复盘 / 生活流 / 模糊记忆 / 存档
+node bin/growth-smoke.mjs     # 41 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享
 node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
+node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 ```
+
+## 0.8：没聊完的事、可以主动但默认不打扰、QQ 四个老毛病
+
+### 对话线程
+
+`core/threads.js` 只维护每个对象最多 3 条"还没聊完的事"：
+
+- 对方问过但还没被回答的问题；
+- 答应过、约好、提到"下次/明天/回头"的事；
+- 最近还热着的话题。
+
+线程 2 天后自动放下，不进入长期记忆。提示词里会出现"你们还没聊完的：…"，但明确要求"他绕回来再提，不要主动查岗"。
+
+### 主动分享（默认关闭）
+
+`core/outreach.js` 只在同时满足这些条件时给一句私聊：
+
+- 对方是真实好友，亲密度 ≥ 55；
+- 沉默 ≥ 6 小时；
+- 今天生活流里有 6 小时内发生的事；
+- 精力够、没在气头上、心境没跌到谷底；
+- 每个对象每天最多一条，全局冷却 8 小时。
+
+默认 `outreach.enabled=false`；打开后仍然要求 `sendEnabled=true` 且 `allowPrivate=true`，不会在群里刷存在感。
+
+### QQ 修复
+
+| 问题 | 原因 | 修复 |
+| --- | --- | --- |
+| 表情包导入失败 | 主面板调用了不存在的 `shrinkImage` | 补上 canvas 缩放 + PNG/JPEG 选择；失败时显示具体错误 |
+| 戳一戳没反应 | 只写触觉感知，从不生成回复 | `respondToPoke()` 走完整语言区，20 秒/对象冷却；默认开，可在设置关 |
+| WS 配置保存后重启丢失 | 启动时只恢复 `enabled/sendEnabled/allowGroups` | 逐字段恢复 HTTP/WS 地址、token、selfId、poke 开关等 |
+| WS 客户端连不上 | token 只放 header（Node WebSocket 不一定支持）；selfId 在手填配置时可能为空 | token 同时进 `?access_token=`；始终读 snowluma 配置拿 selfId；连接状态写入 `snowluma-log.jsonl` 与 `/state.snow.wsStatus` |
 
 ---
 
@@ -120,7 +154,7 @@ LLM 只能返回双轨 JSON，且 `neuro_delta` 被限幅、`bubbles` 被预算�
 ```bash
 node bin/sandbox.mjs          # 全部 6 项
 node bin/sandbox.mjs T3 T4    # 只跑指定项
-node bin/growth-smoke.mjs     # 成长层 28 项
+node bin/growth-smoke.mjs     # 成长层 41 项
 node bin/bci-hub-smoke.mjs    # 多脑机接口 12 项
 ```
 
@@ -189,6 +223,7 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
 | POST | `/api/bibao/group/focus` | 手动改焦点群 |
 | POST | `/api/bibao/settings` | `{useLlm, tuning, growth}` 切换语言区 / 行为滑杆 / 成长层并持久化 |
 | POST | `/api/bibao/self/review` | 立刻做一次自我复盘（`force:false` 时只在有新证据时跑） |
+| POST | `/api/bibao/outreach/preview` | 看"现在该不该主动找谁说一句"，不发送 |
 | GET | `/api/bibao/bci` | 已注册的脑机接口、能力、策略与最近审计 |
 | POST | `/api/bibao/bci/sense` | `{adapter, payload}` 只读拉一次外部感知 |
 | POST | `/api/bibao/reset` | `{seed}` 重新出生 |
@@ -228,6 +263,8 @@ bibao-brain/
 │  ├─ voice.js           从当前 biography 生成人格一致的 System Prompt
 │  ├─ self.js            自我模型：证据 → 经验 → 六维说话倾向微调
 │  ├─ life-stream.js     她自己的今天：生活事件、提示词、睡前日记
+│  ├─ threads.js         对话线程：没聊完的事、两天后自动放下
+│  ├─ outreach.js        主动分享的纯决策：该不该先说、说什么
 │  ├─ bci-hub.js         多脑机接口：能力声明、只读/动作策略、限频、审计
 │  ├─ broca.js           本地语言组装（双轨 JSON、去标点、预算）
 │  ├─ prefrontal.js      感知帧、LLM 输出钳制、双轨生成
@@ -256,9 +293,9 @@ bibao-brain/
 | 项目 | 结果 |
 | --- | --- |
 | `node bin/sandbox.mjs` | 6/6 通过，约 40ms |
-| `node bin/growth-smoke.mjs` | 28/28 通过（人格一致、自我复盘、生活流、模糊记忆、存档） |
+| `node bin/growth-smoke.mjs` | 41/41 通过（人格、复盘、生活流、模糊记忆、线程、主动分享、WS token） |
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
-| `node bin/host-smoke.mjs` | 28/28 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制、自我复盘与 BCI） |
+| `node bin/host-smoke.mjs` | 29/29 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |
 | 客户端槽位 | `sidebar.panellist` 出现 `bibao`（order 6），`main` 出现 `bibao` 面板注册 |

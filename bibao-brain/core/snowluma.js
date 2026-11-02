@@ -8,6 +8,23 @@
  * 发：http://127.0.0.1:3000/<action>（send_private_msg / send_group_msg / delete_msg）
  */
 
+/**
+ * WebSocket 鉴权兜底：Node 自带的 WebSocket 对自定义 header 支持并不统一，
+ * 而 OneBot / snowluma 通常也认 `?access_token=`。两边都带上，避免
+ * "HTTP 能发、WS 收不到事件"的半连接状态。
+ */
+export function wsUrlWithToken(url, token) {
+  const raw = String(url ?? '')
+  if (!raw || !token) return raw
+  try {
+    const parsed = new URL(raw)
+    if (!parsed.searchParams.has('access_token')) parsed.searchParams.set('access_token', token)
+    return parsed.toString()
+  } catch {
+    return raw
+  }
+}
+
 export class SnowlumaBridge {
   constructor({
     httpBase = 'http://127.0.0.1:3000',
@@ -74,7 +91,7 @@ export class SnowlumaBridge {
   _open() {
     if (this.closed) return
     try {
-      this.socket = new WebSocket(this.wsUrl, {
+      this.socket = new WebSocket(wsUrlWithToken(this.wsUrl, this.wsToken), {
         headers: this.wsToken ? { Authorization: `Bearer ${this.wsToken}` } : {},
       })
     } catch (error) {

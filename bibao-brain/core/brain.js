@@ -56,6 +56,8 @@ import { AttentionPool } from './bci.js'
 import { decideHesitation } from './hesitate.js'
 import { SelfModel } from './self.js'
 import { LifeStream } from './life-stream.js'
+import { ThreadMemory } from './threads.js'
+import { planOutreach } from './outreach.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
@@ -140,6 +142,7 @@ export class BibaoBrain {
     }
     this.selfModel = SelfModel.fromJSON({})
     this.selfModel.narrative = String(biography?.oneLine ?? '').slice(0, 120)
+    this.threads = new ThreadMemory()
     this.life = new LifeStream({ seed: this.seed })
     this.life.ensureDay({
       now: this.simMs,
@@ -149,6 +152,8 @@ export class BibaoBrain {
     })
     this.lastLifeEventAt = this.life.current(this.simMs)?.at ?? 0
     this.lastSelfReviewLlmAt = 0
+    // 主动分享的账本：默认关闭，只有 index 的 outreach 定时器会来问
+    this.outreach = { lastAt: 0, dayKey: '', count: 0, lastTargetId: '', lastText: '' }
   }
 
   get name() {
@@ -730,6 +735,42 @@ export class BibaoBrain {
     }
   }
 
+  /**
+   * 主动分享提案：只回答"现在该不该先开口、说什么"，不负责发送。
+   * 默认关闭；index 只有在 settings.outreach.enabled 时才会来问。
+   */
+  outreachProposal({ settings = {} } = {}) {
+    const now = this.simMs
+    const key = dayKey(now)
+    if (this.outreach.dayKey !== key) {
+      this.outreach.dayKey = key
+      this.outreach.count = 0
+    }
+    // 只主动找真实好友或主人格；不要把传记里的 NPC（妈妈、小岚）当成 QQ 联系人
+    const candidates = this.social.ranked().filter((item) => item.friend || item.id === this.userId)
+    const relation = candidates.find((item) => item.intimacy >= Number(settings.minIntimacy ?? 55)) ?? null
+    return planOutreach({
+      now,
+      enabled: settings.enabled === true,
+      cfg: settings,
+      relation,
+      life: { today: this.growth?.life ? this.life.today(now) : [] },
+      state: this.state,
+      selfModel: this.selfModel,
+      silenceMin: this.silenceMin,
+      lastOutAt: this.outreach.lastAt,
+      todayCount: this.outreach.count,
+    })
+  }
+
+  markOutreach({ proposal, at = this.simMs } = {}) {
+    this.outreach.lastAt = at
+    this.outreach.count += 1
+    this.outreach.lastTargetId = String(proposal?.targetId ?? '')
+    this.outreach.lastText = String(proposal?.text ?? '')
+    return this.outreach
+  }
+
   /** 90% 的时候，记忆只染语气，不摆事实。 */
   attitudeFor(relation) {
     const entityId = relation?.id ?? relation?.qq ?? null
@@ -793,6 +834,7 @@ export class BibaoBrain {
       stance: this.stanceFor(relation),
       somatic: this.somaticLine(),
       fuzzy: episodes.filter((item) => item.uncertain).length,
+      threads: entityId ? this.threads?.promptLines(entityId, now) ?? [] : [],
     }
   }
 
@@ -993,6 +1035,8 @@ export class BibaoBrain {
     const analysis = analyzeText(text)
     // 对方开口的这一刻，也是上一条回复的"成绩单"
     this.selfModel?.observeOutcome?.({ relation, text, analysis, now })
+    // 接上还没聊完的线程；合成感知（戳一戳）不算对话
+    this.threads?.observe?.({ entityId, text, at: now })
     const cues = coreCues(text)
     const schemaHits = this.schema.touchedBy(cues)
     const tags = tagsFor(analysis, schemaHits)
@@ -1386,6 +1430,7 @@ export class BibaoBrain {
 
     if ((dual.bubbles ?? []).length) {
       this.social.remember(entityId, { at: now, role: 'self', text: (dual.bubbles ?? []).join(' ') })
+      this.threads?.observeSelf?.({ entityId, text: (dual.bubbles ?? []).join(' '), at: now })
     }
     const motor = motorPlan(dual.bubbles ?? [], this.state.energy, dual.action_route === 'SILENT_READ' ? 0.5 : 0)
     stages.push({
@@ -1613,6 +1658,8 @@ export class BibaoBrain {
       senses: this.senses.snapshot(),
       self: this.selfModel.snapshot(),
       life: this.growth?.life ? this.life.snapshot(now) : null,
+      threads: this.threads.snapshot(now),
+      outreach: { ...this.outreach },
       growth: { ...this.growth, reviews: this.selfModel.reviews },
       factsDebug: { error: this.lastFactError, count: this.lastFactCount },
       tuning: { ...this.tuning },
@@ -1666,6 +1713,8 @@ export class BibaoBrain {
       timeline: this.timeline,
       self: this.selfModel.toJSON(),
       life: this.life.toJSON(),
+      threads: this.threads.toJSON(),
+      outreach: { ...this.outreach },
       growth: { ...this.growth },
       lastSelfReviewLlmAt: this.lastSelfReviewLlmAt,
     }
@@ -1731,6 +1780,8 @@ export class BibaoBrain {
     }
     brain.selfModel = SelfModel.fromJSON(json.self)
     if (!brain.selfModel.narrative) brain.selfModel.narrative = String(brain.biography?.oneLine ?? '').slice(0, 120)
+    brain.threads = ThreadMemory.fromJSON(json.threads)
+    brain.outreach = { lastAt: 0, dayKey: '', count: 0, lastTargetId: '', lastText: '', ...(json.outreach ?? {}) }
     brain.life = LifeStream.fromJSON(json.life, brain.seed)
     brain.life.ensureDay({
       now: brain.simMs,

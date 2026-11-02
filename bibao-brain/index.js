@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { BibaoBrain } from './core/brain.js'
 import { GroupAttentionFunnel, defaultGroups } from './core/group.js'
 import { runSandbox } from './core/sandbox.js'
-import { SnowlumaBridge } from './core/snowluma.js'
+import { SnowlumaBridge, wsUrlWithToken } from './core/snowluma.js'
 import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
@@ -56,6 +56,8 @@ const DEFAULTS = {
   tuning: { memoryStrength: 1, talkativeness: 1 },
   // 成长：自我复盘与生活流；关掉任何一项都不会影响纯认知内核
   growth: { selfReview: true, life: true },
+  // 主动分享：默认关闭，且只发私聊；打开后每天最多一条
+  outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
   // 手：默认关着；开着就会真的动鼠标键盘
@@ -80,6 +82,7 @@ const DEFAULTS = {
     allowPrivate: false,
     // 戳一戳：会有感觉，但不自动戳回去
     pokeReact: true,
+    pokeReply: true,
     pokeBack: false,
   },
 }
@@ -98,6 +101,7 @@ export function apply(ctx, config = {}) {
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
   settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
   settings.growth = { ...DEFAULTS.growth, ...(config?.growth ?? {}) }
+  settings.outreach = { ...DEFAULTS.outreach, ...(config?.outreach ?? {}) }
   settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
   settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   const dataDir = path.dirname(
@@ -140,10 +144,12 @@ export function apply(ctx, config = {}) {
   )
   let inputAgent = null
   let handsTimer = null
+  let outreachTimer = null
   const auto = { running: false, step: 0, log: [], startedAt: 0, lastError: '', bought: 0 }
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
+  const pokeReplyCooldown = new Map()
   let funnel = null
   let gate = null
   let loading = null
@@ -331,12 +337,22 @@ export function apply(ctx, config = {}) {
         const saved = JSON.parse(await readFile(settingsFile, 'utf8'))
         if (typeof saved?.useLlm === 'boolean') settings.useLlm = saved.useLlm
         if (saved?.snowluma && typeof saved.snowluma === 'object') {
-          if (typeof saved.snowluma.enabled === 'boolean') settings.snowluma.enabled = saved.snowluma.enabled
-          if (typeof saved.snowluma.sendEnabled === 'boolean') settings.snowluma.sendEnabled = saved.snowluma.sendEnabled
+          // 以前只恢复 enabled/sendEnabled/allowGroups，手填的 WS/HTTP 地址与 token
+          // 重启后会丢失，表现为"配置保存了但客户端连不上"。这里逐字段恢复。
+          for (const key of ['enabled', 'sendEnabled', 'allowPrivate', 'pokeReact', 'pokeBack', 'pokeReply', 'recallEnabled', 'stickers']) {
+            if (typeof saved.snowluma[key] === 'boolean') settings.snowluma[key] = saved.snowluma[key]
+          }
+          for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId', 'configDir']) {
+            if (typeof saved.snowluma[key] === 'string') settings.snowluma[key] = saved.snowluma[key]
+          }
+          if (Number.isFinite(Number(saved.snowluma.maxReplyChars))) {
+            settings.snowluma.maxReplyChars = Number(saved.snowluma.maxReplyChars)
+          }
           if (Array.isArray(saved.snowluma.allowGroups)) settings.snowluma.allowGroups = saved.snowluma.allowGroups.map(String)
         }
         if (saved?.tuning && typeof saved.tuning === 'object') settings.tuning = { ...DEFAULTS.tuning, ...saved.tuning }
         if (saved?.growth && typeof saved.growth === 'object') settings.growth = { ...DEFAULTS.growth, ...saved.growth }
+        if (saved?.outreach && typeof saved.outreach === 'object') settings.outreach = { ...DEFAULTS.outreach, ...saved.outreach }
         if (saved?.vision && typeof saved.vision === 'object') {
     settings.vision = { ...DEFAULTS.vision, ...saved.vision }
   }
@@ -454,6 +470,14 @@ export function apply(ctx, config = {}) {
       funnel.focus('g_class', Date.now())
       // 首次出生后立刻落盘：即使面板从未打开，这颗脑子也已经存在过
       void persist()
+      if (!outreachTimer) {
+        outreachTimer = setInterval(() => {
+          void maybeOutreach().catch((error) =>
+            appendSnowLog({ at: Date.now(), kind: 'outreach-error', error: String(error?.message ?? error).slice(0, 160) }),
+          )
+        }, 10 * 60 * 1000)
+        if (typeof outreachTimer.unref === 'function') outreachTimer.unref()
+      }
       return brain
     })()
     return loading
@@ -516,13 +540,17 @@ export function apply(ctx, config = {}) {
         recallEnabled: Boolean(settings.snowluma.recallEnabled),
         stickers: settings.snowluma.stickers !== false,
         pokeReact: settings.snowluma.pokeReact !== false,
+        pokeReply: settings.snowluma.pokeReply !== false,
         pokeBack: settings.snowluma.pokeBack === true,
         connected: snow.connected,
+        wsStatus: snow.wsStatus ?? null,
         reason: snow.reason,
-        selfId: snow.cfg?.selfId ?? '',
+        selfId: settings.snowluma.selfId || snow.cfg?.selfId || '',
         selfName: snow.selfName,
-        httpBase: snow.cfg?.httpBase ?? '',
-        wsUrl: snow.cfg?.wsUrl ?? '',
+        httpBase: settings.snowluma.httpBase || snow.cfg?.httpBase || '',
+        wsUrl: settings.snowluma.wsUrl || snow.cfg?.wsUrl || '',
+        hasHttpToken: Boolean(settings.snowluma.httpToken || snow.cfg?.httpToken),
+        hasWsToken: Boolean(settings.snowluma.wsToken || snow.cfg?.wsToken),
         stats: snow.bridge?.stats ?? null,
         lastEvent: snow.lastEvent,
         allowGroups: settings.snowluma.allowGroups ?? [],
@@ -559,6 +587,7 @@ export function apply(ctx, config = {}) {
         url: consoleState.port ? `http://127.0.0.1:${consoleState.port}/?token=${consoleState.token}` : '',
         port: consoleState.port,
       },
+      outreach: { ...settings.outreach, state: brain.outreach },
       settings: { useLlm: settings.useLlm, provider: settings.provider, model: settings.model, stateFile },
     }
   }
@@ -678,7 +707,7 @@ export function apply(ctx, config = {}) {
   /* Phase 2 · snowluma：感官（WS 收）与嘴（HTTP 发）                       */
   /* ------------------------------------------------------------------ */
 
-  const snow = { bridge: null, cfg: null, connected: false, reason: '', lastEvent: null, selfName: '' }
+  const snow = { bridge: null, cfg: null, connected: false, reason: '', lastEvent: null, selfName: '', wsStatus: null, lastStatus: null }
 
   /** 试开一次 WS：能 open 就算通，立刻关掉，不占连接。 */
   function probeWs(url, token, timeoutMs = 3000) {
@@ -697,7 +726,9 @@ export function apply(ctx, config = {}) {
         resolve(result)
       }
       try {
-        socket = new WebSocket(url, { headers: token ? { Authorization: '' + 'Bearer ' + token } : {} })
+        socket = new WebSocket(wsUrlWithToken(url, token), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
       } catch (error) {
         return finish({ ok: false, error: String(error?.message ?? error) })
       }
@@ -713,7 +744,9 @@ export function apply(ctx, config = {}) {
     const conf = settings.snowluma
     // 逐字段合并：手填的优先，没填的才回落到 snowluma 自己的 onebot 配置
     let base = { httpBase: '', httpToken: '', wsUrl: '', wsToken: '', selfId: String(conf.selfId ?? '') }
-    if (!conf.httpBase || !conf.wsUrl || !conf.httpToken || !conf.wsToken) {
+    // 总是读一次 snowluma 自己的配置：即使用户手填了 WS/HTTP，也要拿到 selfId，
+    // 否则戳一戳的目标判断会失效，自己的消息也不会被过滤。
+    {
       try {
         const files = await readdir(conf.configDir)
         const file = files.find((name) => /^onebot_.*\.json$/.test(name))
@@ -777,8 +810,9 @@ export function apply(ctx, config = {}) {
       cfg.wsToken = cfg.fallbackWsToken || cfg.wsToken
       wsOk = await probeWs(cfg.wsUrl, cfg.wsToken)
     }
-    snow.wsStatus = wsOk
+    snow.wsStatus = { ...wsOk, at: Date.now(), url: cfg.wsUrl }
     if (!wsOk.ok) snow.reason = 'WS 连不上：' + cfg.wsUrl + '（' + wsOk.error + '）'
+    void appendSnowLog({ at: Date.now(), kind: 'ws-probe', ok: wsOk.ok, url: cfg.wsUrl, error: wsOk.error ?? '' })
     snow.cfg = cfg
     const bridge = new SnowlumaBridge({
       httpBase: cfg.httpBase,
@@ -786,11 +820,20 @@ export function apply(ctx, config = {}) {
       wsUrl: cfg.wsUrl,
       wsToken: cfg.wsToken,
       selfId: cfg.selfId,
-      logger: (line) => console.warn('[bibao:snowluma]', line),
+      logger: (line) => {
+        console.warn('[bibao:snowluma]', line)
+        void appendSnowLog({ at: Date.now(), kind: 'snow-log', line })
+      },
       onStatus: (status) => {
         snow.connected = Boolean(status.connected)
-        if (status.connected) snow.reason = snow.reason.startsWith('自定义 WS') ? snow.reason : ''
-        else if (!snow.reason) snow.reason = 'WS 断开，正在重连'
+        snow.lastStatus = { ...status }
+        if (status.connected) {
+          snow.reason = snow.reason.startsWith('自定义 WS') ? snow.reason : ''
+          snow.wsStatus = { ok: true, at: Date.now(), url: snow.cfg?.wsUrl ?? '' }
+        } else if (!snow.reason) {
+          snow.reason = 'WS 断开，正在重连'
+        }
+        void appendSnowLog({ at: Date.now(), kind: 'ws-status', connected: snow.connected, code: status.code ?? null, at_ms: status.at ?? null })
       },
       onEvent: (event) => {
         void handleSnowEvent(event)
@@ -926,6 +969,36 @@ export function apply(ctx, config = {}) {
     }
   }
 
+  /**
+   * 主动分享：只在显式打开、对方是亲近的人、安静很久、今天确实有事情时说一句。
+   * 全部走私聊，避免在群里刷存在感。
+   */
+  async function maybeOutreach() {
+    if (!settings.outreach?.enabled) return
+    if (!settings.snowluma.sendEnabled || !settings.snowluma.allowPrivate) return
+    await boot()
+    if (!brain || !snow.bridge) return
+    brain.sync()
+    const proposal = brain.outreachProposal({ settings: settings.outreach })
+    if (!proposal.ok || !proposal.targetId || !proposal.text) return
+    try {
+      const id = await snow.bridge.sendPrivate(proposal.targetId, proposal.text)
+      brain.markOutreach({ proposal, at: brain.simMs })
+      schedulePersist()
+      await appendSnowLog({
+        at: Date.now(),
+        kind: 'outreach',
+        target: proposal.targetId,
+        name: proposal.targetName,
+        text: proposal.text,
+        reason: proposal.reason,
+        messageId: id,
+      })
+    } catch (error) {
+      await appendSnowLog({ at: Date.now(), kind: 'outreach-error', target: proposal.targetId, error: String(error?.message ?? error).slice(0, 160) })
+    }
+  }
+
   async function respondPrivate(message) {
     await boot()
     brain.sync()
@@ -1045,6 +1118,12 @@ export function apply(ctx, config = {}) {
       if (woke) await appendSnowLog({ at: now, kind: 'poke-wake', groupId, userId })
       funnel.record({ kind: 'poke', group: funnel.get(groupId)?.name ?? '', text: line })
       await appendSnowLog({ at: now, kind: 'poke-in', groupId, userId, target: targetId })
+      // 被戳了要真的回一句，而不是只在内心"有感觉"
+      if (settings.snowluma.pokeReply !== false) {
+        void respondToPoke({ userId, groupId, relation, woke }).catch((error) =>
+          appendSnowLog({ at: Date.now(), kind: 'poke-reply-error', groupId, userId, error: String(error?.message ?? error).slice(0, 160) }),
+        )
+      }
       // 极少数情况下回戳一下（默认关闭）
       if (settings.snowluma.pokeBack && snow.bridge && Math.random() < 0.15) {
         try {
@@ -1060,6 +1139,44 @@ export function apply(ctx, config = {}) {
     if ((funnel.get(groupId)?.layer ?? 'muted') === 'foveal') {
       brain.perceiveSense({ channel: 'touch', text: `群里有人戳了${targetId}一下`, intensity: 0.25 })
     }
+  }
+
+  /**
+   * 被戳之后真的回一句：走完整的大脑知觉与语言区，而不是只写一条触觉记忆。
+   * 用一条"（戳了你一下）"的合成感知帧，避免把戳一戳伪装成对方说了什么。
+   */
+  async function respondToPoke({ userId, groupId, relation, woke = false } = {}) {
+    if (!brain || !snow.bridge) return
+    if (!settings.snowluma.sendEnabled) return
+    if (!groupId && !settings.snowluma.allowPrivate) return
+    if (groupId && !(settings.snowluma.allowGroups ?? []).map(String).includes(String(groupId))) return
+
+    const cooldownKey = `${groupId || 'private'}:${userId}`
+    const now = Date.now()
+    if ((pokeReplyCooldown.get(cooldownKey) ?? 0) > now) return
+    pokeReplyCooldown.set(cooldownKey, now + 20_000)
+
+    const frameText = woke ? '（被戳醒了，眼睛还没睁开）' : '（戳了你一下）'
+    const result = await brain.perceive({
+      entityId: userId,
+      entityName: relation?.name ?? String(userId),
+      text: frameText,
+      channel: groupId ? 'group' : 'private',
+      atMe: true,
+      priority: 0.45,
+      groupId: groupId || undefined,
+      groupName: funnel.get(groupId)?.name ?? '',
+    })
+    await deliver(result, { groupId: groupId || undefined, targetId: userId })
+    schedulePersist()
+    await appendSnowLog({
+      at: Date.now(),
+      kind: 'poke-reply',
+      groupId: groupId || '',
+      userId,
+      route: result.dual?.action_route,
+      bubbles: result.dual?.bubbles ?? [],
+    })
   }
 
   /** 让"她"看一眼这张图：只写进感知，不产生回复。 */
@@ -1512,6 +1629,19 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/outreach/preview',
+      methods: ['POST'],
+      handler: async () => {
+        await boot()
+        brain.sync()
+        return json({
+          proposal: brain.outreachProposal({ settings: settings.outreach }),
+          enabled: settings.outreach.enabled,
+          requires: { sendEnabled: settings.snowluma.sendEnabled, allowPrivate: settings.snowluma.allowPrivate },
+        })
+      },
+    },
+    {
       path: '/self/review',
       methods: ['POST'],
       handler: async (request) => {
@@ -1721,7 +1851,12 @@ export function apply(ctx, config = {}) {
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
+                pokeReply: settings.snowluma.pokeReply,
                 pokeBack: settings.snowluma.pokeBack,
+                recallEnabled: settings.snowluma.recallEnabled === true,
+                stickers: settings.snowluma.stickers !== false,
+                selfId: settings.snowluma.selfId ?? '',
+                maxReplyChars: settings.snowluma.maxReplyChars,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
@@ -1729,7 +1864,8 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
-              vision: settings.vision,
+              growth: settings.growth,
+              outreach: settings.outreach,
               vision: settings.vision,
             }), 'utf8')
           } catch (error) {
@@ -2509,11 +2645,14 @@ export function apply(ctx, config = {}) {
           if (Array.isArray(body.snowluma.allowGroups)) {
             settings.snowluma.allowGroups = body.snowluma.allowGroups.map(String)
           }
-          if (typeof body.snowluma.allowPrivate === 'boolean') {
-            settings.snowluma.allowPrivate = body.snowluma.allowPrivate
+          for (const key of ['allowPrivate', 'pokeReact', 'pokeReply', 'pokeBack', 'recallEnabled', 'stickers']) {
+            if (typeof body.snowluma[key] === 'boolean') settings.snowluma[key] = body.snowluma[key]
           }
-          for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken']) {
+          for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId']) {
             if (typeof body.snowluma[key] === 'string') settings.snowluma[key] = body.snowluma[key].trim()
+          }
+          if (Number.isFinite(Number(body.snowluma.maxReplyChars))) {
+            settings.snowluma.maxReplyChars = Math.max(10, Math.min(200, Number(body.snowluma.maxReplyChars)))
           }
         }
         if (body.tuning && typeof body.tuning === 'object') {
@@ -2529,6 +2668,12 @@ export function apply(ctx, config = {}) {
           if (typeof body.growth.selfReview === 'boolean') settings.growth.selfReview = body.growth.selfReview
           if (typeof body.growth.life === 'boolean') settings.growth.life = body.growth.life
           if (brain) brain.growth = { ...brain.growth, ...settings.growth }
+        }
+        if (body.outreach && typeof body.outreach === 'object') {
+          if (typeof body.outreach.enabled === 'boolean') settings.outreach.enabled = body.outreach.enabled
+          for (const key of ['minSilenceMin', 'maxPerDay', 'minIntimacy', 'cooldownHours']) {
+            if (Number.isFinite(Number(body.outreach[key]))) settings.outreach[key] = Number(body.outreach[key])
+          }
         }
         if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
@@ -2582,7 +2727,12 @@ export function apply(ctx, config = {}) {
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
+                pokeReply: settings.snowluma.pokeReply,
                 pokeBack: settings.snowluma.pokeBack,
+                recallEnabled: settings.snowluma.recallEnabled === true,
+                stickers: settings.snowluma.stickers !== false,
+                selfId: settings.snowluma.selfId ?? '',
+                maxReplyChars: settings.snowluma.maxReplyChars,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
@@ -2591,6 +2741,7 @@ export function apply(ctx, config = {}) {
               llm: settings.llm,
               tuning: settings.tuning,
               growth: settings.growth,
+              outreach: settings.outreach,
               vision: settings.vision,
             }),
             'utf8',
@@ -2711,7 +2862,12 @@ export function apply(ctx, config = {}) {
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
+                pokeReply: settings.snowluma.pokeReply,
                 pokeBack: settings.snowluma.pokeBack,
+                recallEnabled: settings.snowluma.recallEnabled === true,
+                stickers: settings.snowluma.stickers !== false,
+                selfId: settings.snowluma.selfId ?? '',
+                maxReplyChars: settings.snowluma.maxReplyChars,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
@@ -2720,6 +2876,7 @@ export function apply(ctx, config = {}) {
               llm: settings.llm,
               tuning: settings.tuning,
               growth: settings.growth,
+              outreach: settings.outreach,
               vision: settings.vision,
             }),
             'utf8',

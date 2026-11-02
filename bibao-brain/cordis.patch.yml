@@ -26,12 +26,17 @@
         growth:
           selfReview: true
           life: true
+        # 主动分享默认关闭；打开后也只走私聊，每天最多一条
+        outreach:
+          enabled: false
         # Phase 2：snowluma 已安装并运行在本机 3000（HTTP）/ 3001（WS）。
         # 默认只读观察：收消息、算注意力、写记忆、记录"本来会发什么"，但不真的发。
         # 想让她真的开口，把 sendEnabled 改成 true（或点面板里的「允许发送」）。
         snowluma:
           enabled: true
           sendEnabled: true
+          pokeReact: true
+          pokeReply: true
           configDir: 'D:\XiangMu\snowluma\config'
           allowGroups: ['576268399']
           allowPrivate: false

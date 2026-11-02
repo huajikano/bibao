@@ -137,6 +137,7 @@ input[type=range] { width:100%; accent-color:var(--brand); }
       <label class="field">说话频率 <span id="talkLabel"></span><input type="range" id="talkativeness" min="0" max="1" step="0.05" /></label>
       <label class="field"><input type="checkbox" id="growthSelfReview" /> 自我复盘（把对话里的反馈变成说话经验）</label>
       <label class="field"><input type="checkbox" id="growthLife" /> 生活流（让她有自己的今天）</label>
+      <label class="field"><input type="checkbox" id="outreachEnabled" /> 允许她偶尔主动私聊（默认关，需要同时允许私聊）</label>
     </div>
     <div class="card">
       <h2>对话模型 <span>必须写 provider/model</span></h2>
@@ -310,6 +311,7 @@ function fillSettings(state) {
   el('visionEnabled').checked = !!(state.vision && state.vision.enabled);
   el('growthSelfReview').checked = !state.growth || state.growth.selfReview !== false;
   el('growthLife').checked = !state.growth || state.growth.life !== false;
+  el('outreachEnabled').checked = !!(state.outreach && state.outreach.enabled);
   el('sendEnabled').checked = !!(state.snow && state.snow.sendEnabled);
   el('recallEnabled').checked = !!(state.snow && state.snow.recallEnabled);
   el('stickersEnabled').checked = !state.snow || state.snow.stickers !== false;
@@ -357,6 +359,7 @@ el('save').onclick = async () => {
       },
       tuning: { memoryStrength: Number(el('memoryStrength').value), talkativeness: Number(el('talkativeness').value) },
       growth: { selfReview: el('growthSelfReview').checked, life: el('growthLife').checked },
+      outreach: { enabled: el('outreachEnabled').checked },
     };
     if (el('apiKey').value) body.llm.apiKey = el('apiKey').value;
     if (el('httpToken').value) body.snowluma.httpToken = el('httpToken').value;
