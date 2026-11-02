@@ -585,6 +585,17 @@ export class BibaoBrain {
   }
 
   /** 注入用摘要：事实 + 两段还能想起的叙事 + 对这个人的态度。 */
+  /**
+   * 玩心：不是性格开关，是激素的读数。
+   * 多巴胺高、皮质醇低、精力足 → 坐不住、想逗人、容易岔开。
+   */
+  playfulness() {
+    const dopamine = Number(this.state.dopamine ?? 0)
+    const cortisol = Number(this.state.cortisol ?? 0)
+    const energy = Number(this.state.energy ?? 0) / 100
+    return Math.max(0, Math.min(1, dopamine * (1 - cortisol) * energy * 1.6))
+  }
+
   /** 四维连续张力：不用"是/否"分支，让模型自己在张力之间博弈。 */
   tensionFor(relation, pe = 0) {
     const intimacy = Number(relation?.intimacy ?? 0)
@@ -597,6 +608,7 @@ export class BibaoBrain {
       pride_defense: Number(clamp01(0.12 + cortisol * 0.7 + (this.state.prideDefense ?? 0) * 0.4).toFixed(2)),
       playful_tease: Number(clamp01(0.1 + dopamine * 0.75 - cortisol * 0.4).toFixed(2)),
       sharing_overflow: Number(clamp01(0.15 + dopamine * 0.5 + intimacy / 160).toFixed(2)),
+      impish: Number(this.playfulness().toFixed(2)),
     }
   }
 
@@ -1066,6 +1078,7 @@ export class BibaoBrain {
         now,
         entityId,
         moodBoost: this.habits.associationOf(tags, this.state.moodValence),
+        hopChance: 0.18 + this.playfulness() * 0.34,
         query: text,
         tags,
         limit: 6,

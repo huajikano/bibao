@@ -115,6 +115,17 @@ const fresh = (seed = 7) => {
   }
   check('气头上会打完又删', aborts >= 1, `12 次里有 ${aborts} 次删掉了`)
 }
+// P. 玩心是激素读数，不是性格开关
+{
+  const brain = fresh()
+  brain.state.hormones.dopamine = 0.8
+  brain.state.hormones.cortisol = 0.1
+  const high = brain.playfulness()
+  brain.state.hormones.cortisol = 0.9
+  const low = brain.playfulness()
+  check('玩心随激素变', high > low + 0.2, high.toFixed(2) + ' vs ' + low.toFixed(2))
+}
+
 // M. 一颗糖就哄好（跨通道拮抗）
 {
   const brain = fresh(11)

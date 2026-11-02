@@ -90,6 +90,9 @@ export function buildPerceptionFrame(ctx) {
     `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,
     `状态机预判路由：${routeHint}。以比宝的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
+    digest && digest.tension && digest.tension.impish > 0.5
+      ? '你现在有点坐不住：可以绕开问题、反问、故意说反话，或者突然岔到别处去。但<b>只有你真的想的时候</b>才这样，不想的时候别演。'
+      : '',
     digest && digest.tension
       ? `此刻的心理张力：想亲近 ${digest.tension.affection_pull}／要面子 ${digest.tension.pride_defense}／想逗他 ${digest.tension.playful_tease}／想分享 ${digest.tension.sharing_overflow}。在这四股力之间自己权衡，不要只挑一个演。`
       : '',

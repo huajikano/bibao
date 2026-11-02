@@ -168,7 +168,7 @@ export class MemorySystem {
   }
 
   /** 按话题/对象检索显意识层；潜意识层只贡献偏置，不交出文本。 */
-  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0, moodBoost = 0 }) {
+  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0, moodBoost = 0, hopChance = 0.3 }) {
     const queryVector = query ? embed(query) : null
     const tokens = tokenize(query)
     const scored = []
