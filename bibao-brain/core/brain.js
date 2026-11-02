@@ -795,7 +795,10 @@ export class BibaoBrain {
     // 刚说过话还在冷却期：不是不回，而是只说一句
     const cooldownLeft = this.lastSpokeAt ? cooldownMs - (now - this.lastSpokeAt) : 0
     const cooling = talk < 1 && !atMe && cooldownLeft > 0
-    const thetaBoost = (1 - talk) * 0.15
+    // 没叫到我：要么更响，要么别进脑子
+    const notableTalk = analysis.hostility > 0.3 || analysis.gossipy > 0.35 || analysis.question > 0.5
+    const overheard = channel === 'group' && !atMe && !frame.nameMention && !notableTalk
+    const thetaBoost = (1 - talk) * 0.15 + (overheard ? 0.1 : 0)
     // 说话频率真的决定"接不接"：拉满必然接，拉低大概率装没看见
     if (talk < 0.99 && channel === 'group' && !atMe && this.rng.next() > 0.15 + 0.85 * talk) {
       this.lastPipeline = {
@@ -891,7 +894,9 @@ export class BibaoBrain {
       this.stats.evictions += extra.length
     }
 
-    const episode = this.memory.write({
+    // 旁听到的内容只在情绪够强时才落库：路过的话不该被记住
+    const worthWriting = !overheard || this.state.arousal > 0.6 || analysis.hostility > 0.5
+    const episode = worthWriting ? this.memory.write({
       now,
       age: this.age,
       arousal: this.state.arousal,
@@ -906,7 +911,7 @@ export class BibaoBrain {
       entityId,
       entityName: relation.name,
       source: channel === 'group' ? 'group' : 'chat',
-    })
+    }) : null
     if (episode) this.workspace.markWritten(ignition.slot.id, episode.id)
 
     const decision = decideRoute({

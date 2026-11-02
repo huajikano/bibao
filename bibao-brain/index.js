@@ -757,7 +757,7 @@ export function apply(ctx, config = {}) {
       atMe: Boolean(message.atMe),
       // 已经分到焦点注视的群，注意力本来就落在那里；被 @ 再额外加权，
       // 否则真机上大多数群消息会卡在点火阈值下面，一句话都不回。
-      priority: message.atMe ? 0.35 : group?.layer === 'foveal' ? 0.25 : 0.15,
+      priority: message.atMe ? 0.35 : group?.layer === 'foveal' ? 0.25 : 0.06,
       groupId: group?.id,
       groupName: group?.name,
     })

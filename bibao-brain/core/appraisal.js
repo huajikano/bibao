@@ -84,6 +84,7 @@ export function salienceOf({
   priority = 0,
   interests = DEFAULT_INTERESTS,
 }) {
+  const addressed = atMe || nameMention
   const intimacy = (relation?.intimacy ?? 0) / 100
   const interestHit = interests.some((word) => analysis.text.includes(word))
   let value =
@@ -100,7 +101,11 @@ export function salienceOf({
   // 私聊是"有人直接对着你说话"，比群里的公共噪音更容易抢占工作空间
   // 私聊是有人直接对着你说话，比群里的公共噪音更容易抢占工作空间
   if (channel === 'private') value += 0.35
-  value += clamp(priority, 0, 0.5)
+  // 群里没点名的公共噪音：优先级基本不算数
+  value += clamp(priority, 0, channel === 'group' && !addressed ? 0.08 : 0.5)
+  // 只有平淡的闲聊打折；八卦、冲突、直接提问仍然值得抬头
+  const notable = analysis.hostility > 0.3 || analysis.gossipy > 0.35 || analysis.question > 0.5
+  if (channel === 'group' && !addressed && !notable) value *= 0.5
   return {
     salience: clamp(value),
     interestHit,
