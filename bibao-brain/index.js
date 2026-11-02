@@ -25,6 +25,7 @@ import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
+import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
 
@@ -46,6 +47,8 @@ const DEFAULTS = {
   tuning: { memoryStrength: 1, talkativeness: 1 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
+  // 手：默认关着；开着就会真的动鼠标键盘
+  game: { control: false, layout: null },
   llm: {
     baseURL: 'https://api.deepseek.com',
     apiKey: '',
@@ -84,6 +87,7 @@ export function apply(ctx, config = {}) {
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
   settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
   settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
+  settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
   )
@@ -100,6 +104,7 @@ export function apply(ctx, config = {}) {
   let stickers = null
   const tft = new TftAdapter()
   const motor = new MotorModel()
+  let inputAgent = null
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
@@ -1631,6 +1636,95 @@ export function apply(ctx, config = {}) {
         return new Response(bytes, {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
+        })
+      },
+    },
+    {
+      path: '/game/act',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!settings.game.control) return fail('手还没解锁：先在设置里打开「允许操作」', 403)
+        const body = await readBody(request)
+        const actions = Array.isArray(body.actions) ? body.actions.slice(0, 12) : []
+        if (!actions.length) return fail('没有动作', 400)
+        if (!inputAgent) inputAgent = new InputAgent()
+        const alive = await inputAgent.ping()
+        if (!alive) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+        const done = []
+        // 前额叶想好了，手也要"reaction"一下才动
+        await wait(Math.round(motor.reactionMs({ energy: brain.state.energy })))
+        for (const action of actions) {
+          const kind = String(action.type ?? '')
+          try {
+            if (kind === 'move') await inputAgent.move(action.x, action.y)
+            else if (kind === 'click') await inputAgent.click(action.x, action.y, action.button === 'r' ? 'r' : 'l')
+            else if (kind === 'drag') await inputAgent.drag(action.x1, action.y1, action.x2, action.y2, action.ms ?? 300)
+            else if (kind === 'key') await inputAgent.key(String(action.key ?? ''))
+            else if (kind === 'type') await inputAgent.type(String(action.text ?? ''))
+            else if (kind === 'shot') await inputAgent.shot(String(action.path ?? ''))
+            else if (kind === 'buy') {
+              const slot = Math.max(0, Math.min(4, Number(action.slot ?? 0)))
+              const point = settings.game.layout?.shop?.[slot]
+              if (!point) throw new Error('还没校准商店坐标')
+              await inputAgent.click(point[0], point[1])
+            } else if (kind === 'roll') {
+              const point = settings.game.layout?.roll
+              if (!point) throw new Error('还没校准 D 键坐标')
+              await inputAgent.click(point[0], point[1])
+            } else if (kind === 'level') {
+              const point = settings.game.layout?.level
+              if (!point) throw new Error('还没校准升级坐标')
+              await inputAgent.click(point[0], point[1])
+            } else throw new Error(`不认识的动作 ${kind}`)
+            done.push({ ...action, ok: true })
+            await appendSnowLog({ at: Date.now(), kind: 'game-act', action: kind, detail: JSON.stringify(action).slice(0, 120) })
+            await wait(120 + Math.round(motor.fittsMs({ distance: 240, width: 48 }) * 0.05))
+          } catch (error) {
+            done.push({ ...action, ok: false, error: String(error?.message ?? error).slice(0, 120) })
+            await appendSnowLog({ at: Date.now(), kind: 'game-act-error', action: kind, message: String(error?.message ?? error).slice(0, 120) })
+            break
+          }
+        }
+        return json({ ok: true, done })
+      },
+    },
+    {
+      path: '/game/stop',
+      methods: ['POST'],
+      handler: async () => {
+        settings.game.control = false
+        schedulePersist(100)
+        inputAgent = null
+        return json({ ok: true, control: false })
+      },
+    },
+    {
+      path: '/game/pos',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (!inputAgent) inputAgent = new InputAgent()
+        const alive = await inputAgent.ping()
+        if (!alive) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          if (body.layout) {
+            settings.game.layout = body.layout
+            schedulePersist(100)
+            return json({ ok: true, layout: settings.game.layout })
+          }
+          if (typeof body.control === 'boolean') {
+            settings.game.control = body.control
+            schedulePersist(100)
+            return json({ ok: true, control: settings.game.control })
+          }
+        }
+        return json({
+          cursor: await inputAgent.pos(),
+          screen: await inputAgent.size(),
+          control: Boolean(settings.game.control),
+          layout: settings.game.layout,
         })
       },
     },
