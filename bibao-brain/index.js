@@ -1098,7 +1098,22 @@ export function apply(ctx, config = {}) {
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
         const ask = '只输出 JSON：{"scene":"shop 或 augment 或 combat 或 carousel 或 other","stage":"3-2","level":7,"health":60,"gold":0,"bench":0,"augments":[[0.35,0.45],[0.5,0.45],[0.65,0.45]],"cards":[{"name":"名字","cost":1,"x":0.3,"y":0.94}]}。scene 里 augment 表示"三选一强化符文"界面；augments 是三个选项的中心坐标（0~1）；cards 只在底部商店出现时给；cost 是卡的金币价格。'
-        const seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
+        // 视觉调用会被限流（429）：等一会儿重试一次，别让一步失败拖垮整局
+        let seen = null
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
+            break
+          } catch (error) {
+            const message = String(error?.message ?? error)
+            if (attempt === 0 && /429|concurrency|rate/i.test(message)) {
+              auto.log.push({ at: Date.now(), step: auto.step, retry: message.slice(0, 60) })
+              await new Promise((resolve) => setTimeout(resolve, 2500))
+              continue
+            }
+            throw error
+          }
+        }
         let info = null
         try {
           const raw = String(seen.text ?? '')
@@ -1106,7 +1121,15 @@ export function apply(ctx, config = {}) {
         } catch {
           info = null
         }
-        const scene = String(info?.scene ?? 'other')
+        // 模型有时回中文（商店/强化/战斗），统一归一化，否则永远认不出商店
+        const rawScene = String(info?.scene ?? '').toLowerCase()
+        let scene = 'other'
+        if (/shop|商店|买牌/.test(rawScene)) scene = 'shop'
+        else if (/augment|强化|海克斯/.test(rawScene)) scene = 'augment'
+        else if (/combat|战斗|对局/.test(rawScene)) scene = 'combat'
+        else if (/carousel|选秀|转盘/.test(rawScene)) scene = 'carousel'
+        // 兜底：底部有 5 张卡就是商店，不管模型怎么叫
+        if (scene === 'other' && Array.isArray(info?.cards) && info.cards.filter((card) => Number.isFinite(Number(card?.x))).length >= 3) scene = 'shop'
         // 只有商店/战斗画面上的数字才可信；加载画面模型会编数
         const reliable = scene === 'shop' || scene === 'combat'
         const gold = reliable ? Number(info?.gold ?? 0) : 0
