@@ -26,6 +26,7 @@ import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
 import { ensureHands, handsAlive } from './core/hands.js'
+import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
@@ -1062,8 +1063,26 @@ export function apply(ctx, config = {}) {
       try {
         await inputAgent.focus(settings.game.window ?? 'TFT').catch(() => null)
         await sleep(300)
+        // 先拍一张缩略图算哈希：画面没变就不浪费一次视觉调用
+        const thumb = path.join(dataDir, 'screens', 'thumb.jpg')
+        await mkdir(path.dirname(thumb), { recursive: true })
+        await inputAgent.shot(thumb, { maxWidth: 320, format: 'jpeg' })
+        const thumbHash = createHash('md5').update(await readFile(thumb)).digest('hex')
+        if (thumbHash === auto.lastHash) {
+          auto.sameCount = (auto.sameCount ?? 0) + 1
+          // 画面没变化说明刚才那一下没生效（钱不够/位置不对）：
+          // 前两次只等，第三次强制走一次视觉，避免死循环。
+          if (auto.sameCount < 3) {
+            auto.step += 1
+            await sleep(350)
+            continue
+          }
+          auto.sameCount = 0
+        } else {
+          auto.sameCount = 0
+        }
+        auto.lastHash = thumbHash
         const file = path.join(dataDir, 'screens', `auto-${Date.now()}.jpg`)
-        await mkdir(path.dirname(file), { recursive: true })
         await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
@@ -1082,7 +1101,11 @@ export function apply(ctx, config = {}) {
         const health = Number(info?.health ?? 100) || 100
         const stage = String(info?.stage ?? '')
         const bench = Number(info?.bench ?? 0) || 0
-        const cards = (Array.isArray(info?.cards) ? info.cards : []).filter((card) => Number.isFinite(Number(card?.x)))
+        const cards = (Array.isArray(info?.cards) ? info.cards : [])
+          .filter((card) => Number.isFinite(Number(card?.x)))
+          .map((card) => ({ name: String(card?.name ?? ''), x: Math.round(Number(card.x) * size.width), y: Math.round(Number(card.y) * size.height) }))
+        auto.cards = cards
+        auto.lastPlan = scene === 'shop' ? 'shop' : 'other'
         if (scene === 'shop' && cards.length >= 3) {
           // 决策层：留钱 / 升级 / 买牌 / 残血 D 牌
           const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: cards, bench })
@@ -1095,8 +1118,8 @@ export function apply(ctx, config = {}) {
               const y = Math.round(Number(card.y) * size.height)
               await inputAgent.click(x, y)
               auto.bought += 1
-              await appendSnowLog({ at: Date.now(), kind: 'auto-buy', name: String(card.name ?? ''), x, y, gold })
-              await sleep(900)
+              await appendSnowLog({ at: Date.now(), kind: 'auto-buy', name: String(card.name ?? ''), x, y, gold }).catch(() => {})
+              await sleep(160)
             } else if (action.type === 'level' && settings.game.layout?.level) {
               const point = settings.game.layout.level
               await inputAgent.click(point[0], point[1])
@@ -1109,13 +1132,13 @@ export function apply(ctx, config = {}) {
               }
             }
           }
-          await sleep(1200)
+          await sleep(250)
         } else if (scene === 'combat' || scene === 'carousel') {
           auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage })
-          await sleep(6000)
+          await sleep(2000)
         } else {
           auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage })
-          await sleep(5000)
+          await sleep(1500)
         }
         await sleep(1200)
       } catch (error) {
