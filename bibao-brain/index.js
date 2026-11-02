@@ -1640,6 +1640,75 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/game/shop',
+      methods: ['POST'],
+      handler: async () => {
+        await boot()
+        if (!vision) return fail('视觉模型没配置', 400)
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+        const file = path.join(dataDir, 'screens', `shop-${Date.now()}.jpg`)
+        await mkdir(path.dirname(file), { recursive: true })
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        const size = await inputAgent.size()
+        const base64 = (await readFile(file)).toString('base64')
+        const ask = '只输出一个 JSON，不要解释、不要 markdown：{"gold":0,"cards":[{"name":"名字","x":0.3,"y":0.94}]}。cards 是从左到右的商店卡，x/y 是相对整图的 0~1 小数；看不清名字写 ?。'
+        const result = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 500 })
+        let parsed = null
+        try {
+          const raw = String(result.text ?? '')
+          parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+        } catch {
+          parsed = null
+        }
+        const cards = (Array.isArray(parsed?.cards) ? parsed.cards : [])
+          .map((card, index) => ({
+            slot: index,
+            name: String(card?.name ?? '').slice(0, 12),
+            x: Math.round(Number(card?.x ?? 0) * size.width),
+            y: Math.round(Number(card?.y ?? 0) * size.height),
+          }))
+          .filter((card) => card.x > 0 && card.y > 0)
+        if (cards.length) {
+          settings.game.layout = { ...(settings.game.layout ?? {}), shop: cards.map((card) => [card.x, card.y]) }
+          schedulePersist(200)
+        }
+        return json({ ok: true, file, gold: Number(parsed?.gold ?? NaN), cards, raw: String(result.text ?? '').slice(0, 240) })
+      },
+    },
+    {
+      path: '/game/buy',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!settings.game.control) return fail('手还没解锁：先在设置里打开「允许操作」', 403)
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+        const body = await readBody(request)
+        const slot = Math.max(0, Math.min(4, Number(body.slot ?? 0)))
+        const point = settings.game.layout?.shop?.[slot]
+        if (!point) return fail('还没有商店坐标，先调用 /game/shop', 400)
+        // 钱不够就不动手
+        if (body.force !== true) {
+          const before = await fetch(`http://127.0.0.1:${consoleState.port}/api/bibao/game/shop`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${consoleState.token}` },
+            body: '{}',
+          }).then((res) => res.json()).catch(() => null)
+          const gold = Number(before?.gold ?? NaN)
+          if (Number.isFinite(gold) && gold < Number(body.price ?? 3)) {
+            return json({ ok: false, skipped: true, reason: `金币只有 ${gold}，不够买这张（需要 ${body.price ?? 3}）`, before })
+          }
+        }
+        await inputAgent.click(point[0], point[1])
+        await wait(1200)
+        const file = path.join(dataDir, 'screens', `buy-${Date.now()}.jpg`)
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        await appendSnowLog({ at: Date.now(), kind: 'game-buy', slot, x: point[0], y: point[1], file })
+        return json({ ok: true, slot, file })
+      },
+    },
+    {
       path: '/game/look',
       methods: ['POST'],
       handler: async (request) => {
