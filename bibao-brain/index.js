@@ -279,7 +279,10 @@ export function apply(ctx, config = {}) {
           if (Array.isArray(saved.snowluma.allowGroups)) settings.snowluma.allowGroups = saved.snowluma.allowGroups.map(String)
         }
         if (saved?.tuning && typeof saved.tuning === 'object') settings.tuning = { ...DEFAULTS.tuning, ...saved.tuning }
-        if (saved?.llm && typeof saved.llm === 'object') {
+        if (saved?.vision && typeof saved.vision === 'object') {
+    settings.vision = { ...DEFAULTS.vision, ...saved.vision }
+  }
+  if (saved?.llm && typeof saved.llm === 'object') {
           settings.llm = { ...DEFAULTS.llm, ...saved.llm, profiles: { ...(saved.llm.profiles ?? {}) } }
         }
       } catch {
@@ -460,6 +463,7 @@ export function apply(ctx, config = {}) {
         allowGroups: settings.snowluma.allowGroups ?? [],
         allowPrivate: Boolean(settings.snowluma.allowPrivate),
       },
+      vision: { ...settings.vision },
       llmConfig: {
         useLlm: settings.useLlm,
         baseURL: settings.llm.baseURL,
@@ -1257,7 +1261,19 @@ export function apply(ctx, config = {}) {
         await boot()
         if (request.method === 'POST') {
           const body = await readBody(request)
-          if (body.tuning && typeof body.tuning === 'object') {
+          if (body.vision && typeof body.vision === 'object') {
+          if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
+          if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
+            const model = body.vision.model.trim()
+            if (!model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
+            settings.vision.model = model
+          }
+          if (Number.isFinite(Number(body.vision.maxPerHour))) {
+            settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
+          }
+          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model })
+        }
+        if (body.tuning && typeof body.tuning === 'object') {
             if (Number.isFinite(Number(body.tuning.memoryStrength))) {
               settings.tuning.memoryStrength = Math.max(0, Math.min(1, Number(body.tuning.memoryStrength)))
             }
@@ -1282,6 +1298,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              vision: settings.vision,
               vision: settings.vision,
             }), 'utf8')
           } catch (error) {
@@ -1460,6 +1477,23 @@ export function apply(ctx, config = {}) {
           }
         }
         return json({ items: await stickers.load(), stats: await stickers.stats() })
+      },
+    },
+    {
+      path: '/vision/test',
+      methods: ['POST'],
+      handler: async () => {
+        await boot()
+        if (!vision) return fail('视觉还没配置', 400)
+        const png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        try {
+          const started = Date.now()
+          const result = await vision.describe(png, { prompt: '用一句中文说出这张图的颜色。', maxTokens: 60 })
+          return json({ ok: true, text: result.text, model: settings.vision.model, ms: Date.now() - started })
+        } catch (error) {
+          return fail(`失败：${String(error?.message ?? error).slice(0, 100)}`, 500)
+        }
       },
     },
     {
@@ -1663,7 +1697,18 @@ export function apply(ctx, config = {}) {
           }
           brain?.applyTuning(settings.tuning)
         }
-        if (body.llm && typeof body.llm === 'object') {
+        if (body.vision && typeof body.vision === 'object') {
+          if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
+          if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
+            const model = body.vision.model.trim()
+            if (!model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
+            settings.vision.model = model
+          }
+          if (Number.isFinite(Number(body.vision.maxPerHour))) {
+            settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
+          }
+          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model })
+        }        if (body.llm && typeof body.llm === 'object') {
           if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/')) {
             return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
           }
@@ -1710,6 +1755,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              vision: settings.vision,
             }),
             'utf8',
           )
@@ -1822,6 +1868,7 @@ export function apply(ctx, config = {}) {
               },
               llm: settings.llm,
               tuning: settings.tuning,
+              vision: settings.vision,
             }),
             'utf8',
           )

@@ -4150,7 +4150,7 @@ window.__ModuleLoader__.load({
     class SensesPanel extends React.Component {
       constructor(props) {
         super(props)
-        this.state = { channels: [], recent: [], drafts: {}, levels: {}, error: '', note: '' }
+        this.state = { channels: [], recent: [], drafts: {}, levels: {}, error: '', note: '', vision: null, visionDraft: null }
         this.load = this.load.bind(this)
         this.feed = this.feed.bind(this)
         this.toggle = this.toggle.bind(this)
@@ -4168,8 +4168,16 @@ window.__ModuleLoader__.load({
       async load() {
         try {
           const data = await request('/senses')
+          const state = await request('/state')
           if (!this.alive) return
-          this.setState({ channels: data.channels ?? [], recent: data.recent ?? [], error: '' })
+          const vision = state.vision ?? null
+          this.setState({
+            channels: data.channels ?? [],
+            recent: data.recent ?? [],
+            vision,
+            visionDraft: this.state.visionDraft ?? (vision ? { enabled: vision.enabled, model: vision.model, maxPerHour: vision.maxPerHour } : null),
+            error: '',
+          })
         } catch (error) {
           if (this.alive) this.setState({ error: error.message })
         }
@@ -4213,6 +4221,28 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async saveVision() {
+        const draft = this.state.visionDraft
+        if (!draft) return
+        this.setState({ note: '保存视觉配置…' })
+        try {
+          const data = await request('/settings', { method: 'POST', body: JSON.stringify({ vision: draft }) })
+          this.setState({ note: '视觉配置已保存', vision: data.snapshot?.vision ?? this.state.vision })
+        } catch (error) {
+          this.setState({ note: `保存失败：${error.message}` })
+        }
+      }
+
+      async testVision() {
+        this.setState({ note: '测试中…' })
+        try {
+          const data = await request('/vision/test', { method: 'POST', body: '{}' })
+          this.setState({ note: `模型可用：${data.text}（${data.ms}ms）` })
+        } catch (error) {
+          this.setState({ note: `测试失败：${error.message}` })
+        }
+      }
+
       render() {
         const t = typeof this.props.t === 'function' ? this.props.t : (key) => key
         const { channels, recent, drafts, levels, error, note } = this.state
@@ -4220,6 +4250,54 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'bb-stack' },
           h(StickersPanel, { t }),
+          h(
+            Card,
+            { title: '视觉模型', hint: '看图用的是哪个模型（和对话模型分开配）' },
+            this.state.visionDraft
+              ? h(
+                  'div',
+                  { className: 'bb-personaGrid' },
+                  h(
+                    'label',
+                    { className: 'bb-personaField' },
+                    h('span', { className: 'bb-muted' }, '模型（provider/model）'),
+                    h('input', {
+                      className: 'bb-input',
+                      value: this.state.visionDraft.model,
+                      onChange: (event) => this.setState({ visionDraft: { ...this.state.visionDraft, model: event.target.value } }),
+                    }),
+                  ),
+                  h(
+                    'label',
+                    { className: 'bb-personaField' },
+                    h('span', { className: 'bb-muted' }, '每小时上限'),
+                    h('input', {
+                      className: 'bb-input',
+                      type: 'number',
+                      value: this.state.visionDraft.maxPerHour,
+                      onChange: (event) => this.setState({ visionDraft: { ...this.state.visionDraft, maxPerHour: Number(event.target.value) } }),
+                    }),
+                  ),
+                  h(
+                    'label',
+                    { className: 'bb-check' },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: this.state.visionDraft.enabled === true,
+                      onChange: (event) => this.setState({ visionDraft: { ...this.state.visionDraft, enabled: event.target.checked } }),
+                    }),
+                    '允许她自动看群里的图',
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '读取中…'),
+            h(
+              'div',
+              { className: 'bb-actions' },
+              h('button', { type: 'button', className: 'bb-btn primary', onClick: () => this.saveVision() }, '保存'),
+              h('button', { type: 'button', className: 'bb-btn', onClick: () => this.testVision() }, '测试一下'),
+              h('span', { className: 'bb-muted' }, '对话模型在「设置」页里单独配'),
+            ),
+          ),
           h(
             Card,
             { title: '脑机接口 · 实验性', hint: '感官皮层' },
