@@ -64,6 +64,7 @@ growth:
 ```bash
 node bin/growth-smoke.mjs     # 41 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享
 node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
+node bin/sticker-import-smoke.mjs # 4 项：表情包导入（假视觉端点）
 node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 ```
 

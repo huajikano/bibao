@@ -35,6 +35,7 @@ node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记�
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，29 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
+node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入（假视觉端点）4 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
 
