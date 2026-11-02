@@ -1667,6 +1667,21 @@ export function apply(ctx, config = {}) {
         } catch {
           parsed = null
         }
+        // 再要一次"名字"：纯文本几十个字，不会截断，用来确认点的是不是想要的那张
+        let names = []
+        try {
+          const named = await vision.describe(`data:image/jpeg;base64,${base64}`, {
+            prompt: '只输出商店里从左到右五个棋子名字，用逗号分隔。不要 JSON、不要数字、不要坐标、不要解释。',
+            maxTokens: 120,
+          })
+          names = String(named.text ?? '')
+            .split(/[，,\n]/)
+            .map((item) => item.replace(/[。.!！?？\s]/g, '').trim())
+            .filter(Boolean)
+            .slice(0, 5)
+        } catch {
+          names = []
+        }
         const toPixels = (point) =>
           point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
             ? { x: Math.round(Number(point.x) * size.width), y: Math.round(Number(point.y) * size.height) }
@@ -1676,7 +1691,10 @@ export function apply(ctx, config = {}) {
         const view = parsed
           ? {
               found: Boolean(parsed.found) || cards.length > 0,
-              cards: cards.map((pair) => toPixels({ x: pair?.[0], y: pair?.[1] })).filter(Boolean),
+              cards: cards.map((pair, index) => {
+                const pixel = toPixels({ x: pair?.[0], y: pair?.[1] })
+                return pixel ? { ...pixel, name: names[index] ?? '' } : null
+              }).filter(Boolean),
               rollRaw: toPixels(Array.isArray(rollRaw) ? { x: rollRaw[0], y: rollRaw[1] } : rollRaw),
               phase: parsed.phase ?? '',
               gold: parsed.gold ?? null,

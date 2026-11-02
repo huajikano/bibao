@@ -38,7 +38,8 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
       if (!this.enabled) throw new Error('视觉模型没配置')
       const fetched = await fetchImage(url)
       const dataUrl = fetched.dataUrl
-      const hash = createHash('sha1').update(dataUrl).digest('hex').slice(0, 16)
+      // 同一张图、不同问题要分别缓存，否则会拿上次的答案
+      const hash = createHash('sha1').update(prompt + '|' + dataUrl).digest('hex').slice(0, 16)
       if (cache.has(hash)) {
         stats.cached += 1
         return { text: cache.get(hash), cached: true, buffer: fetched.buffer, type: fetched.type }
