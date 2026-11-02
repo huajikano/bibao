@@ -767,6 +767,21 @@ export class BibaoBrain {
     const cues = coreCues(text)
     const schemaHits = this.schema.touchedBy(cues)
     const tags = tagsFor(analysis, schemaHits)
+
+    // 第一次在群里 @ 我：给个初始印象和基础好感，不要从"完全陌生"开始
+    if (channel === 'group' && atMe && (relation.interactions ?? 0) === 0 && !relation.impression) {
+      const firstImpression =
+        analysis.hostility > 0.35
+          ? '一开口就冲，但至少是直说'
+          : analysis.warmth > 0.3
+            ? '说话客气，不急不躁'
+            : analysis.question > 0.5
+              ? '爱问问题，话多但不烦'
+              : '在群里点我名的人'
+      this.social.adjust(entityId, { intimacy: 18 - relation.intimacy, trust: 42 - relation.trust })
+      relation.impression = firstImpression
+      relation.tags = Array.from(new Set([...(relation.tags ?? []), '群里认识']))
+    }
     const novelty = this._novelty(text, relation)
     const pe = estimatePE({
       analysis,

@@ -176,8 +176,10 @@ export function maskStyle(relation, state) {
   if (intimacy >= 60) return 'banter'
   // 聊过很多次的人就不再是陌生人，哪怕亲密度还没堆起来
   if ((relation?.interactions ?? 0) >= 8 && intimacy > -10) return 'warm'
-  if (state.hijacked || state.cortisol > 0.65 || intimacy <= 15) return 'cold'
+  // 群里 @ 我的人至少是"刚认识"，不该用对陌生人的单字回
+  if (state.hijacked || state.cortisol > 0.65) return 'cold'
   if (intimacy >= 25) return 'warm'
+  if (intimacy > 10) return 'polite'
   return 'cold'
 }
 

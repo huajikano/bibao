@@ -86,9 +86,10 @@ const INNER = {
 
 export function decideBudget({ state, salience, style }) {
   let maxChars
-  if (state.energy < 30 || salience < 0.55) maxChars = 12
+  // 只有没劲、或对纯背景噪音才压到一句话；有人点名叫我时不该被这个门槛卡住
+  if (state.energy < 30 || (salience < 0.55 && style === 'cold')) maxChars = 12
   else maxChars = Math.round(clamp(18 + state.energy * 0.55 + salience * 22, 12, 72))
-  if (state.exhausted) maxChars = Math.min(maxChars, 6)
+  if (state.exhausted) maxChars = Math.min(maxChars, 20)
   let maxBubbles = style === 'cold' ? 1 : state.energy < 40 ? 2 : 3
   if (style === 'polite') maxBubbles = 2
   return { maxChars, maxBubbles }

@@ -60,6 +60,7 @@ export class NeuroState {
 
   /** 注入外部刺激的神经增量（LLM 也只能给到这一层，且被截断）。 */
   applyStimulus(delta = {}, meta = {}) {
+    this.quietMin = 0
     const applied = {}
     for (const key of HORMONE_KEYS) {
       const raw = Number(delta[key])
@@ -100,7 +101,10 @@ export class NeuroState {
       this.sleepDebtMin = Math.max(0, this.sleepDebtMin - dtMin)
     } else {
       const drain = PARAMS.energyAwakeDrainPerMin * (1 + 0.6 * this.cortisol) * dtMin
-      this.energy = clamp(this.energy - drain, 0, 100)
+      // 发呆也算休息：安静一阵能回一点，但不睡不会回满
+      this.quietMin = (this.quietMin ?? 0) + dtMin
+      const rest = this.quietMin > 20 ? 0.03 * Math.min(1, this.quietMin / 60) * dtMin : 0
+      this.energy = clamp(this.energy - drain + rest, 0, 100)
       this.totalAwakeMin += dtMin
       // 深夜清醒额外累积睡眠债（凌晨三点的心境更脆）
       if (hour >= 0 && hour < 6) this.sleepDebtMin += dtMin * 0.5

@@ -2721,6 +2721,11 @@ window.__ModuleLoader__.load({
             allowGroups: (snow.allowGroups ?? []).join(','),
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
+            recallEnabled: Boolean(snow.recallEnabled),
+            tuning: {
+              memoryStrength: Number(snap.tuning?.memoryStrength ?? 1),
+              talkativeness: Number(snap.tuning?.talkativeness ?? 1),
+            },
           },
         })
       }
@@ -2989,7 +2994,11 @@ window.__ModuleLoader__.load({
           this.tuningTimer = null
         }
         this.setState({ saving: '保存中…' })
-        const llm = { baseURL: form.baseURL, model: form.model, profiles: {} }
+        // 只提交真正改过的字段：表单里是旧快照时，不能把别人（或接口）改过的值覆盖回去
+        const cfg = this.state.snap?.llmConfig ?? {}
+        const llm = { profiles: {} }
+        if (form.baseURL !== (cfg.baseURL ?? '')) llm.baseURL = form.baseURL
+        if (form.model !== (cfg.model ?? '')) llm.model = form.model
         if (form.apiKey) llm.apiKey = form.apiKey
         for (const meta of LOGIC_META) {
           const row = form.profiles[meta.name] ?? {}
