@@ -562,7 +562,7 @@ export function apply(ctx, config = {}) {
         selfId: settings.snowluma.selfId || snow.cfg?.selfId || '',
         selfName: snow.selfName,
         httpBase: settings.snowluma.httpBase || snow.cfg?.httpBase || '',
-        wsUrl: settings.snowluma.wsUrl || snow.cfg?.wsUrl || '',
+        wsUrl: snow.cfg?.mode === 'reverse' ? snow.cfg.wsUrl : settings.snowluma.wsUrl || snow.cfg?.wsUrl || '',
         mode: snow.cfg?.mode ?? 'client',
         hasHttpToken: Boolean(settings.snowluma.httpToken || snow.cfg?.httpToken),
         hasWsToken: Boolean(settings.snowluma.wsToken || snow.cfg?.wsToken),
