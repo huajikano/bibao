@@ -105,6 +105,7 @@ export function apply(ctx, config = {}) {
   const tft = new TftAdapter()
   const motor = new MotorModel()
   let inputAgent = null
+  const auto = { running: false, step: 0, log: [], startedAt: 0, lastError: '', bought: 0 }
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
@@ -1043,6 +1044,60 @@ export function apply(ctx, config = {}) {
     }
   }
 
+  /** 自动打一局：保守打法，只做"看商店 / 买便宜卡 / 升级 / 等"，不 D 牌不站位。 */
+  async function runAuto() {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    while (auto.running) {
+      auto.step += 1
+      try {
+        await inputAgent.focus(settings.game.window ?? 'TFT').catch(() => null)
+        await sleep(300)
+        const file = path.join(dataDir, 'screens', `auto-${Date.now()}.jpg`)
+        await mkdir(path.dirname(file), { recursive: true })
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        const size = await inputAgent.size()
+        const base64 = (await readFile(file)).toString('base64')
+        const ask = '只输出 JSON：{"scene":"shop 或 combat 或 carousel 或 other","gold":0,"cards":[{"name":"名字","x":0.3,"y":0.94}]}。cards 只在底部商店出现时给，坐标是相对整图的 0~1。'
+        const seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
+        let info = null
+        try {
+          const raw = String(seen.text ?? '')
+          info = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+        } catch {
+          info = null
+        }
+        const scene = String(info?.scene ?? 'other')
+        const gold = Number(info?.gold ?? 0)
+        const cards = (Array.isArray(info?.cards) ? info.cards : []).filter((card) => Number.isFinite(Number(card?.x)))
+        auto.log.push({ at: Date.now(), step: auto.step, scene, gold, cards: cards.length })
+        if (scene === 'shop' && cards.length >= 3) {
+          // 保守：钱多于 12 才买最便宜的那张（粗略用中间那张当目标，避免乱点）
+          if (gold > 12) {
+            const pick = cards[Math.min(cards.length - 1, 2)]
+            const x = Math.round(Number(pick.x) * size.width)
+            const y = Math.round(Number(pick.y) * size.height)
+            await inputAgent.click(x, y)
+            auto.bought += 1
+            await appendSnowLog({ at: Date.now(), kind: 'auto-buy', x, y, gold, name: String(pick.name ?? '') })
+            await sleep(1500)
+          } else {
+            await sleep(3000)
+          }
+        } else if (scene === 'combat' || scene === 'carousel') {
+          await sleep(6000)
+        } else {
+          await sleep(5000)
+        }
+        await sleep(1200)
+      } catch (error) {
+        auto.lastError = String(error?.message ?? error).slice(0, 160)
+        auto.log.push({ at: Date.now(), step: auto.step, error: auto.lastError })
+        await sleep(4000)
+      }
+      if (auto.step > 400) auto.running = false
+    }
+  }
+
   async function handleSnowEvent(event) {
     if (!snow.cfg) return
     // 戳一戳是 notice，不是 message，先在这里接住
@@ -1637,6 +1692,35 @@ export function apply(ctx, config = {}) {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
         })
+      },
+    },
+    {
+      path: '/game/auto',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          if (body.stop) {
+            auto.running = false
+            return json({ ok: true, running: false })
+          }
+          if (auto.running) return json({ ok: true, running: true, note: '已经在跑了' })
+          settings.game.control = true
+          if (!inputAgent) inputAgent = new InputAgent()
+          if (!(await inputAgent.ping())) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+          auto.running = true
+          auto.startedAt = Date.now()
+          auto.step = 0
+          auto.bought = 0
+          auto.log = []
+          void runAuto().catch((error) => {
+            auto.lastError = String(error?.message ?? error).slice(0, 160)
+            auto.running = false
+          })
+          return json({ ok: true, running: true })
+        }
+        return json({ running: auto.running, step: auto.step, bought: auto.bought, lastError: auto.lastError, log: auto.log.slice(-20) })
       },
     },
     {

@@ -12,6 +12,16 @@
 
 param([int]$Port = 8788)
 
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class BibaoDpi {
+  [DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+}
+"@
+try { [BibaoDpi]::SetProcessDpiAwareness(2) | Out-Null } catch { [BibaoDpi]::SetProcessDPIAware() | Out-Null }
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -231,6 +241,10 @@ while ($running) {
         [BibaoHands]::SetWindowPos($ptr, $flag, 0, 0, 0, 0, 3) | Out-Null
         Write-Json $ctx 200 @{ ok = $true; topmost = ($body.on -ne $false) }
       }
+    }
+    elseif ($path -eq '/dpi') {
+      $phys = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+      Write-Json $ctx 200 @{ ok = $true; width = $phys.Width; height = $phys.Height; dpiAware = $true }
     }
     elseif ($path -eq '/quit') {
       Write-Json $ctx 200 @{ ok = $true }

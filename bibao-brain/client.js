@@ -3634,6 +3634,7 @@ window.__ModuleLoader__.load({
           ['persona', '人物'],
           ['senses', '感官'],
           ['friends', '好友'],
+          ['game', '游戏'],
           ['settings', t('tabSettings')],
         ]
         return h(
@@ -3697,6 +3698,7 @@ window.__ModuleLoader__.load({
           tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
           tab === 'persona' ? h(PersonaPanel, { t, snap }) : null,
           tab === 'friends' ? h(FriendsPanel, { t, snap }) : null,
+          tab === 'game' ? h(GamePanel, { t, snap }) : null,
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
         )
       }
@@ -4000,7 +4002,136 @@ window.__ModuleLoader__.load({
     /* 好友管理：只有真的加过好友的人才会出现在这里                          */
     /* ------------------------------------------------------------------ */
 
-    class FriendsPanel extends React.Component {
+        /* ------------------------------------------------------------------ */
+    /* 游戏：手部服务状态 + 自动下棋开关 + 实时日志                          */
+    /* ------------------------------------------------------------------ */
+
+    class GamePanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { auto: null, shop: null, note: '', busy: false }
+        this.refresh = this.refresh.bind(this)
+        this.toggle = this.toggle.bind(this)
+        this.shopNow = this.shopNow.bind(this)
+        this.park = this.park.bind(this)
+      }
+
+      componentDidMount() {
+        this.alive = true
+        this.refresh()
+        this.timer = setInterval(() => this.refresh(), 5000)
+      }
+
+      componentWillUnmount() {
+        this.alive = false
+        if (this.timer) clearInterval(this.timer)
+      }
+
+      async refresh() {
+        try {
+          const auto = await request('/game/auto')
+          if (this.alive) this.setState((prev) => ({ auto, auto_prev: prev.auto }))
+        } catch (error) {
+          if (this.alive) this.setState({ note: '自动循环读取失败：' + error.message })
+        }
+      }
+
+      async toggle() {
+        const running = this.state.auto?.running
+        this.setState({ busy: true })
+        try {
+          const data = await request('/game/auto', { method: 'POST', body: JSON.stringify(running ? { stop: true } : {}) })
+          this.setState({ busy: false, note: data.running ? '已开始自动下棋' : '已停止' })
+          await this.refresh()
+        } catch (error) {
+          this.setState({ busy: false, note: '失败：' + error.message })
+        }
+      }
+
+      async shopNow() {
+        this.setState({ busy: true, note: '正在看商店…' })
+        try {
+          const data = await request('/game/shop', { method: 'POST', body: '{}' })
+          this.setState({ busy: false, shop: data, note: data.cards?.length ? `看到 ${data.cards.length} 张卡，金币 ${data.gold}` : '没看到商店（可能不是备战期）' })
+        } catch (error) {
+          this.setState({ busy: false, note: '失败：' + error.message + '（手部服务启动了吗？）' })
+        }
+      }
+
+      async park() {
+        this.setState({ busy: true, note: '把鼠标停到第一张卡…' })
+        try {
+          const shop = this.state.shop ?? (await request('/game/shop', { method: 'POST', body: '{}' }))
+          const first = shop.cards?.[0]
+          if (!first) throw new Error('没读到商店卡')
+          await request('/game/act', { method: 'POST', body: JSON.stringify({ actions: [{ type: 'move', x: first.x, y: first.y }] }) })
+          this.setState({ busy: false, note: `已停在 (${first.x}, ${first.y})，你看一眼准不准` })
+        } catch (error) {
+          this.setState({ busy: false, note: '失败：' + error.message })
+        }
+      }
+
+      render() {
+        const { auto, shop, note, busy } = this.state
+        const running = Boolean(auto?.running)
+        return h(
+          'div',
+          { className: 'bb-stack' },
+          h(
+            Card,
+            { title: '自动下棋', hint: '跑在插件里，你不看着也会继续' },
+            h(
+              'div',
+              { className: 'bb-inline' },
+              h(Chip, { children: running ? '运行中' : '已停止', tone: running ? 'good' : '' }),
+              h(Chip, { children: `第 ${auto?.step ?? 0} 步` }),
+              h(Chip, { children: `买过 ${auto?.bought ?? 0} 张` }),
+              auto?.lastError ? h(Chip, { children: '错误', tone: 'bad' }) : null,
+            ),
+            h(
+              'div',
+              { className: 'bb-actions' },
+              h('button', { type: 'button', className: 'btn bb-btn primary', disabled: busy, onClick: this.toggle }, running ? '停止' : '开始自动下棋'),
+              h('button', { type: 'button', className: 'bb-btn', disabled: busy, onClick: this.shopNow }, '看一眼商店'),
+              h('button', { type: 'button', className: 'bb-btn', disabled: busy, onClick: this.park }, '校准：停到第一张卡'),
+            ),
+            note ? h('div', { className: 'bb-chip good' }, note) : null,
+            auto?.lastError ? h('div', { className: 'bb-error' }, auto.lastError) : null,
+          ),
+          shop
+            ? h(
+                Card,
+                { title: '刚才看到的商店', hint: shop.file ? '截图已存盘' : '' },
+                h('div', { className: 'bb-inline' }, h(Chip, { children: `金币 ${shop.gold ?? '?'}` })),
+                (shop.cards ?? []).map((card) =>
+                  h('div', { key: card.slot, className: 'bb-a9' },
+                    h(Chip, { children: `#${card.slot + 1}` }),
+                    h('span', {}, card.name || '（没读出名字）'),
+                    h('span', { className: 'bb-muted' }, `${card.x},${card.y}`),
+                  ),
+                ),
+              )
+            : null,
+          h(
+            Card,
+            { title: '手部服务', hint: '需要你先启动一次' },
+            h('p', { className: 'bb-quote' }, '双击 bibao-brain/bin/start-hands.bat，窗口留着别关。插件通过 127.0.0.1:8788 跟它说话；服务没起时，上面所有按钮都会报"手还没启动"。'),
+            auto?.log?.length
+              ? h('div', { className: 'bb-list' },
+                  auto.log.slice(-8).reverse().map((entry, index) =>
+                    h('div', { key: index, className: 'bb-a9' },
+                      h('span', { className: 'bb-muted' }, `第 ${entry.step} 步`),
+                      h('span', {}, entry.error ? `错误：${entry.error}` : `${entry.scene ?? '?'} · 金币 ${entry.gold ?? '?'} · 卡 ${entry.cards ?? 0}`),
+                    ),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有运行记录'),
+          ),
+        )
+      }
+    }
+
+class FriendsPanel extends React.Component {
       constructor(props) {
         super(props)
         this.state = { friends: [], draft: {}, note: '', busy: false, error: '' }
