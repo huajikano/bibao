@@ -29,6 +29,7 @@ import { ensureHands, handsAlive } from './core/hands.js'
 import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
 import { anchorsFor, anchorsFromWindows } from './core/layout.js'
+import { planPlacements, planPickups } from './core/board.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1143,6 +1144,35 @@ export function apply(ctx, config = {}) {
                 await inputAgent.click(point[0], point[1])
                 await sleep(500)
               }
+            }
+          }
+          // 上人 + 捡球：只在商店阶段看一次场面，省视觉调用
+          if (auto.step % 2 === 0 && settings.game.layout?.bench && settings.game.layout?.board) {
+            try {
+              const boardFile = path.join(dataDir, 'screens', `board-${Date.now()}.jpg`)
+              await inputAgent.shot(boardFile, { maxWidth: 1024, format: 'jpeg' })
+              const board64 = (await readFile(boardFile)).toString('base64')
+              const boardAsk = '只输出 JSON：{"benchFilled":[0,3],"boardEmpty":[[1,3]],"orbs":[[0.5,0.6]]}。benchFilled 是备战席九个格子里有棋子的下标（0~8），boardEmpty 是我方棋盘空位的行列（row 0~3, col 0~6），orbs 是地上掉落球的相对坐标（0~1）。没有就给空数组。'
+              const seenBoard = await vision.describe(`data:image/jpeg;base64,${board64}`, { prompt: boardAsk, maxTokens: 400 })
+              const rawBoard = String(seenBoard.text ?? '')
+              const info2 = JSON.parse(rawBoard.slice(rawBoard.indexOf('{'), rawBoard.lastIndexOf('}') + 1))
+              const layout = settings.game.layout
+              for (const action of planPlacements({ benchFilled: info2.benchFilled ?? [], boardEmpty: info2.boardEmpty ?? [], max: 2 })) {
+                const from = layout.bench[action.benchSlot]
+                const to = layout.board[action.row]?.[action.col]
+                if (from && to) {
+                  await inputAgent.drag(from[0], from[1], to[0], to[1], 220)
+                  await appendSnowLog({ at: Date.now(), kind: 'auto-place', from: action.benchSlot, row: action.row, col: action.col }).catch(() => {})
+                  await sleep(220)
+                }
+              }
+              for (const orb of planPickups({ orbs: info2.orbs ?? [] })) {
+                await inputAgent.click(Math.round(orb.x * size.width), Math.round(orb.y * size.height))
+                await appendSnowLog({ at: Date.now(), kind: 'auto-pickup', x: orb.x, y: orb.y }).catch(() => {})
+                await sleep(180)
+              }
+            } catch (error) {
+              auto.log.push({ at: Date.now(), step: auto.step, boardError: String(error?.message ?? error).slice(0, 80) })
             }
           }
           await sleep(250)

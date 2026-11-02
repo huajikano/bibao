@@ -1,6 +1,6 @@
 {
   "name": "bibao-brain",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "description": "比宝：一个按四大计算神经科学定律运行的拟人认知内核（Phase 1 沙盒）+ 侧边栏脑内面板。",
