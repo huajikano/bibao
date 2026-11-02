@@ -52,6 +52,7 @@ import { generateDualTrack, extractJson } from './prefrontal.js'
 import { bootstrapLife } from './life.js'
 import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
 import { HabitMemory } from './learn.js'
+import { decideHesitation } from './hesitate.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
@@ -1116,6 +1117,28 @@ export class BibaoBrain {
       },
       this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
     )
+
+    // 犹豫：打完又删 / 只说一半 / 发完补一句
+    const hesitation = decideHesitation({
+      bubbles: dual.bubbles ?? [],
+      state: this.state,
+      relation,
+      pe,
+      rng: this.rng,
+    })
+    if (hesitation.kind === 'abort') {
+      dual.bubbles = []
+      dual.action_route = 'SILENT_READ'
+    } else if (hesitation.kind === 'trim') {
+      dual.bubbles = (dual.bubbles ?? []).slice(0, 1)
+    } else if (hesitation.kind === 'afterthought') {
+      dual.afterthought = hesitation.tail ?? ''
+    }
+    dual.hesitation = hesitation.kind
+    if (hesitation.note) {
+      this.inner.push({ at: now, kind: 'hesitation', source: 'self', thought: hesitation.note, ignited: false, salience: 0.2 })
+      this._trimInner()
+    }
 
     // 复读过滤：最近三句自己说过的，高度重合就丢掉，避免"原地追问"
     const selfRecent = (relation.recent ?? [])

@@ -105,6 +105,16 @@ const fresh = (seed = 7) => {
   check('冷却期仍然会回，只是短', bubbles.length <= 1, `bubbles=${bubbles.length}`)
 }
 
+// L. 会犹豫：气头上打完又删
+{
+  const brain = fresh(123)
+  let aborts = 0
+  for (let index = 0; index < 12; index += 1) {
+    const result = await brain.perceive({ entityId: 'u9', entityName: '陌生人', text: '你就是个废物，什么都做不好', channel: 'private' })
+    if (result.dual?.hesitation === 'abort') aborts += 1
+  }
+  check('气头上会打完又删', aborts >= 1, `12 次里有 ${aborts} 次删掉了`)
+}
 // J. 会习惯：同一句反复说，反应越来越淡
 {
   const brain = fresh()

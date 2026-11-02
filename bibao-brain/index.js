@@ -831,6 +831,12 @@ export function apply(ctx, config = {}) {
     if ((result.motor ?? []).length) {
       await wait(900)
       await maybeSticker(targetId)
+      // 犹豫的第三种：发完忍不住补一句
+      const tail = result.dual?.afterthought
+      if (tail) {
+        await wait(1200)
+        await send(tail, targetId)
+      }
     }
     if (result.dual?.trigger_regret_recall && firstId && settings.snowluma.recallEnabled === true) {
       await wait(3800)
