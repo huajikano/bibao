@@ -31,6 +31,7 @@ public class BibaoHands {
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr extra);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
   public delegate bool EnumProc(IntPtr hWnd, IntPtr extra);
   public struct POINT { public int X; public int Y; }
   public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
@@ -216,6 +217,19 @@ while ($running) {
           Write-Json $ctx 200 @{ ok = $true; path = [string]$argv.path; width = $outW; height = $outH }
         }
         default { Write-Json $ctx 400 @{ ok = $false; error = "unknown cmd $cmd" } }
+      }
+    }
+    elseif ($path -eq '/topmost' -and $ctx.Request.HttpMethod -eq 'POST') {
+      $reader = New-Object System.IO.StreamReader($ctx.Request.InputStream, [System.Text.Encoding]::UTF8)
+      $body = $reader.ReadToEnd() | ConvertFrom-Json
+      $reader.Close()
+      $w = Find-Window([string]$body.match)
+      if ($null -eq $w) { Write-Json $ctx 404 @{ ok = $false; error = 'no window' } }
+      else {
+        $ptr = [IntPtr]::new([int64]$w.h)
+        $flag = if ($body.on -eq $false) { [IntPtr]::Zero } else { [IntPtr]::new(-1) }
+        [BibaoHands]::SetWindowPos($ptr, $flag, 0, 0, 0, 0, 3) | Out-Null
+        Write-Json $ctx 200 @{ ok = $true; topmost = ($body.on -ne $false) }
       }
     }
     elseif ($path -eq '/quit') {

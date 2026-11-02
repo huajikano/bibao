@@ -1700,6 +1700,9 @@ export function apply(ctx, config = {}) {
             return json({ ok: false, skipped: true, reason: `金币只有 ${gold}，不够买这张（需要 ${body.price ?? 3}）`, before })
           }
         }
+        // 点之前先把游戏窗口拉到前台，否则点到的是压在上面的聊天窗口
+        await inputAgent.focus(String(settings.game.window ?? 'TFT')).catch(() => null)
+        await wait(400)
         await inputAgent.click(point[0], point[1])
         await wait(1200)
         const file = path.join(dataDir, 'screens', `buy-${Date.now()}.jpg`)

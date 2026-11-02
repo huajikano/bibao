@@ -43,6 +43,14 @@ export class InputAgent {
     }
   }
 
+  async focus(match) {
+    return this.request('/focus', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ match }),
+    })
+  }
+
   async pos() {
     const data = await this.request('/pos')
     return { x: data.x, y: data.y }
