@@ -168,14 +168,20 @@ export class MemorySystem {
   }
 
   /** 按话题/对象检索显意识层；潜意识层只贡献偏置，不交出文本。 */
-  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0 }) {
+  retrieve({ now, entityId = null, query = '', tags = [], limit = 4, exclude = null, mood = 0, moodBoost = 0 }) {
     const queryVector = query ? embed(query) : null
     const tokens = tokenize(query)
     const scored = []
     for (const node of this.episodes) {
       if (exclude && node.id === exclude) continue
       const r = this.extractability(node, now)
-      if (r < PARAMS.consciousTier) continue
+      if (r < PARAMS.consciousTier) {
+        // 柔性召回：越接近意识阈值、越有情绪的事，偶尔会"突然想起来"。
+        // 噪声只跟时间与节点有关，不消耗主随机流，保证可复现。
+        const hash = Math.sin((now / 60000) * 12.9898 + node.id.length * 78.233) * 43758.5453
+        const noise = hash - Math.floor(hash)
+        if (noise > r * 0.7 + 0.05) continue
+      }
       let score = r * 0.5 + node.salience * 0.25
       if (query) {
         if (!node.vec) node.vec = encodeVector(embed(`${node.title} ${node.narrative}`))
@@ -183,7 +189,7 @@ export class MemorySystem {
         if (sim > 0) score += sim * 0.55
       }
       // 情绪一致回忆：心情差时更容易想起糟心事，反之亦然
-      score += 0.18 * mood * node.valence
+      score += 0.18 * mood * node.valence + moodBoost
       if (entityId && node.entityId === entityId) score += 0.35
       if (tokens.length) {
         const haystack = `${node.title} ${node.narrative} ${node.tags.join(' ')}`

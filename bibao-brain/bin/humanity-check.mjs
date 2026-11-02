@@ -105,6 +105,27 @@ const fresh = (seed = 7) => {
   check('冷却期仍然会回，只是短', bubbles.length <= 1, `bubbles=${bubbles.length}`)
 }
 
+// J. 会习惯：同一句反复说，反应越来越淡
+{
+  const brain = fresh()
+  const saliences = []
+  for (let index = 0; index < 5; index += 1) {
+    const result = await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '在吗', channel: 'private' })
+    saliences.push(result.salience ?? 0)
+  }
+  check('同一句反复出现会变淡', saliences[4] < saliences[0] - 0.02, saliences.map((value) => value.toFixed(2)).join(' → '))
+}
+
+// K. 会学偏好：总跟好体验一起出现的词，之后更上心
+{
+  const brain = fresh()
+  for (let index = 0; index < 4; index += 1) {
+    await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '你就是个废物，什么都做不好', channel: 'private' })
+  }
+  const bad = brain.habits.preferenceOf('废物')
+  const learned = brain.habits.preferences.size
+  check('反复出现的词会带上情绪分量', learned > 0 && bad < 0, `学到 ${learned} 个词，「废物」= ${bad.toFixed(2)}`)
+}
 // I. 半夜被戳能叫醒
 {
   const brain = fresh()

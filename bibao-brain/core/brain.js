@@ -51,6 +51,7 @@ import { composeEndogenous, decideBudget } from './broca.js'
 import { generateDualTrack, extractJson } from './prefrontal.js'
 import { bootstrapLife } from './life.js'
 import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
+import { HabitMemory } from './learn.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
@@ -119,6 +120,7 @@ export class BibaoBrain {
     this.lastLlmError = ''
     this.lastFactError = ''
     this.lastFactCount = 0
+    this.habits = new HabitMemory()
     // 被戳醒之后的一段时间里不再算「睡着」
     this.awakeUntil = 0
     this.senses = new SensoryCortex()
@@ -831,6 +833,9 @@ export class BibaoBrain {
       expectation: beforePending[0] ? { kind: beforePending[0].kind } : null,
       topicNovelty: novelty,
     })
+    // 习惯化 + 学到的偏好，都会影响这一刻有多"值得注意"
+    const habitDim = this.habits.habituation(entityId, text)
+    const learned = this.habits.preferenceOf(text)
     const salienceInfo = salienceOf({
       analysis,
       relation,
@@ -840,6 +845,9 @@ export class BibaoBrain {
       priority: Number(frame.priority ?? 0),
       interests: this.interests,
     })
+    salienceInfo.salience = clamp(
+      salienceInfo.salience * (1 - habitDim) + Math.max(0, learned) * 0.12 - Math.max(0, -learned) * 0.06,
+    )
     const bias = this.memory.biasFor({ entityId, tags }, now)
     const theta = this.workspace.threshold(this.state, this.silenceMin)
 
@@ -854,7 +862,10 @@ export class BibaoBrain {
     // 没叫到我：要么更响，要么别进脑子
     const notableTalk = analysis.hostility > 0.3 || analysis.gossipy > 0.35 || analysis.question > 0.5
     const overheard = channel === 'group' && !atMe && !frame.nameMention && !notableTalk
-    const thetaBoost = (1 - talk) * 0.15 + (overheard ? 0.1 : 0)
+    // 同样的刺激，每次的"注意力松紧"不完全一样
+    const jitterHash = Math.sin(now / 30000) * 43758.5453
+    const jitter = (jitterHash - Math.floor(jitterHash) - 0.5) * 0.08
+    const thetaBoost = (1 - talk) * 0.15 + (overheard ? 0.1 : 0) + jitter
     // 说话频率真的决定"接不接"：拉满必然接，拉低大概率装没看见
     if (talk < 0.99 && channel === 'group' && !atMe && this.rng.next() > 0.15 + 0.85 * talk) {
       this.lastPipeline = {
@@ -939,6 +950,15 @@ export class BibaoBrain {
           : undefined,
       at: now,
     })
+    this.habits.observe({
+      text,
+      // 喜不喜欢取决于当时的心情，不只是这句话本身
+      valence: clamp(stim.valenceTarget * 1.5 + this.state.moodValence * 0.4, -1, 1),
+      tags,
+      entityId,
+      mood: this.state.moodValence,
+      at: now,
+    })
     this.social.remember(entityId, { at: now, role: 'user', text })
     this.social.adjust(entityId, {
       intimacy: stim.intimacyDelta,
@@ -1002,6 +1022,7 @@ export class BibaoBrain {
       .retrieve({
         now,
         entityId,
+        moodBoost: this.habits.associationOf(tags, this.state.moodValence),
         query: text,
         tags,
         limit: 6,
@@ -1189,7 +1210,11 @@ export class BibaoBrain {
           })
         : null
 
-    if ((dual.bubbles ?? []).length) this.lastSpokeAt = now
+    if ((dual.bubbles ?? []).length) {
+      this.lastSpokeAt = now
+      // 她愿意接话，本身就是"这个话题还值得聊"的弱信号
+      this.habits.observe({ text, valence: 0.15, tags, entityId, mood: this.state.moodValence, at: now })
+    }
     this.inner.push({
       at: now,
       kind: 'external',
@@ -1404,6 +1429,7 @@ export class BibaoBrain {
       lastFactError: this.lastFactError,
       senses: this.senses.toJSON(),
       tuning: this.tuning,
+      habits: this.habits.toJSON(),
       timeline: this.timeline,
     }
   }
@@ -1461,6 +1487,7 @@ export class BibaoBrain {
     brain.lastFactError = json.lastFactError ?? ''
     brain.senses = SensoryCortex.fromJSON(json.senses)
     brain.applyTuning(json.tuning ?? {})
+    if (json.habits) brain.habits = new HabitMemory(json.habits)
     // v1 → v2：情景记忆的稳定性基准从 3 天提到 30 天，老存档按比例放大
     const fromVersion = json.version ?? 1
     if (fromVersion < 2) {
