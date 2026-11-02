@@ -104,7 +104,7 @@ check('GET /group/state', group.data.unlocked === true && (group.data.group?.gro
 
 const feed = await call('POST', '/group/feed', {
   groupId: 'g_class',
-  senderId: '44719023',
+  senderId: '100000002',
   text: '笑死 你们听说了吗',
   atMe: false,
 })
@@ -112,7 +112,7 @@ check('POST /group/feed', feed.status === 200 && Boolean(feed.data.decision), fe
 
 const scan = await call('POST', '/group/feed', {
   groupId: 'g_cat',
-  senderId: '903277415',
+  senderId: '100000005',
   text: '今天天气不错',
   atMe: false,
 })
@@ -124,7 +124,7 @@ check(
 
 await call('POST', '/group/feed', {
   groupId: 'g_class',
-  senderId: '44719023',
+  senderId: '100000002',
   text: '笑死 你们听说了吗 那个事真的绝了',
   atMe: false,
 })
@@ -168,7 +168,7 @@ const llmSettings = await call('POST', '/settings', {
       reflection: { enabled: false },
     },
   },
-  snowluma: { allowGroups: ['576268399'], sendEnabled: false },
+  snowluma: { allowGroups: ['123456789'], sendEnabled: false },
 })
 const cfg = llmSettings.data.snapshot?.llmConfig
 check(
@@ -183,7 +183,7 @@ check(
 )
 check(
   '群白名单生效',
-  (llmSettings.data.snapshot?.snow?.allowGroups ?? []).join(',') === '576268399',
+  (llmSettings.data.snapshot?.snow?.allowGroups ?? []).join(',') === '123456789',
   (llmSettings.data.snapshot?.snow?.allowGroups ?? []).join(','),
 )
 const wsSave = await call('POST', '/settings', {

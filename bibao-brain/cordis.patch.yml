@@ -29,16 +29,16 @@
         # 主动分享默认关闭；打开后也只走私聊，每天最多一条
         outreach:
           enabled: false
-        # Phase 2：snowluma 已安装并运行在本机 3000（HTTP）/ 3001（WS）。
-        # 默认只读观察：收消息、算注意力、写记忆、记录"本来会发什么"，但不真的发。
-        # 想让她真的开口，把 sendEnabled 改成 true（或点面板里的「允许发送」）。
+        # Phase 2：snowluma 的配置目录不写死。
+        # 留空 = 自动找：SNOWLUMA_CONFIG_DIR → 当前目录/同级目录下的 snowluma/config → ~/snowluma/config。
+        # 默认关闭，也不接任何群；装好后在面板里填群号、打开开关。
         snowluma:
-          enabled: true
-          sendEnabled: true
+          enabled: false
+          sendEnabled: false
           pokeReact: true
           pokeReply: true
-          configDir: 'D:\XiangMu\snowluma\config'
-          allowGroups: ['576268399']
+          configDir: ''
+          allowGroups: []
           allowPrivate: false
         # 每个认知逻辑可以各用一套模型（也可在 面板/设置 里改，改完写本机 settings.json）。
         # 留空 apiKey 就回落 DSH 当前默认模型；再不行就本地布洛卡。

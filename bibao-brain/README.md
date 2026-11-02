@@ -111,7 +111,7 @@ node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 
 ## snowluma 测试边界
 
-默认只观察群 `576268399`，私聊关闭，`sendEnabled=false`（不真的发）。
+默认不接任何群（`allowGroups: []`）、私聊关闭、`sendEnabled=false`（不真的发）。装好后在面板里填自己的群号。
 白名单为空 = 谁都不理；要她开口，把 `sendEnabled` 打开（面板设置页勾「允许真的发到 QQ」）。
 
 ---
@@ -251,7 +251,15 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
         userId: owner
         useLlm: false       # true = 语言区接 DSH 当前默认模型
         gatePhase2: true    # false = 忽略验脑闸门（不建议）
+        snowluma:
+          enabled: false    # 默认不连、不发
+          configDir: ''     # 留空自动找；也可用 SNOWLUMA_CONFIG_DIR
+          allowGroups: []   # 默认谁都不理；装好后填自己的群
 ```
+
+> 仓库里的补丁和测试只使用占位符（`123456789` / `1000000xx`），不写任何人的
+> snowluma 本机路径、QQ 号或群号。你自己的配置留在本机 `settings.json` / `cordis.yml`，
+> 不要提交回仓库。
 
 大脑存档写在 `$DSH_HOME/bibao/brain-state.json`（原子写：tmp + rename），进程重启后继续衰老；
 `settings.json` 只存面板里改过的开关。想重新来一遍，删掉 `brain-state.json` 或在面板点「重置这一生」。

@@ -143,8 +143,8 @@ const snapshot = {
   gate: { allPassed: true, passed: 6, total: 6, checkedAt: Date.now() },
   phase2: { unlocked: true, simulated: true },
   roster: [
-    { id: '44719023', name: '阿柚', tags: ['死党'] },
-    { id: '6682341', name: '陈老师', tags: ['班主任'] },
+    { id: '100000002', name: '阿柚', tags: ['死党'] },
+    { id: '100000007', name: '陈老师', tags: ['班主任'] },
   ],
   group: {
     fovealId: 'g_class',

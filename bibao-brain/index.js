@@ -60,7 +60,7 @@ const DEFAULTS = {
   // 主动分享：默认关闭，且只发私聊；打开后每天最多一条
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
-  vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
+  vision: { enabled: false, model: '', maxPerHour: 20 },
   // 手：默认关着；开着就会真的动鼠标键盘
   game: { control: false, layout: null, autoStart: false },
   llm: {
@@ -71,15 +71,17 @@ const DEFAULTS = {
   snowluma: {
     enabled: false,
     sendEnabled: false,
-    configDir: 'D:\\XiangMu\\snowluma\\config',
+    // 留空 = 自动找 snowluma 配置（环境变量 / 当前目录 / 同级目录 / 家目录）
+    // 不把作者本机路径写进默认值
+    configDir: '',
     httpBase: '',
     httpToken: '',
     wsUrl: '',
     wsToken: '',
     selfId: '',
     maxReplyChars: 60,
-    // 只在这个群测试；白名单为空 = 谁也不理
-    allowGroups: ['576268399'],
+    // 白名单为空 = 谁也不理；首次安装必须自己填群号
+    allowGroups: [],
     allowPrivate: false,
     // 戳一戳：会有感觉，但不自动戳回去
     pokeReact: true,
@@ -95,11 +97,11 @@ const DEFAULTS = {
 }
 
 const DEMO_MEMBERS = [
-  { id: '44719023', name: '阿柚', tags: ['死党'] },
-  { id: '205883714', name: '老周', tags: ['室友'] },
-  { id: '903277415', name: '一只鹿', tags: ['网友'] },
-  { id: '6682341', name: '陈老师', tags: ['班主任'] },
-  { id: '777001', name: '杠精小王', tags: [] },
+  { id: '100000002', name: '阿柚', tags: ['死党'] },
+  { id: '100000004', name: '老周', tags: ['室友'] },
+  { id: '100000005', name: '一只鹿', tags: ['网友'] },
+  { id: '100000007', name: '陈老师', tags: ['班主任'] },
+  { id: '100000008', name: '杠精小王', tags: [] },
 ]
 
 export function apply(ctx, config = {}) {
@@ -773,18 +775,51 @@ export function apply(ctx, config = {}) {
   }
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+  /** 不把作者本机路径写死：环境变量 → 显式配置 → 常见相对位置。 */
+  function snowConfigCandidates() {
+    const home = os.homedir()
+    const cwd = process.cwd()
+    return [
+      settings.snowluma.configDir,
+      process.env.SNOWLUMA_CONFIG_DIR,
+      path.join(cwd, 'snowluma', 'config'),
+      path.join(path.dirname(cwd), 'snowluma', 'config'),
+      path.join(home, 'snowluma', 'config'),
+      path.join(home, '.snowluma', 'config'),
+      path.join(process.env.DSH_HOME || path.join(home, '.dsh'), 'snowluma', 'config'),
+    ]
+      .filter(Boolean)
+      .map((item) => path.resolve(String(item)))
+      .filter((item, index, list) => list.indexOf(item) === index)
+  }
+
+  async function resolveSnowConfigDir() {
+    for (const dir of snowConfigCandidates()) {
+      try {
+        const files = await readdir(dir)
+        if (files.some((name) => /^onebot_.*\.json$/.test(name))) return dir
+      } catch {
+        /* 换下一个候选 */
+      }
+    }
+    return ''
+  }
+
   async function loadSnowConfig() {
     const conf = settings.snowluma
     // 逐字段合并：手填的优先，没填的才回落到 snowluma 自己的 onebot 配置
     let base = { httpBase: '', httpToken: '', wsUrl: '', wsToken: '', selfId: String(conf.selfId ?? ''), reverse: null }
     // 总是读一次 snowluma 自己的配置：即使用户手填了 WS/HTTP，也要拿到 selfId，
     // 否则戳一戳的目标判断会失效，自己的消息也不会被过滤。
-    {
+    const configDir = await resolveSnowConfigDir()
+    if (!configDir) {
+      snow.reason = '未找到 snowluma 配置目录：请设置 SNOWLUMA_CONFIG_DIR 环境变量，或在插件配置里填 snowluma.configDir'
+    } else {
       try {
-        const files = await readdir(conf.configDir)
+        const files = await readdir(configDir)
         const file = files.find((name) => /^onebot_.*\.json$/.test(name))
         if (file) {
-          const raw = JSON.parse(await readFile(path.join(conf.configDir, file), 'utf8'))
+          const raw = JSON.parse(await readFile(path.join(configDir, file), 'utf8'))
           const http = raw.networks?.httpServers?.[0]
           const ws = raw.networks?.wsServers?.[0]
           // snowluma 的 old 版本可能不写 enabled 字段；有 url 且没有被显式关掉就算开着

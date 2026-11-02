@@ -1464,7 +1464,7 @@ window.__ModuleLoader__.load({
     function GroupsTab({ snap, t, onGoGate }) {
       const [state, setState] = useState(null)
       const [groupId, setGroupId] = useState('g_class')
-      const [senderId, setSenderId] = useState('44719023')
+      const [senderId, setSenderId] = useState('100000002')
       const [text, setText] = useState('')
       const [atMe, setAtMe] = useState(false)
       const [busy, setBusy] = useState(false)
@@ -1880,7 +1880,7 @@ window.__ModuleLoader__.load({
             h('input', {
               className: 'bb-input',
               value: form.allowGroups,
-              placeholder: '576268399',
+              placeholder: '123456789',
               onChange: (event) => set({ allowGroups: event.target.value }),
             }),
           ),
@@ -2580,7 +2580,7 @@ window.__ModuleLoader__.load({
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReply !== false, onChange: (event) => this.setField({ pokeReply: event.target.checked }) }), '被戳之后真的回一句（默认开）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.outreachEnabled === true, onChange: (event) => this.setField({ outreachEnabled: event.target.checked }) }), '允许她偶尔主动私聊你（默认关，每天最多一条）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '被戳后戳回去一下（只戳一下，20 秒内不重复）'),
-            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '576268399', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
+            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
                 h('div', { className: 'bb-inline bb-inline--wrap' },
                   h('label', { className: 'bb-check' },
                     h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.set({ sendEnabled: e.target.checked }) }),
@@ -2736,7 +2736,7 @@ window.__ModuleLoader__.load({
           group: null,
           groupDraft: '',
           groupId: 'g_class',
-          groupSender: '44719023',
+          groupSender: '100000002',
           groupAtMe: false,
           gate: null,
           gateBusy: false,
@@ -3658,7 +3658,7 @@ window.__ModuleLoader__.load({
             h(Field, { label: 'HTTP token' }, h('input', { className: 'bb-input', type: 'password', value: form.httpToken, placeholder: '留空 = 沿用已保存的', onChange: (e) => this.setField({ httpToken: e.target.value }) })),
             h(Field, { label: 'WS' }, h('input', { className: 'bb-input', value: form.wsUrl, placeholder: 'ws://127.0.0.1:3001/', onChange: (e) => this.setField({ wsUrl: e.target.value }) })),
             h(Field, { label: 'WS token' }, h('input', { className: 'bb-input', type: 'password', value: form.wsToken, placeholder: '留空 = 沿用已保存的', onChange: (e) => this.setField({ wsToken: e.target.value }) })),
-            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '576268399', onChange: (e) => this.setField({ allowGroups: e.target.value }) })),
+            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789', onChange: (e) => this.setField({ allowGroups: e.target.value }) })),
             h('div', { className: 'bb-inline bb-inline--wrap' },
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.setField({ sendEnabled: e.target.checked }) }), '允许真的发到 QQ'),
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.allowPrivate, onChange: (e) => this.setField({ allowPrivate: e.target.checked }) }), '允许私聊'),

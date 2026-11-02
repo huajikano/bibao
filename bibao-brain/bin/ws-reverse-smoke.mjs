@@ -29,8 +29,8 @@ client.addEventListener('message', (event) => {
   if (!payload.action) return
   clientActions.push(payload.action)
   let data = {}
-  if (payload.action === 'get_login_info') data = { user_id: 1924666072, nickname: '泠' }
-  if (payload.action === 'get_group_list') data = [{ group_id: 576268399, group_name: '测试群', member_count: 3 }]
+  if (payload.action === 'get_login_info') data = { user_id: 100000001, nickname: '泠' }
+  if (payload.action === 'get_group_list') data = [{ group_id: 123456789, group_name: '测试群', member_count: 3 }]
   if (payload.action === 'send_group_msg') data = { message_id: messageId++ }
   client.send(JSON.stringify({ status: 'ok', retcode: 0, data, echo: payload.echo }))
 })
@@ -42,22 +42,22 @@ client.send(
   JSON.stringify({
     post_type: 'message',
     message_type: 'group',
-    group_id: 576268399,
-    user_id: 703586373,
-    self_id: 1924666072,
+    group_id: 123456789,
+    user_id: 100000003,
+    self_id: 100000001,
     message: [{ type: 'text', data: { text: '在吗' } }],
     time: Math.floor(Date.now() / 1000),
   }),
 )
 await new Promise((resolve) => setTimeout(resolve, 200))
 check('事件能从 WS 客户端进来', events.length === 1 && events[0].post_type === 'message', `events=${events.length}`)
-check('self_id 能从事件里认出来', server.selfId === '1924666072', server.selfId)
+check('self_id 能从事件里认出来', server.selfId === '100000001', server.selfId)
 
 const login = await server.loginInfo()
-check('动作走同一条 WS', login?.user_id === 1924666072 && clientActions.includes('get_login_info'), JSON.stringify(login))
+check('动作走同一条 WS', login?.user_id === 100000001 && clientActions.includes('get_login_info'), JSON.stringify(login))
 const groups = await server.groupList()
-check('群列表能通过 WS 取回', groups.length === 1 && groups[0].group_id === 576268399, `groups=${groups.length}`)
-const sent = await server.sendGroup(576268399, '测试')
+check('群列表能通过 WS 取回', groups.length === 1 && groups[0].group_id === 123456789, `groups=${groups.length}`)
+const sent = await server.sendGroup(123456789, '测试')
 check('发消息动作能通过 WS 执行', sent === 9001 && clientActions.includes('send_group_msg'), `messageId=${sent}`)
 
 client.close()
