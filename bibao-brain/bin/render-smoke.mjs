@@ -215,7 +215,7 @@ function render(node, path) {
   render(node.props?.children, path)
 }
 
-for (const tab of ['brain', 'talk', 'memory', 'groups', 'gate', 'settings', 'senses']) {
+for (const tab of ['brain', 'talk', 'memory', 'groups', 'gate', 'settings', 'senses', 'friends']) {
   try {
     const instance = new panel({ t: (key) => key, close: () => {} })
     instance.state.snap = snapshot

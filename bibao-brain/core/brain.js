@@ -765,6 +765,8 @@ export class BibaoBrain {
     const relation = this.social.ensure(entityId, frame.entityName || this.userName)
     const channel = frame.channel === 'group' ? 'group' : 'private'
     const atMe = Boolean(frame.atMe)
+    // 私聊过的人算好友：好友面板只显示这些人
+    if (channel === 'private' && !relation.friend) relation.friend = true
 
     // 对方一开口，原来的"等回复"钩子立即销毁
     // 他一开口，上一段不愉快就过去了

@@ -156,6 +156,22 @@ export function apply(ctx, config = {}) {
   }
 
   /** 用一份传记重新出生：/reset 与 /biography 共用同一条路径。 */
+  function friendList() {
+    return brain.social
+      .snapshot()
+      .filter((row) => row.friend)
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        intimacy: Math.round(row.intimacy),
+        trust: Math.round(row.trust),
+        powerFear: Math.round(row.powerFear ?? 0),
+        impression: row.impression ?? '',
+        interactions: row.interactions ?? 0,
+        tags: row.tags ?? [],
+      }))
+  }
+
   function rebuildBrain(bio, seed = 20261101) {
     const llms = llmNow()
     brain = new BibaoBrain({
@@ -297,12 +313,34 @@ export function apply(ctx, config = {}) {
           name: settings.userName,
           intimacy: 42,
           trust: 58,
+          friend: true,
           tags: ['正在和我说话的人'],
           impression: '会主动找我说话',
         })
       }
       brain.llms = llms
       brain.applyTuning(settings.tuning)
+      {
+        const owner = brain.social.get(settings.userId)
+        if (owner) owner.friend = true
+        // 有 bridge 就拉一次真实好友列表，把它们标成好友（失败不影响启动）
+        if (snow.bridge && snow.connected) {
+          snow.bridge
+            .call('get_friend_list', {})
+            .then((list) => {
+              const rows = Array.isArray(list) ? list : list?.data ?? []
+              for (const row of rows) {
+                const id = String(row?.user_id ?? row?.userId ?? '')
+                if (!id) continue
+                const relation = brain.social.ensure(id, row?.nickname ?? row?.remark ?? id)
+                relation.friend = true
+                if (row?.remark) relation.remark = String(row.remark).slice(0, 24)
+              }
+              schedulePersist(200)
+            })
+            .catch(() => {})
+        }
+      }
       // 重启会丢掉"上次保存到现在"这段时间：超过一分钟就整条时间轴平移回来
       {
         const drift = brain.simMs - Date.now()
@@ -1289,6 +1327,30 @@ export function apply(ctx, config = {}) {
       },
     },
 
+    {
+      path: '/friends',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          const id = String(body.id ?? '')
+          if (!id) return fail('缺少 id', 400)
+          const relation = brain.social.get(id)
+          if (!relation) return fail('没有这个人', 404)
+          if (!relation.friend) return fail('不是好友，不能在面板里改', 403)
+          brain.social.setRelation(id, {
+            intimacy: body.intimacy,
+            trust: body.trust,
+            powerFear: body.powerFear,
+            impression: body.impression,
+          })
+          schedulePersist(200)
+          return json({ ok: true, friends: friendList() })
+        }
+        return json({ friends: friendList() })
+      },
+    },
     {
       path: '/biography',
       methods: ['GET', 'POST'],

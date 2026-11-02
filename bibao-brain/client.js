@@ -3714,6 +3714,7 @@ window.__ModuleLoader__.load({
           ['groups', t('tabGroups')],
           ['gate', t('tabGate')],
           ['senses', '感官'],
+          ['friends', '好友'],
           ['settings', t('tabSettings')],
         ]
         return h(
@@ -3775,11 +3776,168 @@ window.__ModuleLoader__.load({
           tab === 'gate' ? this.renderGate(t, snap) : null,
           tab === 'settings' ? this.renderSettings(t, snap) : null,
           tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
+          tab === 'friends' ? h(FriendsPanel, { t, snap }) : null,
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
         )
       }
     }
 
+
+
+    /* ------------------------------------------------------------------ */
+    /* 好友管理：只有真的加过好友的人才会出现在这里                          */
+    /* ------------------------------------------------------------------ */
+
+    class FriendsPanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { friends: [], draft: {}, note: '', busy: false, error: '' }
+        this.load = this.load.bind(this)
+        this.edit = this.edit.bind(this)
+        this.save = this.save.bind(this)
+      }
+
+      componentDidMount() {
+        this.alive = true
+        this.load()
+      }
+
+      componentWillUnmount() {
+        this.alive = false
+      }
+
+      async load() {
+        try {
+          const data = await request('/friends')
+          if (!this.alive) return
+          const friends = data.friends ?? []
+          const draft = {}
+          for (const row of friends) {
+            draft[row.id] = {
+              intimacy: row.intimacy,
+              trust: row.trust,
+              powerFear: row.powerFear,
+              impression: row.impression,
+            }
+          }
+          this.setState({ friends, draft, error: '' })
+        } catch (error) {
+          if (this.alive) this.setState({ error: error.message })
+        }
+      }
+
+      edit(id, patch) {
+        this.setState((prev) => ({ draft: { ...prev.draft, [id]: { ...(prev.draft[id] ?? {}), ...patch } } }))
+      }
+
+      async save(row) {
+        const draft = this.state.draft[row.id] ?? {}
+        this.setState({ busy: true, note: '' })
+        try {
+          await request('/friends', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: row.id,
+              intimacy: Number(draft.intimacy),
+              trust: Number(draft.trust),
+              powerFear: Number(draft.powerFear),
+              impression: String(draft.impression ?? ''),
+            }),
+          })
+          this.setState({ busy: false, note: `已更新 ${row.name}` })
+          await this.load()
+        } catch (error) {
+          this.setState({ busy: false, error: error.message })
+        }
+      }
+
+      render() {
+        const { friends, draft, note, busy, error } = this.state
+        return h(
+          'div',
+          { className: 'bb-stack' },
+          h(
+            Card,
+            { title: '好友管理', hint: `共 ${friends.length} 人（只有私聊过 / 加过好友的人在这里）` },
+            note ? h('div', { className: 'bb-chip good' }, note) : null,
+            error ? h('div', { className: 'bb-error' }, error) : null,
+            friends.length
+              ? friends.map((row) => {
+                  const value = draft[row.id] ?? {}
+                  return h(
+                    'div',
+                    { key: row.id, className: 'bb-friend' },
+                    h(
+                      'div',
+                      { className: 'bb-inline' },
+                      h('strong', {}, row.name),
+                      h('span', { className: 'bb-muted' }, `聊过 ${row.interactions} 次`),
+                      row.tags?.length ? h(Chip, { children: row.tags[0] }) : null,
+                    ),
+                    h(
+                      'label',
+                      { className: 'bb-friendRow' },
+                      h('span', { className: 'bb-muted' }, `好感 ${Math.round(value.intimacy ?? 0)}`),
+                      h('input', {
+                        type: 'range',
+                        className: 'bb-slider',
+                        min: '-50',
+                        max: '100',
+                        step: '1',
+                        value: value.intimacy ?? 0,
+                        onChange: (event) => this.edit(row.id, { intimacy: Number(event.target.value) }),
+                      }),
+                    ),
+                    h(
+                      'label',
+                      { className: 'bb-friendRow' },
+                      h('span', { className: 'bb-muted' }, `信任 ${Math.round(value.trust ?? 0)}`),
+                      h('input', {
+                        type: 'range',
+                        className: 'bb-slider',
+                        min: '0',
+                        max: '100',
+                        step: '1',
+                        value: value.trust ?? 0,
+                        onChange: (event) => this.edit(row.id, { trust: Number(event.target.value) }),
+                      }),
+                    ),
+                    h(
+                      'label',
+                      { className: 'bb-friendRow' },
+                      h('span', { className: 'bb-muted' }, `敬畏 ${Math.round(value.powerFear ?? 0)}`),
+                      h('input', {
+                        type: 'range',
+                        className: 'bb-slider',
+                        min: '0',
+                        max: '100',
+                        step: '1',
+                        value: value.powerFear ?? 0,
+                        onChange: (event) => this.edit(row.id, { powerFear: Number(event.target.value) }),
+                      }),
+                    ),
+                    h('input', {
+                      className: 'bb-input',
+                      placeholder: '她对这个人的印象（一句话）',
+                      value: value.impression ?? '',
+                      onChange: (event) => this.edit(row.id, { impression: event.target.value }),
+                    }),
+                    h(
+                      'div',
+                      { className: 'bb-actions' },
+                      h(
+                        'button',
+                        { type: 'button', className: 'bb-btn primary', disabled: busy, onClick: () => this.save(row) },
+                        '保存这个人',
+                      ),
+                    ),
+                  )
+                })
+              : h('div', { className: 'bb-muted' }, '还没有好友。等有人私聊过她，就会出现在这里。'),
+          ),
+        )
+      }
+    }
 
     /* ------------------------------------------------------------------ */
     /* 脑机接口（实验性）：六个感官通道                                      */
@@ -4005,6 +4163,8 @@ window.__ModuleLoader__.load({
   backdrop-filter: blur(6px);
 }
 .bb-persona { display: flex; flex-direction: column; gap: 8px; }
+.bb-friend { display: flex; flex-direction: column; gap: 6px; padding-block: 10px; border-block-end: 1px solid var(--dsw-alias-border-l1); }
+.bb-friendRow { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 8px; font-size: 11.5px; }
 .bb-personaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .bb-personaField { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
 .bb-personaRow { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }

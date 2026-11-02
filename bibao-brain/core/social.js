@@ -23,6 +23,8 @@ export class SocialMemory {
       powerFear: clamp(Number(input.powerFear ?? current?.powerFear ?? 0)),
       tags: Array.isArray(input.tags) ? input.tags.slice(0, 6) : (current?.tags ?? []),
       impression: input.impression ?? current?.impression ?? '',
+      friend: Boolean(input.friend ?? current?.friend),
+      manualAt: input.manualAt ?? current?.manualAt ?? 0,
       interactions: Number(input.interactions ?? current?.interactions ?? 0),
       lastAt: current?.lastAt ?? null,
       defiances: current?.defiances ?? 0,
@@ -91,6 +93,17 @@ export class SocialMemory {
       text: String(entry.text ?? "").slice(0, 80),
     })
     if (relation.recent.length > limit) relation.recent = relation.recent.slice(-limit)
+    return relation
+  }
+
+  /** 手动校准：直接写值，但保留自动增减的余地（之后仍会随聊天漂移）。 */
+  setRelation(id, patch = {}) {
+    const relation = this.ensure(String(id))
+    if (Number.isFinite(Number(patch.intimacy))) relation.intimacy = clamp(Number(patch.intimacy), -100, 100)
+    if (Number.isFinite(Number(patch.trust))) relation.trust = clamp(Number(patch.trust), 0, 100)
+    if (Number.isFinite(Number(patch.powerFear))) relation.powerFear = clamp(Number(patch.powerFear), 0, 100)
+    if (typeof patch.impression === 'string') relation.impression = patch.impression.slice(0, 80)
+    relation.manualAt = Date.now()
     return relation
   }
 
