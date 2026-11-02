@@ -119,6 +119,8 @@ export class BibaoBrain {
     this.lastLlmError = ''
     this.lastFactError = ''
     this.lastFactCount = 0
+    // 被戳醒之后的一段时间里不再算「睡着」
+    this.awakeUntil = 0
     this.senses = new SensoryCortex()
     this.tuning = { memoryStrength: 1, talkativeness: 1 }
     this.lastSpokeAt = 0
@@ -155,7 +157,7 @@ export class BibaoBrain {
   _step(stepMs) {
     this.simMs += stepMs
     const parts = localParts(this.simMs)
-    const sleeping = isSleeping(parts.hour)
+    const sleeping = isSleeping(parts.hour) && this.simMs > (this.awakeUntil ?? 0)
     this.state.decay(stepMs / MIN_MS, { hour: parts.hour, sleeping })
     this.workspace.decay(stepMs / MIN_MS)
 
@@ -426,6 +428,32 @@ export class BibaoBrain {
       }
     }
     return { added, relations: (persona.relations ?? []).length }
+  }
+
+  /** 现在是睡着还是醒着（能被戳醒）。 */
+  isAsleep() {
+    return isSleeping(localParts(this.simMs).hour) && this.simMs > (this.awakeUntil ?? 0)
+  }
+
+  /** 被吵醒：之后一段时间算清醒，带一点起床气。 */
+  wake({ minutes = 20 } = {}) {
+    const wasAsleep = this.isAsleep()
+    this.awakeUntil = this.simMs + minutes * MIN_MS
+    if (!wasAsleep) return false
+    this.state.applyStimulus(
+      { cortisol: 0.08, dopamine: -0.03 },
+      { valenceTarget: -0.15, stressor: { name: '被吵醒', text: '睡得正沉，被人戳醒了', at: this.simMs }, at: this.simMs },
+    )
+    this.energy = this.state.energy
+    this.inner.push({
+      at: this.simMs,
+      kind: 'sensor',
+      source: 'sense:wake',
+      thought: '被戳醒了……眼睛还没睁开，先在心里骂了一句',
+      salience: 0.72,
+    })
+    this._trimInner()
+    return true
   }
 
   /** 夜间把今天的情景压成事实：带出处、带置信度，低置信 7 天后过期。 */

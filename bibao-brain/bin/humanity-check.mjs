@@ -105,6 +105,17 @@ const fresh = (seed = 7) => {
   check('冷却期仍然会回，只是短', bubbles.length <= 1, `bubbles=${bubbles.length}`)
 }
 
+// I. 半夜被戳能叫醒
+{
+  const brain = fresh()
+  const { localParts } = await import('../core/clock.js')
+  const parts = localParts(brain.simMs)
+  brain.simMs = brain.simMs + ((3 - parts.hour + 24) % 24) * 3600000
+  const before = brain.isAsleep()
+  const woke = brain.wake()
+  check('半夜被戳会醒', before && woke && !brain.isAsleep(), `before=${before} woke=${woke} after=${brain.isAsleep()}`)
+  check('被吵醒会带起床气', brain.state.cortisol > 0.2, `cortisol=${brain.state.cortisol.toFixed(2)}`)
+}
 for (const item of results) console.log(`${item.ok ? 'PASS' : 'FAIL'}  ${item.name}  —  ${item.detail}`)
 const failed = results.filter((item) => !item.ok).length
 console.log(`\n${results.length - failed}/${results.length} 通过`)

@@ -473,6 +473,7 @@ export function apply(ctx, config = {}) {
         allowPrivate: Boolean(settings.snowluma.allowPrivate),
       },
       vision: { ...settings.vision },
+      asleep: brain.isAsleep(),
       llmConfig: {
         useLlm: settings.useLlm,
         baseURL: settings.llm.baseURL,
@@ -954,8 +955,11 @@ export function apply(ctx, config = {}) {
     const targetsSelf = targetId === selfId
     if (targetsSelf) {
       brain.social.adjust(userId, { intimacy: 0.6 })
-      const line = `${relation.name}戳了你一下`
-      brain.perceiveSense({ channel: 'touch', text: line, intensity: 0.55 })
+      // 睡着的时候戳一下能把人叫醒
+      const woke = brain.isAsleep() ? brain.wake() : false
+      const line = woke ? `${relation.name}把你戳醒了` : `${relation.name}戳了你一下`
+      brain.perceiveSense({ channel: 'touch', text: line, intensity: woke ? 0.85 : 0.55 })
+      if (woke) await appendSnowLog({ at: now, kind: 'poke-wake', groupId, userId })
       funnel.record({ kind: 'poke', group: funnel.get(groupId)?.name ?? '', text: line })
       await appendSnowLog({ at: now, kind: 'poke-in', groupId, userId, target: targetId })
       // 极少数情况下回戳一下（默认关闭）
