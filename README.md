@@ -61,6 +61,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.5` | 戳一戳二选一：回戳一下或发一张表情包，不再发文字；表情包按情绪/上下文选并加冷却 |
 | [`v0.8.4`](https://github.com/huajikano/bibao/releases/tag/v0.8.4) | snowluma 目录不再要求固定路径：环境变量/设置字段/常见目录/盘符浅扫自动找；找不到时给出可操作提示 |
 | [`v0.8.3`](https://github.com/huajikano/bibao/releases/tag/v0.8.3) | 清理补丁/测试里的本机路径、QQ 号、群号；snowluma 配置目录改为自动探测 |
 | [`v0.8.2`](https://github.com/huajikano/bibao/releases/tag/v0.8.2) | 戳一戳回戳（只一下）、好友面板改为互动 10 条自动进入并由她管理、显示 QQ 账号小字 |
@@ -80,7 +81,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 - 关系层：对话线程（没聊完的事会留一条线、两天后放下）、默认关闭的主动私聊分享
 - 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
 - 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；当前只读通道已接
-- QQ 修复：表情包导入（缺 `shrinkImage`）与描述编辑、任意群被戳后真正回一句、反向 WS 连接、WS 配置重启不丢
+- QQ 修复：表情包导入与描述编辑；被戳后按情绪/上下文二选一（回戳一下或表情包，不发文字）；反向 WS 连接、WS 配置重启不丢
 - 隐私：补丁/测试只含占位符，不写本机 snowluma 路径、QQ 号或群号；真实配置只留在本机
 - 界面：设置页七标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 感官 / 设置）+ 独立控制台
 

@@ -22,6 +22,11 @@ const laugh = await book.pick('日常', '哈哈哈这也太搞笑了')
 check('聊到加班会挑"累"那张', tired.gist.includes('加班'), tired.gist)
 check('聊到好笑会挑"笑死"那张', laugh.gist.includes('笑死'), laugh.gist)
 
+const mismatched = await book.pick('日常', '今天天气不错', { minScore: 1.0 })
+check('不合适就不硬发', mismatched === null, mismatched?.gist ?? 'null')
+const moodMatch = await book.pick('笑', '', { minScore: 1.0 })
+check('情绪对得上才发', moodMatch?.mood === '笑', moodMatch?.gist ?? 'null')
+
 const same = await book.add({ buffer: Buffer.concat([png, Buffer.from('a')]), gist: '重复', mood: '无语' })
 check('同图不重复入库', same?.dup === true && (await book.stats()).count === 3, `count=${(await book.stats()).count}`)
 

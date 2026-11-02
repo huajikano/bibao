@@ -98,7 +98,7 @@ node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 | 问题 | 原因 | 修复 |
 | --- | --- | --- |
 | 表情包导入失败 | 主面板调用了不存在的 `shrinkImage` | 补上 canvas 缩放 + PNG/JPEG 选择；失败时显示具体错误 |
-| 戳一戳没反应 | 只写触觉感知，从不生成回复 | `respondToPoke()` 走完整语言区，20 秒/对象冷却；默认开，可在设置关 |
+| 戳一戳没反应 | 只写触觉感知，从不生成回复 | `reactToPoke()` 二选一：回戳一下，或发一张情绪/上下文匹配的表情包；**不生成文字**；20 秒/对象冷却 |
 | WS 配置保存后重启丢失 | 启动时只恢复 `enabled/sendEnabled/allowGroups` | 逐字段恢复 HTTP/WS 地址、token、selfId、poke 开关等 |
 | WS 客户端连不上 | 3000/3001 没开，或 token 只放 header；selfId 在手填配置时可能为空 | **反向 WS 服务端**：监听 `ws://127.0.0.1:8080/ws`，snowluma 的 `wsClients` 主动连进来；token 同时支持 query/header；事件与动作走同一条连接；连接状态写入日志与 `/state.snow.wsStatus` |
 | 表情包描述不能改 | 自动识别结果直接落库，没有编辑入口 | 收藏夹每张图都有「改描述」，保存到 `StickerBook.update()`；主面板和独立控制台都可用 |

@@ -83,8 +83,9 @@ const DEFAULTS = {
     // 白名单为空 = 谁也不理；首次安装必须自己填群号
     allowGroups: [],
     allowPrivate: false,
-    // 戳一戳：会有感觉，但不自动戳回去
+    // 戳一戳：先感知；回应二选一（戳回去 / 表情包），不生成文字
     pokeReact: true,
+    // 兼容旧字段名：现在表示"允许用表情包回应"
     pokeReply: true,
     // 戳一戳是直接对着她，默认不按群白名单拦；不想在某个群回可以把这项关掉
     pokeAnyGroup: true,
@@ -159,8 +160,8 @@ export function apply(ctx, config = {}) {
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
-  const pokeReplyCooldown = new Map()
-  const pokeBackCooldown = new Map()
+  const pokeActionCooldown = new Map()
+  const stickerCooldown = new Map()
   let funnel = null
   let gate = null
   let loading = null
@@ -952,6 +953,8 @@ export function apply(ctx, config = {}) {
           void appendSnowLog({ at: Date.now(), kind: 'ws-status', connected: true, mode: 'reverse' })
           void setupReverse()
         } else {
+          // 新 peer 连上来时要重新 login/取群列表；否则热重载/断线后会用旧的空 selfId
+          reverseSetup = false
           void appendSnowLog({ at: Date.now(), kind: 'ws-status', connected: false, mode: 'reverse', code: status.code ?? null })
         }
       },
@@ -1125,14 +1128,21 @@ export function apply(ctx, config = {}) {
     snow.reason = '已断开'
   }
 
-  /** 发完文字后，有一定概率补一张表情包（按当下情绪挑一张收藏的）。 */
+  /**
+   * 发完文字后补一张表情包：不是抽奖，先看情绪和上下文合不合适。
+   * 90 秒内对同一个人/群最多一张，避免刷图。
+   */
   async function maybeSticker({ targetId = null, groupId = null, context = '' } = {}) {
     if (!stickers || settings.snowluma.stickers === false) return false
     if (!snow.bridge) return false
-    if (Math.random() > 0.22) return false
+    const key = groupId ? `group:${groupId}` : `user:${targetId}`
+    if (Date.now() - (stickerCooldown.get(key) ?? 0) < 90_000) return false
+    if (Math.random() > 0.28) return false
     try {
-      const item = await stickers.pick(stickerMood(), context)
+      const item = await stickers.pick(stickerMood(), context, { minScore: 1.0 })
       if (!item) return false
+      stickerCooldown.set(key, Date.now())
+      if (stickerCooldown.size > 300) stickerCooldown.delete(stickerCooldown.keys().next().value)
       const id = groupId
         ? await snow.bridge.sendGroup(groupId, '', item.file)
         : await snow.bridge.sendPrivate(targetId, '', item.file)
@@ -1373,30 +1383,10 @@ export function apply(ctx, config = {}) {
       if (woke) await appendSnowLog({ at: now, kind: 'poke-wake', groupId, userId })
       funnel.record({ kind: 'poke', group: funnel.get(groupId)?.name ?? '', text: line })
       await appendSnowLog({ at: now, kind: 'poke-in', groupId, userId, target: targetId })
-      // 被戳了要真的回一句，而不是只在内心"有感觉"
-      if (settings.snowluma.pokeReply !== false) {
-        void respondToPoke({ userId, groupId, relation, woke }).catch((error) =>
-          appendSnowLog({ at: Date.now(), kind: 'poke-reply-error', groupId, userId, error: String(error?.message ?? error).slice(0, 160) }),
-        )
-      }
-      // 戳回去：只戳一下，同一对象 20 秒内不重复，避免无限互戳
-      if (settings.snowluma.pokeBack && snow.bridge) {
-        const backKey = `${groupId || 'private'}:${userId}`
-        const backAt = Date.now()
-        if ((pokeBackCooldown.get(backKey) ?? 0) <= backAt) {
-          pokeBackCooldown.set(backKey, backAt + 20_000)
-          if (pokeBackCooldown.size > 300) pokeBackCooldown.delete(pokeBackCooldown.keys().next().value)
-          try {
-            await snow.bridge.call('send_poke', {
-              group_id: Number(groupId) || undefined,
-              user_id: Number(userId),
-            })
-            await appendSnowLog({ at: backAt, kind: 'poke-out', groupId, userId, group: Boolean(groupId) })
-          } catch (error) {
-            await appendSnowLog({ at: Date.now(), kind: 'poke-error', message: String(error?.message ?? error).slice(0, 120) })
-          }
-        }
-      }
+      // 二选一：戳回去一下（不再说话），或者发一张表情包；不生成文字回复
+      void reactToPoke({ userId, groupId, relation, woke }).catch((error) =>
+        appendSnowLog({ at: Date.now(), kind: 'poke-action-error', groupId, userId, error: String(error?.message ?? error).slice(0, 160) }),
+      )
       return
     }
     // 别人互戳：只有焦点群才当背景感知
@@ -1406,10 +1396,12 @@ export function apply(ctx, config = {}) {
   }
 
   /**
-   * 被戳之后真的回一句：走完整的大脑知觉与语言区，而不是只写一条触觉记忆。
-   * 用一条"（戳了你一下）"的合成感知帧，避免把戳一戳伪装成对方说了什么。
+   * 被戳后的反应只有两种，且每次只做一种：
+   *   1) 戳回去一下，不说话；
+   *   2) 发一张收藏的表情包，不说话。
+   * 素材不够/发送失败时，能戳就戳；两者都关掉就安静。
    */
-  async function respondToPoke({ userId, groupId, relation, woke = false } = {}) {
+  async function reactToPoke({ userId, groupId, relation, woke = false } = {}) {
     if (!brain || !snow.bridge) return
     if (!settings.snowluma.sendEnabled) return
     if (!groupId && !settings.snowluma.allowPrivate) return
@@ -1417,30 +1409,60 @@ export function apply(ctx, config = {}) {
 
     const cooldownKey = `${groupId || 'private'}:${userId}`
     const now = Date.now()
-    if ((pokeReplyCooldown.get(cooldownKey) ?? 0) > now) return
-    pokeReplyCooldown.set(cooldownKey, now + 20_000)
+    if ((pokeActionCooldown.get(cooldownKey) ?? 0) > now) return
+    pokeActionCooldown.set(cooldownKey, now + 20_000)
+    if (pokeActionCooldown.size > 300) pokeActionCooldown.delete(pokeActionCooldown.keys().next().value)
 
-    const frameText = woke ? '（被戳醒了，眼睛还没睁开）' : '（戳了你一下）'
-    const result = await brain.perceive({
-      entityId: userId,
-      entityName: relation?.name ?? String(userId),
-      text: frameText,
-      channel: groupId ? 'group' : 'private',
-      atMe: true,
-      priority: 0.45,
-      groupId: groupId || undefined,
-      groupName: funnel.get(groupId)?.name ?? '',
-    })
-    await deliver(result, { groupId: groupId || undefined, targetId: userId })
-    schedulePersist()
-    await appendSnowLog({
-      at: Date.now(),
-      kind: 'poke-reply',
-      groupId: groupId || '',
-      userId,
-      route: result.dual?.action_route,
-      bubbles: result.dual?.bubbles ?? [],
-    })
+    const canPoke = settings.snowluma.pokeBack !== false
+    const canSticker = settings.snowluma.pokeReply !== false && stickers && settings.snowluma.stickers !== false
+    const mood = stickerMood()
+    const playful = brain.playfulness()
+    const context = `${relation?.name ?? ''} 戳了你一下 ${woke ? '刚被吵醒' : ''}`
+    let choice = canSticker ? await stickers.choose(mood, context) : null
+    // 玩心高的时候，"无语/笑"这类通用表情也适合被戳；低玩心就懒得找图，直接戳回去
+    if (canSticker && playful >= 0.5) {
+      for (const alt of ['无语', '笑']) {
+        const altChoice = await stickers.choose(alt, context)
+        if (altChoice && (!choice || altChoice.score > choice.score)) choice = altChoice
+      }
+    }
+    // 只有情绪标签对得上、或上下文确实有重合时才发图；否则戳回去
+    const stickerFits = Boolean(choice && choice.score >= 0.95 && (choice.moodMatch || choice.contextScore >= 0.18))
+    const preferSticker = stickerFits && (playful >= 0.42 || mood !== '日常' || choice.contextScore >= 0.35)
+    const mode = preferSticker ? 'sticker' : canPoke ? 'poke' : stickerFits ? 'sticker' : 'none'
+
+    if (mode === 'sticker') {
+      try {
+        const item = await stickers.pick(choice?.item?.mood ?? mood, context, { minScore: 0.95 })
+        if (item) {
+          const messageId = groupId
+            ? await snow.bridge.sendGroup(groupId, '', item.file)
+            : await snow.bridge.sendPrivate(userId, '', item.file)
+          await appendSnowLog({
+            at: Date.now(),
+            kind: 'poke-sticker',
+            groupId: groupId || '',
+            userId,
+            gist: item.gist,
+            messageId,
+          })
+          return
+        }
+      } catch (error) {
+        await appendSnowLog({ at: Date.now(), kind: 'poke-sticker-error', groupId, userId, error: String(error?.message ?? error).slice(0, 120) })
+      }
+    }
+
+    if (!canPoke) return
+    try {
+      await snow.bridge.call('send_poke', {
+        group_id: Number(groupId) || undefined,
+        user_id: Number(userId),
+      })
+      await appendSnowLog({ at: Date.now(), kind: 'poke-out', groupId, userId, group: Boolean(groupId) })
+    } catch (error) {
+      await appendSnowLog({ at: Date.now(), kind: 'poke-error', message: String(error?.message ?? error).slice(0, 120) })
+    }
   }
 
   /** 让"她"看一眼这张图：只写进感知，不产生回复。 */

@@ -78,20 +78,32 @@ export class StickerBook {
    * 挑一张：情绪标签是底分，和当前对话的字面重合才是主要依据。
    * 用过很多次的会被压一点，避免翻来覆去就那几张。
    */
-  async pick(mood, context = '') {
+  async choose(mood, context = '') {
     await this.load()
     if (!this.items.length) return null
     const contextGrams = bigrams(context)
     const scored = this.items.map((item) => {
       const grams = bigrams(`${item.gist} ${item.text}`)
-      let score = jaccard(contextGrams, grams) * 3.2
-      if (item.mood === mood) score += 1.1
+      const contextScore = jaccard(contextGrams, grams)
+      const moodMatch = item.mood === mood
+      let score = contextScore * 3.2
+      if (moodMatch) score += 1.1
       score -= Math.min(0.9, (item.uses ?? 0) * 0.09)
-      score += Math.random() * 0.5
-      return { item, score }
+      // 只留极小的平局扰动；表情包合不合适由 mood + 上下文决定，不靠抽签
+      score += Math.random() * 0.04
+      return { item, score, contextScore, moodMatch }
     })
     scored.sort((a, b) => b.score - a.score)
-    const chosen = scored[0].item
+    return scored[0]
+  }
+
+  /**
+   * 挑一张。minScore 是"恰到好处"的闸门：低于它就不发，宁可换个反应。
+   */
+  async pick(mood, context = '', { minScore = 0 } = {}) {
+    const choice = await this.choose(mood, context)
+    if (!choice || choice.score < minScore) return null
+    const chosen = choice.item
     chosen.uses = (chosen.uses ?? 0) + 1
     await this._flush()
     return chosen
