@@ -27,6 +27,7 @@ export function normalizeSeed(seed = {}) {
     userName: String(seed.userName ?? '').trim().slice(0, 12) || '你',
     userRelation: String(seed.userRelation ?? '').trim().slice(0, 20) || '朋友',
     userHistory: String(seed.userHistory ?? '').trim().slice(0, 60),
+    canon: String(seed.canon ?? '').trim().slice(0, 2400),
   }
 }
 
@@ -202,8 +203,8 @@ export function buildGenerationPrompt(seedInput = {}) {
     '你在为一个拟人角色编写"过去经历"。只输出 JSON，不要解释。',
     '格式：{"fullName":"","oneLine":"","coreWound":"","copingStyle":"","events":[{"age":0,"title":"","narrative":"","valence":-1,"arousal":0,"tags":[""],"entities":[""],"impact":{}}],"relations":[{"name":"","impression":""}]}',
     '要求：',
-    `1. 12-16 条事件，age 从 0 到 ${seed.ageNow}，按时间递增，不要集中在同一年。`,
-    '2. narrative 50-90 字，第一人称过去时，只写具体场景（谁在场、说了什么、你做了什么），不要总结、不要评价、不要金句。',
+    `1. 12-14 条事件，age 从 0 到 ${seed.ageNow}，按时间递增，不要集中在同一年。`,
+    '2. narrative 40-70 字，第一人称过去时，只写具体场景（谁在场、说了什么、你做了什么），不要总结、不要评价、不要金句。',
     '3. valence ∈ [-1,1]（负=难受），arousal ∈ [0,1]（强度）。',
     '4. entities 只能填人名/称谓，且必须在 relations 里出现；每条的 entities 不超过 3 个。',
     '5. relations 只给 name 和 impression（一句话印象），不要写亲密/信任数值——那些由事件推导。',
@@ -218,19 +219,50 @@ export function buildGenerationPrompt(seedInput = {}) {
     seed.tone ? `性格气质：${seed.tone}` : '',
     seed.wound ? `核心伤口：${seed.wound}` : '',
     `重要他人：${seed.userName}（${seed.userRelation}${seed.userHistory ? `，${seed.userHistory}` : ''}）`,
+    seed.canon ? `以下是原著/设定，请严格据此生成，不要引入与它冲突的事实：\n${seed.canon}` : '',
     '请生成她/他的过去经历。',
   ].filter(Boolean).join('\n')
   return { system, user }
 }
 
+function balancedEnd(text, start) {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') inString = true
+    else if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+/** 从一段可能夹着解释、代码块、多个对象的文本里，抠出第一个合法的 persona JSON。 */
 export function parsePersonaJson(raw) {
   const text = String(raw ?? '')
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end <= start) return null
-  try {
-    return JSON.parse(text.slice(start, end + 1))
-  } catch {
-    return null
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const sources = fenced ? [fenced[1], text] : [text]
+  for (const source of sources) {
+    for (let start = source.indexOf('{'); start !== -1; start = source.indexOf('{', start + 1)) {
+      const end = balancedEnd(source, start)
+      if (end === -1) continue
+      try {
+        const parsed = JSON.parse(source.slice(start, end + 1))
+        if (parsed && Array.isArray(parsed.events)) return parsed
+      } catch {
+        /* 试下一个 */
+      }
+    }
   }
+  return null
 }

@@ -7,7 +7,7 @@
 
 /** 神经递质：基线、物理半衰期（分钟）、中文名、UI 配色用途。 */
 export const HORMONES = {
-  cortisol: { baseline: 0.22, halfLifeMin: 45, label: '皮质醇', hint: '防御 / 焦虑 / 愤怒' },
+  cortisol: { baseline: 0.2, halfLifeMin: 32, label: '皮质醇', hint: '防御 / 焦虑 / 愤怒' },
   dopamine: { baseline: 0.42, halfLifeMin: 25, label: '多巴胺', hint: '兴趣 / 奖赏 / 冲动' },
   oxytocin: { baseline: 0.35, halfLifeMin: 90, label: '催产素', hint: '依恋 / 信任 / 黏人' },
   serotonin: { baseline: 0.5, halfLifeMin: 60, label: '血清素', hint: '情绪稳定 / 满足' },

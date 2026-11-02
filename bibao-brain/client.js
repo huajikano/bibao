@@ -2947,12 +2947,16 @@ window.__ModuleLoader__.load({
       }
 
       async genPersona() {
+        const seedForm = this.state.personaSeed ?? { name: '', ageNow: 22, brief: '' }
+        const brief = String(seedForm.brief ?? '').trim()
         const seed = {
           name: seedForm.name || undefined,
           ageNow: seedForm.ageNow || undefined,
-          tone: seedForm.brief || undefined,
-          wound: seedForm.brief || undefined,
-          oneLine: seedForm.brief || undefined,
+          tone: brief && brief.length <= 60 ? brief : undefined,
+          wound: brief && brief.length <= 60 ? brief : undefined,
+          oneLine: brief && brief.length <= 60 ? brief : undefined,
+          // 长文本当成"原著设定"交给模型，短句才当性格描述
+          canon: brief.length > 60 ? brief.slice(0, 2400) : undefined,
         }
         this.setState({ personaBusy: true, personaNote: '生成中…（可能要十几秒）' })
         try {
@@ -3505,7 +3509,7 @@ window.__ModuleLoader__.load({
               h('textarea', {
                 className: 'bb-textarea',
                 rows: 3,
-                placeholder: '一句话：她是什么样的人、怕什么、和你什么关系',
+                placeholder: '一句话设定，或直接粘贴小说片段 / 人物小传（超过 60 字会自动按原著设定生成）',
                 value: seedForm.brief,
                 onChange: (event) =>
                   this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, brief: event.target.value } })),

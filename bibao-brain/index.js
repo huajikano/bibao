@@ -1202,7 +1202,7 @@ export function apply(ctx, config = {}) {
               model: llms.broca.model,
               system: prompt.system + (extra ?? ''),
               messages: [{ role: 'user', content: [{ type: 'text', text: prompt.user }] }],
-              maxTokens: 4096,
+              maxTokens: 6000,
               temperature: 0.85,
             })
             for await (const chunk of stream) if (chunk.type === 'text-delta') raw += chunk.text
