@@ -203,6 +203,8 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
     delta.oxytocin += 0.2 * analysis.warmth
     delta.cortisol -= 0.12 * analysis.warmth
     delta.dopamine += 0.08 * analysis.warmth
+  // 真诚的夸奖是一颗糖：够甜就能把气消掉一半
+  if (analysis.warmth > 0.25 && analysis.hostility < 0.1) delta.dopamine += 0.2
     valenceTarget += 0.5 * analysis.warmth
   }
   if (analysis.gossipy > 0) {

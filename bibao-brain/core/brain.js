@@ -583,7 +583,33 @@ export class BibaoBrain {
   }
 
   /** 注入用摘要：事实 + 两段还能想起的叙事 + 对这个人的态度。 */
-  digestFor(relation) {
+  /** 四维连续张力：不用"是/否"分支，让模型自己在张力之间博弈。 */
+  tensionFor(relation, pe = 0) {
+    const intimacy = Number(relation?.intimacy ?? 0)
+    const oxytocin = Number(this.state.oxytocin ?? 0)
+    const cortisol = Number(this.state.cortisol ?? 0)
+    const dopamine = Number(this.state.dopamine ?? 0)
+    const clamp01 = (value) => Math.max(0, Math.min(1, value))
+    return {
+      affection_pull: Number(clamp01(0.15 + intimacy / 130 + oxytocin * 0.45).toFixed(2)),
+      pride_defense: Number(clamp01(0.12 + cortisol * 0.7 + (this.state.prideDefense ?? 0) * 0.4).toFixed(2)),
+      playful_tease: Number(clamp01(0.1 + dopamine * 0.75 - cortisol * 0.4).toFixed(2)),
+      sharing_overflow: Number(clamp01(0.15 + dopamine * 0.5 + intimacy / 160).toFixed(2)),
+    }
+  }
+
+  /** 90% 的时候，记忆只染语气，不摆事实。 */
+  attitudeFor(relation) {
+    const entityId = relation?.id ?? relation?.qq ?? null
+    const bias = entityId ? this.memory.biasFor({ entityId, tags: [] }, this.simMs) : 0
+    const warm = (relation?.intimacy ?? 0) > 50 || bias > 0.12
+    const chill = (relation?.powerFear ?? 0) > 50
+    if (chill) return '你潜意识里有点怕这个人，说话会不自觉地收着'
+    return warm ? '你潜意识里知道这个人待你不薄，说话自带一点撒娇的底气' : '你潜意识里对这个人还留着一点分寸，不会一下子掏心'
+  }
+
+  digestFor(relation, { pe = 0, explicit = false } = {}) {
+    const showExplicit = explicit || pe > 0.65 || this.rng.chance(0.1)
     const now = this.simMs
     const entityId = relation?.id ?? relation?.qq ?? null
     const name = relation?.name ?? null
@@ -618,7 +644,14 @@ export class BibaoBrain {
       .slice(0, 2)
       .map((node) => ({ title: node.title, narrative: String(node.narrative ?? '').slice(0, 28), r: node.r }))
 
-    return { facts, freshFacts, episodes, stance: this.stanceFor(relation), somatic: this.somaticLine() }
+    return {
+      facts,
+      freshFacts,
+      episodes: showExplicit ? episodes : [],
+      implicit: showExplicit ? '' : this.attitudeFor(relation),
+      stance: this.stanceFor(relation),
+      somatic: this.somaticLine(),
+    }
   }
 
   /**
@@ -827,6 +860,7 @@ export class BibaoBrain {
       relation.tags = Array.from(new Set([...(relation.tags ?? []), '群里认识']))
     }
     const novelty = this._novelty(text, relation)
+
     const pe = estimatePE({
       analysis,
       relation,
@@ -837,6 +871,8 @@ export class BibaoBrain {
     // 习惯化 + 学到的偏好，都会影响这一刻有多"值得注意"
     const habitDim = this.habits.habituation(entityId, text)
     const learned = this.habits.preferenceOf(text)
+    // 中等程度的新奇（0.3~0.7）不是威胁，是"有点意思"：转成好奇多巴胺
+    const curiousPE = pe >= 0.3 && pe <= 0.7 && this.state.energy > 45 && analysis.hostility < 0.2
     const salienceInfo = salienceOf({
       analysis,
       relation,
@@ -943,6 +979,10 @@ export class BibaoBrain {
 
     const interactionsBefore = relation.interactions
     const stim = stimulusDelta({ analysis, relation, schemaHits, channel })
+    if (curiousPE) {
+      stim.dopamine = (stim.dopamine ?? 0) + 0.25 * pe
+      stim.cortisol = Math.max(-0.05, (stim.cortisol ?? 0) * 0.3)
+    }
     this.state.applyStimulus(stim.delta, {
       valenceTarget: stim.valenceTarget,
       stressor:
@@ -1111,7 +1151,7 @@ export class BibaoBrain {
         },
         appraisalHint,
         recent: relation.recent ?? [],
-        digest: this.digestFor(relation),
+        digest: Object.assign(this.digestFor(relation, { pe, explicit: recallProbe }), { tension: this.tensionFor(relation, pe) }),
         clockLabel: clockLabel(now),
         now,
       },

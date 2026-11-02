@@ -1,0 +1,2427 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script id="lumi-getcssvar">
+window.getCssVar = window.getCssVar || function(name, fallback) {
+  try {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback || '';
+  } catch (e) { return fallback || ''; }
+};
+</script>
+
+<style id="lumi-runtime">
+/* luminous.css */
+/*
+ * Luminous runtime stylesheet — injected once into every generated widget's
+ * <head> by the C++ widget agent (id="lumi-runtime"). Single Source of Truth
+ * for ALL design tokens and pre-baked .lumi-* component classes. The SI prompts
+ * (design.md / html_generation.jinja2 / chart.jinja2) must NOT re-declare these
+ * tokens or component CSS; they only reference them.
+ *
+ * Sections:
+ *   1. Web fonts (Google Sans Flex + Google Sans Code)
+ *   2. Light token :root (from previewer tokens.css, verbatim)
+ *   3. Dark token overrides — REMAPPED to :root so canvas/D3 readers of
+ *      getComputedStyle(document.documentElement) resolve dark values (D3).
+ *   4. Short diagram/chart aliases (bridge legacy --surface / --chart-N names).
+ *   5. In-scope pre-baked .lumi-* component classes.
+ */
+
+/* ============================================================
+ * 1. WEB FONTS & ICONOGRAPHY
+ *    Loads Google Sans Flex, Google Sans Code, and Material Symbols Outlined.
+ *    Enforces the dual-class iconography rendering protocol.
+ * ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Flex:ital,wght@0,300..700;1,300..700&family=Google+Sans+Code:ital,wght,MONO@0,300..700,0..1;1,300..700,0..1&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+/* Dual-Class Iconography */
+.lumi-icon {
+  font-family: 'Luminous Symbols', 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  vertical-align: middle;
+}
+
+.material-icon {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  vertical-align: middle;
+}
+
+/* ============================================================
+ * 2. LIGHT TOKENS (:root)
+ * ============================================================ */
+:root {
+  --body-bg: transparent;
+  --ff-sans: 'Google Sans Flex', 'Google Sans Text', 'Google Sans', sans-serif;
+  --ff-mono: 'Google Sans Code', 'Google Sans Mono', monospace;
+
+  --lumi-sys-spacing--xxs: 2px;
+  --lumi-sys-spacing--xs: 4px;
+  --lumi-sys-spacing--s: 8px;
+  --lumi-sys-spacing--m: 12px;
+  --lumi-sys-spacing--l: 16px;
+  --lumi-sys-spacing--xl: 20px;
+  --lumi-sys-spacing--xxl: 24px;
+  --lumi-sys-spacing--3xl: 28px;
+  --lumi-sys-spacing--4xl: 36px;
+
+  --lumi-sys-shape--none: 0px;
+  --lumi-sys-shape--extra-small: 4px;
+  --lumi-sys-shape--small: 8px;
+  --lumi-sys-shape--medium: 12px;
+  --lumi-sys-shape--large: 16px;
+  --lumi-sys-shape--large-increased: 20px;
+  --lumi-sys-shape--large-max: 24px;
+  --lumi-sys-shape--xl: 28px;
+  --lumi-sys-shape--xl-increased: 32px;
+  --lumi-sys-shape--xl-max: 40px;
+  --lumi-sys-shape--xxl: 48px;
+  --lumi-sys-shape--xxl-increased: 56px;
+  --lumi-sys-shape--full: 999px;
+
+  --lumi-sys-elevation--level1: 0 0 20px 0 rgba(0, 0, 0, 0.04);
+  --lumi-sys-elevation--level2: 0 0 20px 0 rgba(0, 0, 0, 0.11);
+
+  --lumi-sys-color--surface: #fdfcfc;
+  --lumi-sys-color--surface-dim: #f2f0f0;
+  --lumi-sys-color--surface-bright: #ffffff;
+  --lumi-sys-color--surface-background: #fdfcfc;
+  --lumi-sys-color--surface-accent: #9dd2ff;
+  --lumi-sys-color--surface-container: #f2f0f0;
+  --lumi-sys-color--surface-container-high: #e6e6e6;
+  --lumi-sys-color--surface-translucent: rgba(255, 255, 255, 0.88);
+  --lumi-sys-color--on-surface: #000000;
+  --lumi-sys-color--on-surface-default: #000000;
+  --lumi-sys-color--on-surface-variant: rgba(0, 0, 0, 0.62);
+  --lumi-sys-color--on-surface-de-emphasis: rgba(0, 0, 0, 0.62);
+  --lumi-sys-color--on-surface-low: rgba(0, 0, 0, 0.08);
+  --lumi-sys-color--positive: #008052;
+  --lumi-sys-color--positive-container: #daf9d4;
+  --lumi-sys-color--on-positive-container: #009954;
+  --lumi-sys-color--error: #de2d29;
+  --lumi-sys-color--error-container: #ffdeec;
+  --lumi-sys-color--on-error-container: #de2d29;
+  --lumi-sys-color--accent: #9dd2ff;
+  --lumi-sys-color--accent-container: #dcf1ff;
+  --lumi-sys-color--accent-fixed: #3186ff;
+  --lumi-sys-color--primary: #3186ff;
+  --lumi-sys-color--on-primary: #ffffff;
+  --lumi-sys-color--black: #000000;
+  --lumi-sys-color--white: #ffffff;
+  --lumi-sys-color--outline: #727676;
+  --lumi-sys-color--stroke-default: #e3e3e3;
+
+  /* --- Luminous Typography Tokens: Display (Carbon SSoT) --- */
+  --lumi-sys-typography-type-scale--display-l-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--display-l-font-size: 2.625rem;
+  --lumi-sys-typography-type-scale--display-l-line-height: 3rem;
+  --lumi-sys-typography-type-scale--display-l-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--display-l-font-weight: 280;
+  --lumi-sys-typography-type-scale--display-l-font-wght: 280;
+  --lumi-sys-typography-type-scale--display-l-font-width: 100;
+  --lumi-sys-typography-type-scale--display-l-font-rond: 100;
+  --lumi-sys-typography-type-scale--display-l-opsz: 42;
+
+  --lumi-sys-typography-type-scale--display-m-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--display-m-font-size: 2.25rem;
+  --lumi-sys-typography-type-scale--display-m-line-height: 2.75rem;
+  --lumi-sys-typography-type-scale--display-m-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--display-m-font-weight: 320;
+  --lumi-sys-typography-type-scale--display-m-font-wght: 320;
+  --lumi-sys-typography-type-scale--display-m-font-width: 100;
+  --lumi-sys-typography-type-scale--display-m-font-rond: 100;
+  --lumi-sys-typography-type-scale--display-m-opsz: 36;
+
+  --lumi-sys-typography-type-scale--display-s-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--display-s-font-size: 2rem;
+  --lumi-sys-typography-type-scale--display-s-line-height: 2.375rem;
+  --lumi-sys-typography-type-scale--display-s-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--display-s-font-weight: 360;
+  --lumi-sys-typography-type-scale--display-s-font-wght: 360;
+  --lumi-sys-typography-type-scale--display-s-font-width: 100;
+  --lumi-sys-typography-type-scale--display-s-font-rond: 100;
+  --lumi-sys-typography-type-scale--display-s-opsz: 32;
+
+  /* --- Luminous Typography Tokens: Headline (Carbon SSoT) --- */
+  --lumi-sys-typography-type-scale--headline-l-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--headline-l-font-size: 1.75rem;
+  --lumi-sys-typography-type-scale--headline-l-line-height: 2.25rem;
+  --lumi-sys-typography-type-scale--headline-l-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--headline-l-font-weight: 350;
+  --lumi-sys-typography-type-scale--headline-l-font-wght: 350;
+  --lumi-sys-typography-type-scale--headline-l-font-width: 100;
+  --lumi-sys-typography-type-scale--headline-l-font-rond: 20;
+  --lumi-sys-typography-type-scale--headline-l-opsz: 28;
+
+  --lumi-sys-typography-type-scale--headline-m-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--headline-m-font-size: 1.5rem;
+  --lumi-sys-typography-type-scale--headline-m-line-height: 1.75rem;
+  --lumi-sys-typography-type-scale--headline-m-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--headline-m-font-weight: 380;
+  --lumi-sys-typography-type-scale--headline-m-font-wght: 380;
+  --lumi-sys-typography-type-scale--headline-m-font-width: 100;
+  --lumi-sys-typography-type-scale--headline-m-font-rond: 20;
+  --lumi-sys-typography-type-scale--headline-m-opsz: 24;
+
+  --lumi-sys-typography-type-scale--headline-s-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--headline-s-font-size: 1.25rem;
+  --lumi-sys-typography-type-scale--headline-s-line-height: 1.5rem;
+  --lumi-sys-typography-type-scale--headline-s-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--headline-s-font-weight: 470;
+  --lumi-sys-typography-type-scale--headline-s-font-wght: 470;
+  --lumi-sys-typography-type-scale--headline-s-font-width: 94;
+  --lumi-sys-typography-type-scale--headline-s-font-rond: 20;
+  --lumi-sys-typography-type-scale--headline-s-opsz: 20;
+
+  /* --- Luminous Typography Tokens: Body (Carbon SSoT) --- */
+  --lumi-sys-typography-type-scale--body-l-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--body-l-font-size: 1.0625rem;
+  --lumi-sys-typography-type-scale--body-l-line-height: 1.5rem;
+  --lumi-sys-typography-type-scale--body-l-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--body-l-font-weight: 400;
+  --lumi-sys-typography-type-scale--body-l-font-wght: 400;
+  --lumi-sys-typography-type-scale--body-l-font-width: 92;
+  --lumi-sys-typography-type-scale--body-l-font-rond: 0;
+  --lumi-sys-typography-type-scale--body-l-opsz: 17;
+
+  --lumi-sys-typography-type-scale--body-m-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--body-m-font-size: 0.9375rem;
+  --lumi-sys-typography-type-scale--body-m-line-height: 1.25rem;
+  --lumi-sys-typography-type-scale--body-m-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--body-m-font-weight: 400;
+  --lumi-sys-typography-type-scale--body-m-font-wght: 400;
+  --lumi-sys-typography-type-scale--body-m-font-width: 92;
+  --lumi-sys-typography-type-scale--body-m-font-rond: 0;
+  --lumi-sys-typography-type-scale--body-m-opsz: 15;
+
+  --lumi-sys-typography-type-scale--body-s-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--body-s-font-size: 0.8125rem;
+  --lumi-sys-typography-type-scale--body-s-line-height: 1.0625rem;
+  --lumi-sys-typography-type-scale--body-s-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--body-s-font-weight: 400;
+  --lumi-sys-typography-type-scale--body-s-font-wght: 400;
+  --lumi-sys-typography-type-scale--body-s-font-width: 92;
+  --lumi-sys-typography-type-scale--body-s-font-rond: 0;
+  --lumi-sys-typography-type-scale--body-s-opsz: 13;
+
+  /* --- Luminous Typography Tokens: Label (Carbon SSoT) --- */
+  --lumi-sys-typography-type-scale--label-l-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--label-l-font-size: 1.0625rem;
+  --lumi-sys-typography-type-scale--label-l-line-height: 1.5rem;
+  --lumi-sys-typography-type-scale--label-l-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--label-l-font-weight: 370;
+  --lumi-sys-typography-type-scale--label-l-font-wght: 370;
+  --lumi-sys-typography-type-scale--label-l-font-width: 92;
+  --lumi-sys-typography-type-scale--label-l-font-rond: 0;
+  --lumi-sys-typography-type-scale--label-l-opsz: 17;
+
+  --lumi-sys-typography-type-scale--label-m-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--label-m-font-size: 0.9375rem;
+  --lumi-sys-typography-type-scale--label-m-line-height: 1.25rem;
+  --lumi-sys-typography-type-scale--label-m-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--label-m-font-weight: 370;
+  --lumi-sys-typography-type-scale--label-m-font-wght: 370;
+  --lumi-sys-typography-type-scale--label-m-font-width: 92;
+  --lumi-sys-typography-type-scale--label-m-font-rond: 0;
+  --lumi-sys-typography-type-scale--label-m-opsz: 15;
+
+  --lumi-sys-typography-type-scale--label-s-font-name: 'Google Sans Flex';
+  --lumi-sys-typography-type-scale--label-s-font-size: 0.8125rem;
+  --lumi-sys-typography-type-scale--label-s-line-height: 1.25rem;
+  --lumi-sys-typography-type-scale--label-s-font-tracking: 0rem;
+  --lumi-sys-typography-type-scale--label-s-font-weight: 370;
+  --lumi-sys-typography-type-scale--label-s-font-wght: 370;
+  --lumi-sys-typography-type-scale--label-s-font-width: 92;
+  --lumi-sys-typography-type-scale--label-s-font-rond: 0;
+  --lumi-sys-typography-type-scale--label-s-opsz: 13;
+
+  --lumi-sys-opacity-state--hover: 0.08;
+  --lumi-sys-opacity-state--focus: 0.08;
+  --lumi-sys-opacity-state--pressed: 0.12;
+  --lumi-sys-opacity-state--disabled: 0.12;
+  --lumi-sys-opacity-state--disabled-label: 0.38;
+
+  --lumi-sys-color--code-background: #000000;
+  --lumi-sys-color--code-primary-text: #ffffff;
+  --lumi-sys-color--code-blue-text: #4fa0ff;
+  --lumi-sys-color--code-green-text: #60d673;
+  --lumi-sys-color--code-grey-text: #808080;
+  --lumi-sys-color--code-pink-text: #ff96da;
+  --lumi-sys-color--code-purple-text: #969dff;
+  --lumi-sys-color--code-red-text: #ff5a59;
+  --lumi-sys-color--code-yellow-text: #ffdb0f;
+
+  --lumi-sys-color--chart-series-1: #2575fc;
+  --lumi-sys-color--chart-series-2: #5b6e9e;
+  --lumi-sys-color--chart-series-3: #228a49;
+  --lumi-sys-color--chart-series-4: #62991b;
+  --lumi-sys-color--chart-series-5: #1e564d;
+  --lumi-sys-color--chart-series-6: #526a45;
+  --lumi-sys-color--chart-series-7: #2780c4;
+  --lumi-sys-color--chart-series-8: #997112;
+  --lumi-sys-color--chart-series-9: #705ec2;
+  --lumi-sys-color--chart-series-10: #c84288;
+}
+
+/* ============================================================
+ * 3. DARK TOKENS  (REMAPPED to :root — Decision D3)
+ *    Canvas / Chart.js / D3 read getComputedStyle(document.documentElement);
+ *    the theme-sync listener sets data-theme="dark" on <html>, so dark values
+ *    MUST live on :root (not scoped to body) to prevent black-chart regressions.
+ * ============================================================ */
+:root[data-theme="dark"],
+body.dark-mode,
+:root[data-theme="dark"] body {
+  --body-bg: #0f0f0f;
+  --lumi-sys-elevation--level1: 0 0 20px 0 rgba(0, 0, 0, 0.28);
+  --lumi-sys-elevation--level2: 0 0 20px 0 rgba(0, 0, 0, 0.40);
+
+  --lumi-sys-color--surface: #0f0f0f;
+  --lumi-sys-color--surface-dim: #141414;
+  --lumi-sys-color--surface-bright: #1c1c1c;
+  --lumi-sys-color--surface-background: #0f0f0f;
+  --lumi-sys-color--surface-accent: #14204f;
+  --lumi-sys-color--surface-container: #141414;
+  --lumi-sys-color--surface-container-high: #1c1c1c;
+  --lumi-sys-color--surface-translucent: rgba(24, 24, 27, 0.88);
+  --lumi-sys-color--on-surface: #e0e0e0;
+  --lumi-sys-color--on-surface-default: #e0e0e0;
+  --lumi-sys-color--on-surface-variant: rgba(255, 255, 255, 0.55);
+  --lumi-sys-color--on-surface-de-emphasis: rgba(255, 255, 255, 0.55);
+  --lumi-sys-color--on-surface-low: rgba(255, 255, 255, 0.12);
+  --lumi-sys-color--positive: #0ebc5f;
+  --lumi-sys-color--positive-container: #002220;
+  --lumi-sys-color--on-positive-container: #0ebc5f;
+  --lumi-sys-color--error: #ff4c45;
+  --lumi-sys-color--error-container: #3c0202;
+  --lumi-sys-color--on-error-container: #ff4c45;
+  --lumi-sys-color--accent: #1f3b9b;
+  --lumi-sys-color--accent-container: #192967;
+  --lumi-sys-color--accent-fixed: #3186ff;
+  --lumi-sys-color--primary: #9dd2ff;
+  --lumi-sys-color--on-primary: #192967;
+  --lumi-sys-color--black: #000000;
+  --lumi-sys-color--white: #ffffff;
+  --lumi-sys-color--outline: #9a9b9c;
+  --lumi-sys-color--stroke-default: #2d2f38;
+
+  --lumi-sys-color--code-background: #141414;
+  --lumi-sys-color--code-primary-text: #ffffff;
+  --lumi-sys-color--code-blue-text: #4fa0ff;
+  --lumi-sys-color--code-green-text: #60d673;
+  --lumi-sys-color--code-grey-text: #808080;
+  --lumi-sys-color--code-pink-text: #ff96da;
+  --lumi-sys-color--code-purple-text: #969dff;
+  --lumi-sys-color--code-red-text: #ff5a59;
+  --lumi-sys-color--code-yellow-text: #ffdb0f;
+
+  --lumi-sys-color--chart-series-1: #9dd2ff;
+  --lumi-sys-color--chart-series-2: #96a7d6;
+  --lumi-sys-color--chart-series-3: #50e389;
+  --lumi-sys-color--chart-series-4: #c8f585;
+  --lumi-sys-color--chart-series-5: #f5f2e6;
+  --lumi-sys-color--chart-series-6: #dcd8c0;
+  --lumi-sys-color--chart-series-7: #82c7ff;
+  --lumi-sys-color--chart-series-8: #f5d77f;
+  --lumi-sys-color--chart-series-9: #d9ceff;
+  --lumi-sys-color--chart-series-10: #ffa6d7;
+}
+
+/* ============================================================
+ * 3b. OS-LEVEL DARK FALLBACK  (prefers-color-scheme)
+ *     A prior refactor introduced this stylesheet and moved the dark tokens onto
+ *     :root[data-theme="dark"], but dropped the @media (prefers-color-scheme:
+ *     dark) trigger that widgets previously carried in their own <style>.
+ *     Inline widgets whose host sends no set-theme / data-theme message therefore
+ *     stayed on the light --surface (#fdfcfc), rendering white in dark mode.
+ *     Re-apply the dark values on OS dark; an explicit host data-theme="light"
+ *     still opts back to light. Keep in sync with the :root[data-theme="dark"]
+ *     block above.
+ * ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --body-bg: #0f0f0f;
+    --lumi-sys-elevation--level1: 0 0 20px 0 rgba(0, 0, 0, 0.28);
+    --lumi-sys-elevation--level2: 0 0 20px 0 rgba(0, 0, 0, 0.40);
+
+    --lumi-sys-color--surface: #0f0f0f;
+    --lumi-sys-color--surface-dim: #141414;
+    --lumi-sys-color--surface-bright: #1c1c1c;
+    --lumi-sys-color--surface-background: #0f0f0f;
+    --lumi-sys-color--surface-accent: #14204f;
+    --lumi-sys-color--surface-container: #141414;
+    --lumi-sys-color--surface-container-high: #1c1c1c;
+    --lumi-sys-color--surface-translucent: rgba(24, 24, 27, 0.88);
+    --lumi-sys-color--on-surface: #e0e0e0;
+    --lumi-sys-color--on-surface-default: #e0e0e0;
+    --lumi-sys-color--on-surface-variant: rgba(255, 255, 255, 0.55);
+    --lumi-sys-color--on-surface-de-emphasis: rgba(255, 255, 255, 0.55);
+    --lumi-sys-color--on-surface-low: rgba(255, 255, 255, 0.12);
+    --lumi-sys-color--positive: #0ebc5f;
+    --lumi-sys-color--positive-container: #002220;
+    --lumi-sys-color--on-positive-container: #0ebc5f;
+    --lumi-sys-color--error: #ff4c45;
+    --lumi-sys-color--error-container: #3c0202;
+    --lumi-sys-color--on-error-container: #ff4c45;
+    --lumi-sys-color--accent: #1f3b9b;
+    --lumi-sys-color--accent-container: #192967;
+    --lumi-sys-color--accent-fixed: #3186ff;
+    --lumi-sys-color--primary: #9dd2ff;
+    --lumi-sys-color--on-primary: #192967;
+    --lumi-sys-color--black: #000000;
+    --lumi-sys-color--white: #ffffff;
+    --lumi-sys-color--outline: #9a9b9c;
+    --lumi-sys-color--stroke-default: #2d2f38;
+
+    --lumi-sys-color--code-background: #141414;
+    --lumi-sys-color--code-primary-text: #ffffff;
+    --lumi-sys-color--code-blue-text: #4fa0ff;
+    --lumi-sys-color--code-green-text: #60d673;
+    --lumi-sys-color--code-grey-text: #808080;
+    --lumi-sys-color--code-pink-text: #ff96da;
+    --lumi-sys-color--code-purple-text: #969dff;
+    --lumi-sys-color--code-red-text: #ff5a59;
+    --lumi-sys-color--code-yellow-text: #ffdb0f;
+
+    --lumi-sys-color--chart-series-1: #9dd2ff;
+    --lumi-sys-color--chart-series-2: #96a7d6;
+    --lumi-sys-color--chart-series-3: #50e389;
+    --lumi-sys-color--chart-series-4: #c8f585;
+    --lumi-sys-color--chart-series-5: #f5f2e6;
+    --lumi-sys-color--chart-series-6: #dcd8c0;
+    --lumi-sys-color--chart-series-7: #82c7ff;
+    --lumi-sys-color--chart-series-8: #f5d77f;
+    --lumi-sys-color--chart-series-9: #d9ceff;
+    --lumi-sys-color--chart-series-10: #ffa6d7;
+  }
+}
+
+/* Dark mode slider thumb override */
+:root[data-theme="dark"] .lumi-slider::-webkit-slider-thumb,
+body.dark-mode .lumi-slider::-webkit-slider-thumb {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='14' y='6' width='4' height='20' rx='2' fill='%23ffffff'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .lumi-slider::-webkit-slider-thumb {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='14' y='6' width='4' height='20' rx='2' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+}
+
+/* ============================================================
+ * 4. SHORT DIAGRAM / CHART ALIASES
+ *    Legacy diagram.md and chart.jinja2 reference short names such as
+ *    --surface, --on-surface, --chart-1..10, --primary, --r-full. These MUST
+ *    resolve to the canonical --lumi-sys-color--* tokens (which flip in dark
+ *    mode) — otherwise every diagram var() falls back to black (historical
+ *    mass-regression bug #4). Light-hex fallbacks are a last resort only.
+ * ============================================================ */
+:root {
+  /* surfaces */
+  --surface: var(--lumi-sys-color--surface, #fdfcfc);
+  --surface-dim: var(--lumi-sys-color--surface-dim, #f2f0f0);
+  --surface-bright: var(--lumi-sys-color--surface-bright, #ffffff);
+  --surface-container: var(--lumi-sys-color--surface-container, #f2f0f0);
+  --surface-container-high: var(--lumi-sys-color--surface-container-high, #e6e6e6);
+  --surface-container-lowest: var(--lumi-sys-color--surface, #ffffff);
+  --surface-accent: var(--lumi-sys-color--surface-accent, #9dd2ff);
+  --surface-translucent: var(--lumi-sys-color--surface-translucent, rgba(255, 255, 255, 0.88));
+  --surface-glass: var(--lumi-sys-color--surface-translucent, rgba(255, 255, 255, 0.88));
+  /* foreground */
+  --on-surface: var(--lumi-sys-color--on-surface, #000000);
+  --on-surface-variant: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62));
+  --on-surface-low: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08));
+  /* accents / brand */
+  --primary: var(--lumi-sys-color--primary, #3186ff);
+  --primary-container: var(--lumi-sys-color--accent-container, #dcf1ff);
+  --accent: var(--lumi-sys-color--accent, #9dd2ff);
+  --accent-container: var(--lumi-sys-color--accent-container, #dcf1ff);
+  --accent-fixed: var(--lumi-sys-color--accent-fixed, #3186ff);
+  /* status */
+  --positive: var(--lumi-sys-color--positive, #008052);
+  --positive-container: var(--lumi-sys-color--positive-container, #daf9d4);
+  --error: var(--lumi-sys-color--error, #de2d29);
+  --error-container: var(--lumi-sys-color--error-container, #ffdeec);
+  /* structure */
+  --outline: var(--lumi-sys-color--outline, #727676);
+  --stroke-default: var(--lumi-sys-color--stroke-default, #e3e3e3);
+  /* chart series 1..10 */
+  --chart-1: var(--lumi-sys-color--chart-series-1, #2575fc);
+  --chart-2: var(--lumi-sys-color--chart-series-2, #5b6e9e);
+  --chart-3: var(--lumi-sys-color--chart-series-3, #228a49);
+  --chart-4: var(--lumi-sys-color--chart-series-4, #62991b);
+  --chart-5: var(--lumi-sys-color--chart-series-5, #1e564d);
+  --chart-6: var(--lumi-sys-color--chart-series-6, #526a45);
+  --chart-7: var(--lumi-sys-color--chart-series-7, #2780c4);
+  --chart-8: var(--lumi-sys-color--chart-series-8, #997112);
+  --chart-9: var(--lumi-sys-color--chart-series-9, #705ec2);
+  --chart-10: var(--lumi-sys-color--chart-series-10, #c84288);
+  /* code palette */
+  --code-background: var(--lumi-sys-color--code-background, #000000);
+  --code-primary-text: var(--lumi-sys-color--code-primary-text, #ffffff);
+  /* spacing shorthands */
+  --spacing-xs: var(--lumi-sys-spacing--xs, 4px);
+  --spacing-s: var(--lumi-sys-spacing--s, 8px);
+  --spacing-m: var(--lumi-sys-spacing--m, 12px);
+  --spacing-l: var(--lumi-sys-spacing--l, 16px);
+  --spacing-xl: var(--lumi-sys-spacing--xl, 20px);
+  /* radius shorthands */
+  --r-container: var(--lumi-sys-shape--xl-max, 40px);
+  --r-xl: var(--lumi-sys-shape--xl, 28px);
+  --r-l: var(--lumi-sys-shape--large-max, 24px);
+  --r-m: var(--lumi-sys-shape--large, 16px);
+  --r-s: var(--lumi-sys-shape--small, 8px);
+  --r-full: var(--lumi-sys-shape--full, 999px);
+}
+
+/* ============================================================
+ * 5. IN-SCOPE PRE-BAKED COMPONENT CLASSES
+ *    Interactive controls + simple display components only (Decision D5).
+ *    Complex components (timeline, sequence, stepper, pros-cons, hero, HUD,
+ *    hotspot, media grid) are intentionally excluded.
+ * ============================================================ */
+
+/* Global font rendering quality + themed surface backdrop.
+ * background/color MUST be set here (SSoT) so the widget backdrop follows the
+ * light/dark surface token deterministically. Without this, a widget whose
+ * model-generated markup forgets `background: var(--surface)` on its root
+ * container falls back to the browser-default white body, producing a broken
+ * dark mode (light header/chart area behind a dark card). Regression source:
+ * batch1 PB-A02 dark. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  background: var(--body-bg, transparent) !important;
+  color: var(--on-surface) !important;
+  /* Auto-resizing iframe: content grows the frame, never scrolls the document.
+   * Model widgets already emit this; declared here as the SSoT default. */
+  overflow-y: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+.widget-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-inline: 0 !important;
+  box-sizing: border-box;
+}
+
+/* ============================================================
+ * SCROLLBAR DISCIPLINE (single source of truth)
+ *   Long lists/cards flow and let the iframe auto-resize (see the C++
+ *   NeutralizeInnerScroll pass, which removes accidental tiny scroll boxes).
+ *   For LEGITIMATE overflow that remains (wide tables, code, pan-containers,
+ *   large >=240px viewports) render a slim, theme-aware scrollbar.
+ *   One token carries the correct light/dark contrast (the auto-flipped
+ *   stroke token is too dark on #0f0f0f), referenced once = SSoT.
+ * ============================================================ */
+:root { --lumi-scrollbar-thumb: rgba(0, 0, 0, 0.20); }
+:root[data-theme="dark"], body.dark-mode { --lumi-scrollbar-thumb: rgba(255, 255, 255, 0.20); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --lumi-scrollbar-thumb: rgba(255, 255, 255, 0.20); }
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lumi-scrollbar-thumb) transparent;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background-color: var(--lumi-scrollbar-thumb);
+  border-radius: var(--lumi-sys-shape--full, 999px);
+}
+
+/* --- Buttons --- */
+/* Universal button fallback (element specificity 0,0,1) — beats `* { padding: 0 }`
+   author resets (0,0,0) while still yielding to any author class selector (0,1,0). */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lumi-sys-spacing--xs, 6px);
+  min-height: 36px;
+  padding: 6px 16px;
+  font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--on-surface, #000000);
+  background-color: var(--surface-bright, #ffffff);
+  border: 1px solid var(--stroke-default, #e3e3e3);
+  border-radius: var(--lumi-sys-shape--full, 999px);
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+button:hover {
+  background-color: var(--surface-container-high, #e6e6e6);
+}
+button.active, button.is-active, button.selected, button.is-selected, button[aria-pressed="true"], button[aria-selected="true"] {
+  background-color: var(--accent-container, #dcf1ff);
+  color: var(--lumi-sys-color--on-surface-default, #000000);
+  border-color: var(--lumi-sys-color--primary, #3186ff);
+}
+
+.lumi-btn, [class^="lumi-btn-"], [class*=" lumi-btn-"] { display: inline-flex; align-items: center; justify-content: center; gap: var(--lumi-sys-spacing--s, 8px); min-height: 40px; padding: 0px 20px; font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 14px; font-weight: 500; line-height: 20px; border-radius: var(--lumi-sys-shape--full, 999px); border: 1px solid var(--lumi-sys-color--stroke-default, #e3e3e3); cursor: pointer; user-select: none; transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s; text-decoration: none; box-sizing: border-box; white-space: nowrap; }
+.lumi-btn:active, .lumi-btn.is-pressed, [class^="lumi-btn-"]:active, [class*=" lumi-btn-"]:active { transform: scale(0.98); }
+.lumi-btn--tonal, .lumi-btn-tonal, .lumi-btn--secondary, .lumi-btn-secondary, [class^="lumi-btn-"], [class*=" lumi-btn-"] { background-color: var(--lumi-sys-color--surface-bright, #ffffff); color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-btn--tonal:hover, .lumi-btn-tonal:hover, .lumi-btn--secondary:hover, .lumi-btn-secondary:hover, [class^="lumi-btn-"]:hover, [class*=" lumi-btn-"]:hover { background-color: var(--lumi-sys-color--surface-container-high, #e6e6e6); }
+.lumi-btn--accent, .lumi-btn-accent, .lumi-btn--primary, .lumi-btn-primary { background-color: var(--lumi-sys-color--accent, #9dd2ff); color: var(--lumi-sys-color--on-surface-default, #000000); border-color: transparent; }
+.lumi-btn--accent:hover, .lumi-btn-accent:hover, .lumi-btn--primary:hover, .lumi-btn-primary:hover { background-color: var(--lumi-sys-color--accent-container, #dcf1ff); }
+.lumi-btn--bright, .lumi-btn-bright { background-color: var(--lumi-sys-color--surface-bright, #ffffff); color: var(--lumi-sys-color--on-surface-default, #000000); border-color: var(--lumi-sys-color--stroke-default, #e3e3e3); box-shadow: none; }
+.lumi-btn--bright:hover, .lumi-btn-bright:hover { background-color: var(--lumi-sys-color--surface-container-high, #e6e6e6); }
+.lumi-btn--ghost, .lumi-btn-ghost, .lumi-btn--on-surface { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.04)); color: var(--lumi-sys-color--on-surface-default, #000000); border-color: transparent; }
+.lumi-btn--ghost:hover, .lumi-btn-ghost:hover, .lumi-btn--on-surface:hover { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-btn--translucent { background-color: rgba(255, 255, 255, 0.25); backdrop-filter: blur(12px); color: var(--lumi-sys-color--on-surface-default, #000000); border-color: rgba(255, 255, 255, 0.3); }
+.lumi-btn--translucent:hover { background-color: rgba(255, 255, 255, 0.35); }
+.lumi-btn--small, .lumi-btn-small { min-height: 36px; padding: 0px 16px; font-size: 13px; line-height: 18px; gap: var(--lumi-sys-spacing--xs, 4px); }
+.lumi-btn--xsmall, .lumi-btn-xsmall { min-height: 24px; padding: 0px 10px; font-size: 11px; line-height: 16px; gap: 4px; }
+/* Toggleable Buttons */
+.lumi-btn.is-selected,
+.lumi-btn.selected,
+.lumi-btn.is-active,
+.lumi-btn.active,
+.lumi-btn[aria-pressed="true"],
+.lumi-btn[aria-selected="true"] {
+  background-color: var(--lumi-sys-color--accent-container, #dcf1ff);
+  color: var(--lumi-sys-color--on-surface-default, #000000);
+  border: 1px solid var(--lumi-sys-color--primary, #3186ff);
+  box-shadow: none;
+}
+.lumi-btn.is-selected:hover,
+.lumi-btn.selected:hover,
+.lumi-btn.is-active:hover,
+.lumi-btn.active:hover,
+.lumi-btn[aria-pressed="true"]:hover,
+.lumi-btn[aria-selected="true"]:hover {
+  background-color: var(--lumi-sys-color--accent, #9dd2ff);
+  color: var(--lumi-sys-color--on-surface-default, #000000);
+}
+.lumi-btn.is-selected:active,
+.lumi-btn.selected:active,
+.lumi-btn.is-active:active,
+.lumi-btn.active:active,
+.lumi-btn[aria-pressed="true"]:active,
+.lumi-btn[aria-selected="true"]:active {
+  transform: scale(0.98);
+}
+
+:root[data-theme="dark"] .lumi-btn.is-selected,
+:root[data-theme="dark"] .lumi-btn.selected,
+:root[data-theme="dark"] .lumi-btn.is-active,
+:root[data-theme="dark"] .lumi-btn.active,
+:root[data-theme="dark"] .lumi-btn[aria-pressed="true"],
+:root[data-theme="dark"] .lumi-btn[aria-selected="true"],
+body.dark-mode .lumi-btn.is-selected,
+body.dark-mode .lumi-btn.selected,
+body.dark-mode .lumi-btn.is-active,
+body.dark-mode .lumi-btn.active,
+body.dark-mode .lumi-btn[aria-pressed="true"],
+body.dark-mode .lumi-btn[aria-selected="true"],
+.lumi-theme-dark .lumi-btn.is-selected,
+.lumi-theme-dark .lumi-btn.selected,
+.lumi-theme-dark .lumi-btn.is-active,
+.lumi-theme-dark .lumi-btn.active,
+.lumi-theme-dark .lumi-btn[aria-pressed="true"],
+.lumi-theme-dark .lumi-btn[aria-selected="true"] {
+  background-color: var(--lumi-sys-color--accent-container, #192967);
+  color: var(--lumi-sys-color--on-surface-default, #e0e0e0);
+  border: 1px solid var(--lumi-sys-color--primary, #9dd2ff);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .lumi-btn.is-selected:hover,
+:root[data-theme="dark"] .lumi-btn.selected:hover,
+:root[data-theme="dark"] .lumi-btn.is-active:hover,
+:root[data-theme="dark"] .lumi-btn.active:hover,
+:root[data-theme="dark"] .lumi-btn[aria-pressed="true"]:hover,
+:root[data-theme="dark"] .lumi-btn[aria-selected="true"]:hover,
+body.dark-mode .lumi-btn.is-selected:hover,
+body.dark-mode .lumi-btn.selected:hover,
+body.dark-mode .lumi-btn.is-active:hover,
+body.dark-mode .lumi-btn.active:hover,
+body.dark-mode .lumi-btn[aria-pressed="true"]:hover,
+body.dark-mode .lumi-btn[aria-selected="true"]:hover,
+.lumi-theme-dark .lumi-btn.is-selected:hover,
+.lumi-theme-dark .lumi-btn.selected:hover,
+.lumi-theme-dark .lumi-btn.is-active:hover,
+.lumi-theme-dark .lumi-btn.active:hover,
+.lumi-theme-dark .lumi-btn[aria-pressed="true"]:hover,
+.lumi-theme-dark .lumi-btn[aria-selected="true"]:hover {
+  background-color: var(--lumi-sys-color--accent, #1f3b9b);
+  color: var(--lumi-sys-color--on-surface-default, #e0e0e0);
+}
+
+/* --- Switch --- */
+.lumi-switch { display: inline-flex; align-items: center; gap: var(--lumi-sys-spacing--s, 8px); cursor: pointer; font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 15px; color: var(--lumi-sys-color--on-surface-default, #000000); user-select: none; }
+.lumi-switch input[type="checkbox"] { position: absolute; opacity: 0; width: 0px; height: 0px; pointer-events: none; }
+.lumi-switch__track { position: relative; display: inline-flex; align-items: center; width: 52px; height: 32px; background-color: var(--lumi-sys-color--surface-dim, #f2f0f0); border: 2px solid var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)); border-radius: var(--lumi-sys-shape--full, 999px); transition: background-color 0.2s, border-color 0.2s; flex-shrink: 0; box-sizing: border-box; }
+.lumi-switch__thumb, .lumi-switch__track::after { content: ""; position: absolute; top: 50%; left: 6px; transform: translateY(-50%); width: 16px; height: 16px; border-radius: 50%; background-color: var(--lumi-sys-color--on-surface-variant, #757575); transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.lumi-switch input[type="checkbox"]:checked + .lumi-switch__track { background-color: var(--lumi-sys-color--accent-fixed, #3186ff); border-color: transparent; }
+.lumi-switch input[type="checkbox"]:checked + .lumi-switch__track .lumi-switch__thumb, .lumi-switch input[type="checkbox"]:checked + .lumi-switch__track::after { left: 22px; width: 24px; height: 24px; background-color: rgb(255, 255, 255); }
+.lumi-switch input[type="checkbox"]:disabled + .lumi-switch__track { opacity: var(--lumi-sys-opacity-state--disabled, 0.38); cursor: not-allowed; }
+.lumi-switch--small .lumi-switch__track, .lumi-switch--mini .lumi-switch__track { width: 32px; height: 20px; }
+.lumi-switch--small .lumi-switch__thumb, .lumi-switch--small .lumi-switch__track::after, .lumi-switch--mini .lumi-switch__thumb, .lumi-switch--mini .lumi-switch__track::after { width: 12px; height: 12px; left: 2px; }
+.lumi-switch--small input[type="checkbox"]:checked + .lumi-switch__track .lumi-switch__thumb, .lumi-switch--small input[type="checkbox"]:checked + .lumi-switch__track::after, .lumi-switch--mini input[type="checkbox"]:checked + .lumi-switch__track .lumi-switch__thumb, .lumi-switch--mini input[type="checkbox"]:checked + .lumi-switch__track::after { left: 12px; width: 16px; height: 16px; }
+
+/* --- Checkbox --- */
+.lumi-checkbox-label { display: inline-flex; align-items: center; gap: var(--lumi-sys-spacing--s, 8px); cursor: pointer; font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 15px; color: var(--lumi-sys-color--on-surface-default, #000000); user-select: none; }
+.lumi-checkbox-label input[type="checkbox"] { position: absolute; opacity: 0; width: 0px; height: 0px; pointer-events: none; }
+.lumi-checkbox { position: relative; width: 24px; height: 24px; border-radius: var(--lumi-sys-shape--small, 8px); border: 2px solid var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); background-color: transparent; transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box; }
+.lumi-checkbox-label:hover .lumi-checkbox { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.04)); border-color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-checkbox-label input[type="checkbox"]:checked ~ .lumi-checkbox, .lumi-checkbox-label input[type="checkbox"]:indeterminate ~ .lumi-checkbox, .lumi-checkbox.is-indeterminate { background-color: var(--lumi-sys-color--on-surface-default, #000000); border-color: transparent; }
+.lumi-checkbox .lumi-checkmark { font-size: 18px; line-height: 1; color: var(--lumi-sys-color--surface, #ffffff); fill: var(--lumi-sys-color--surface, #ffffff); display: none; user-select: none; }
+.lumi-checkbox-label input[type="checkbox"]:checked ~ .lumi-checkbox .lumi-checkmark, .lumi-checkbox-label input[type="checkbox"]:checked ~ .lumi-checkbox .lumi-checkbox__check { display: block; }
+.lumi-checkbox-label input[type="checkbox"]:indeterminate ~ .lumi-checkbox .lumi-checkbox__indeterminate, .lumi-checkbox.is-indeterminate .lumi-checkbox__indeterminate { display: block; }
+.lumi-checkbox-label input[type="checkbox"]:disabled ~ .lumi-checkbox, .lumi-checkbox-label input[type="checkbox"]:disabled ~ span { opacity: var(--lumi-sys-opacity-state--disabled, 0.38); cursor: not-allowed; }
+
+/* --- Slider --- */
+.lumi-slider-container { display: flex; align-items: center; gap: var(--lumi-sys-spacing--m, 16px); width: 100%; }
+.lumi-slider-row { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xs, 4px); width: 100%; }
+.lumi-slider-label { font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 15px; font-weight: 400; color: var(--lumi-sys-color--on-surface-default, #000000); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lumi-slider { appearance: none; width: calc(100% + 28px); margin-left: -14px; margin-right: -14px; height: 40px; background: transparent; cursor: pointer; box-sizing: border-box; }
+.lumi-slider:focus { outline: none; }
+.lumi-slider::-webkit-slider-runnable-track { height: 4px; --thumb-center: calc(14px + (100% - 28px) * (var(--progress, 50%) / 100%)); --active-end: calc(var(--thumb-center) - 8px + (var(--progress, 50%) / 100%) * 6px); background-image: radial-gradient(circle at calc(100% - 18px) center, var(--lumi-sys-color--on-surface-variant, #757575) 2px, transparent 2.5px), linear-gradient( to right, transparent 0, transparent 14px, var(--lumi-sys-color--on-surface-default, #000000) 14px, var(--lumi-sys-color--on-surface-default, #000000) var(--active-end), transparent var(--active-end), transparent calc(var(--thumb-center) + 8px), var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)) calc(var(--thumb-center) + 8px), var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)) calc(100% - 16px), transparent calc(100% - 16px), transparent 100% ); border-radius: var(--lumi-sys-shape--full, 999px); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; }
+.lumi-slider::-webkit-slider-thumb { appearance: none; width: 32px; height: 32px; border-radius: 50%; background-color: transparent; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='14' y='6' width='4' height='20' rx='2' fill='%23000000'/%3E%3C/svg%3E"); background-size: 32px 32px; background-repeat: no-repeat; background-position: center center; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; box-sizing: border-box; margin-top: -14px; cursor: pointer; transition: background-color 0.15s; }
+.lumi-slider:hover::-webkit-slider-thumb { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-slider:active::-webkit-slider-thumb { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.12)); }
+.lumi-slider:disabled { opacity: var(--lumi-sys-opacity-state--disabled, 0.38); cursor: not-allowed; }
+.lumi-slider:disabled::-webkit-slider-thumb { cursor: not-allowed; box-shadow: none; }
+.lumi-slider-value { display: flex; align-items: center; justify-content: center; min-width: 64px; height: 40px; padding: 0px 12px; background-color: var(--lumi-sys-color--surface-dim, #f2f0f0); border-radius: var(--lumi-sys-shape--medium, 16px); font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 15px; line-height: 20px; font-weight: 540; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 15; font-variant-numeric: tabular-nums; color: var(--lumi-sys-color--on-surface-default, #000000); flex-shrink: 0; box-sizing: border-box; }
+
+/* --- Text input --- */
+.lumi-input-group { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xs, 4px); width: 100%; }
+.lumi-input-label { font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 14px; font-weight: 500; line-height: 20px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-input { appearance: none; width: 100%; min-height: 48px; padding: 0px 16px; font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 15px; font-weight: 400; line-height: 22px; color: var(--lumi-sys-color--on-surface-default, #000000); background-color: var(--lumi-sys-color--surface-bright, #ffffff); border: 1px solid var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)); border-radius: var(--lumi-sys-shape--large, 16px); background-clip: padding-box; outline: none; box-sizing: border-box; transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s; }
+.lumi-input::placeholder { color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); }
+.lumi-input:hover { border-color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-input:focus, .lumi-input:focus-visible { border-color: var(--lumi-sys-color--accent-fixed, #3186ff); box-shadow: 0 0 0 2px var(--lumi-sys-color--accent-container, rgba(49, 134, 255, 0.25)); }
+textarea.lumi-input, .lumi-input--area { min-height: 100px; padding: 12px 16px; resize: vertical; line-height: 22px; }
+.lumi-input.is-error, .lumi-input-group.is-error .lumi-input { border-color: var(--lumi-sys-color--error, #ff4c45); }
+.lumi-input-helper { font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif); font-size: 12px; line-height: 16px; color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); }
+.lumi-input-group.is-error .lumi-input-helper, .lumi-input-helper--error { color: var(--lumi-sys-color--error, #ff4c45); }
+.lumi-input:disabled, .lumi-input.is-disabled { opacity: var(--lumi-sys-opacity-state--disabled, 0.38); background-color: var(--lumi-sys-color--surface-dim, #f2f0f0); cursor: not-allowed; }
+
+/* --- Focus ring --- */
+:focus-visible { outline: 2px solid var(--lumi-sys-color--on-surface-default, #000000) !important; outline-offset: 2px !important; box-shadow: none !important; }
+.lumi-btn:focus-visible, .lumi-switch input[type="checkbox"]:focus-visible + .lumi-switch__track, .lumi-checkbox-label input[type="checkbox"]:focus-visible ~ .lumi-checkbox, .lumi-slider:focus-visible::-webkit-slider-thumb, .lumi-input:focus-visible { outline: 2px solid var(--lumi-sys-color--on-surface-default, #000000); outline-offset: 2px; box-shadow: none; }
+
+/* --- Typography: Display / Headline / Body / Label --- */
+.lumi-display-l { font-family: var(--lumi-sys-typography-type-scale--display-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-l-font-size, 2.625rem); line-height: var(--lumi-sys-typography-type-scale--display-l-line-height, 3rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-l-font-weight, 280); font-variation-settings: "wght" 280, "wdth" 100, "opsz" 42, "ROND" 100; }
+.lumi-display-l-emphasized { font-family: var(--lumi-sys-typography-type-scale--display-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-l-font-size, 2.625rem); line-height: var(--lumi-sys-typography-type-scale--display-l-line-height, 3rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-l-font-weight, 280); font-variation-settings: "wght" 280, "wdth" 100, "opsz" 42, "ROND" 100; }
+.lumi-display-m { font-family: var(--lumi-sys-typography-type-scale--display-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-m-font-size, 2.25rem); line-height: var(--lumi-sys-typography-type-scale--display-m-line-height, 2.75rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-m-font-weight, 320); font-variation-settings: "wght" 320, "wdth" 100, "opsz" 36, "ROND" 100; }
+.lumi-display-m-emphasized { font-family: var(--lumi-sys-typography-type-scale--display-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-m-font-size, 2.25rem); line-height: var(--lumi-sys-typography-type-scale--display-m-line-height, 2.75rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-m-font-weight, 320); font-variation-settings: "wght" 320, "wdth" 100, "opsz" 36, "ROND" 100; }
+.lumi-display-s { font-family: var(--lumi-sys-typography-type-scale--display-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-s-font-size, 2rem); line-height: var(--lumi-sys-typography-type-scale--display-s-line-height, 2.375rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-s-font-weight, 360); font-variation-settings: "wght" 360, "wdth" 100, "opsz" 32, "ROND" 100; }
+.lumi-display-s-emphasized { font-family: var(--lumi-sys-typography-type-scale--display-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--display-s-font-size, 2rem); line-height: var(--lumi-sys-typography-type-scale--display-s-line-height, 2.375rem); letter-spacing: var(--lumi-sys-typography-type-scale--display-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--display-s-font-weight, 360); font-variation-settings: "wght" 360, "wdth" 100, "opsz" 32, "ROND" 100; }
+.lumi-headline-l { font-family: var(--lumi-sys-typography-type-scale--headline-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-l-font-size, 1.75rem); line-height: var(--lumi-sys-typography-type-scale--headline-l-line-height, 2.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-l-font-weight, 350); font-variation-settings: "wght" 350, "wdth" 100, "opsz" 28, "ROND" 20; }
+.lumi-headline-l-emphasized { font-family: var(--lumi-sys-typography-type-scale--headline-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-l-font-size, 1.75rem); line-height: var(--lumi-sys-typography-type-scale--headline-l-line-height, 2.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-l-font-weight, 350); font-variation-settings: "wght" 350, "wdth" 100, "opsz" 28, "ROND" 20; }
+.lumi-headline-m { font-family: var(--lumi-sys-typography-type-scale--headline-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-m-font-size, 1.5rem); line-height: var(--lumi-sys-typography-type-scale--headline-m-line-height, 1.75rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-m-font-weight, 380); font-variation-settings: "wght" 380, "wdth" 100, "opsz" 24, "ROND" 20; }
+.lumi-headline-m-emphasized { font-family: var(--lumi-sys-typography-type-scale--headline-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-m-font-size, 1.5rem); line-height: var(--lumi-sys-typography-type-scale--headline-m-line-height, 1.75rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-m-font-weight, 380); font-variation-settings: "wght" 380, "wdth" 100, "opsz" 24, "ROND" 20; }
+.lumi-headline-s { font-family: var(--lumi-sys-typography-type-scale--headline-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-s-font-size, 1.25rem); line-height: var(--lumi-sys-typography-type-scale--headline-s-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-s-font-weight, 470); font-variation-settings: "wght" 470, "wdth" 94, "opsz" 20, "ROND" 20; }
+.lumi-headline-s-emphasized { font-family: var(--lumi-sys-typography-type-scale--headline-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--headline-s-font-size, 1.25rem); line-height: var(--lumi-sys-typography-type-scale--headline-s-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--headline-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--headline-s-font-weight, 470); font-variation-settings: "wght" 470, "wdth" 94, "opsz" 20, "ROND" 20; }
+.lumi-body-l { font-family: var(--lumi-sys-typography-type-scale--body-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-l-font-size, 1.0625rem); line-height: var(--lumi-sys-typography-type-scale--body-l-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--body-l-font-weight, 400); font-variation-settings: "wght" 400, "wdth" 92, "opsz" 17; }
+.lumi-body-l-emphasized { font-family: var(--lumi-sys-typography-type-scale--body-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-l-font-size, 1.0625rem); line-height: var(--lumi-sys-typography-type-scale--body-l-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-l-font-tracking, 0rem); font-weight: 540; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 17; font-variant-numeric: tabular-nums; }
+.lumi-body-m { font-family: var(--lumi-sys-typography-type-scale--body-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-m-font-size, 0.9375rem); line-height: var(--lumi-sys-typography-type-scale--body-m-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--body-m-font-weight, 400); font-variation-settings: "wght" 400, "wdth" 92, "opsz" 15; }
+.lumi-body-m-emphasized { font-family: var(--lumi-sys-typography-type-scale--body-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-m-font-size, 0.9375rem); line-height: var(--lumi-sys-typography-type-scale--body-m-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-m-font-tracking, 0rem); font-weight: 540; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 15; font-variant-numeric: tabular-nums; }
+.lumi-body-s { font-family: var(--lumi-sys-typography-type-scale--body-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-s-font-size, 0.8125rem); line-height: var(--lumi-sys-typography-type-scale--body-s-line-height, 1.0625rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--body-s-font-weight, 400); font-variation-settings: "wght" 400, "wdth" 92, "opsz" 13; }
+.lumi-body-s-emphasized { font-family: var(--lumi-sys-typography-type-scale--body-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--body-s-font-size, 0.8125rem); line-height: var(--lumi-sys-typography-type-scale--body-s-line-height, 1.0625rem); letter-spacing: var(--lumi-sys-typography-type-scale--body-s-font-tracking, 0rem); font-weight: 540; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 13; font-variant-numeric: tabular-nums; }
+.lumi-label-l { font-family: var(--lumi-sys-typography-type-scale--label-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-l-font-size, 1.0625rem); line-height: var(--lumi-sys-typography-type-scale--label-l-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-l-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 17; }
+.lumi-label-l-emphasized { font-family: var(--lumi-sys-typography-type-scale--label-l-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-l-font-size, 1.0625rem); line-height: var(--lumi-sys-typography-type-scale--label-l-line-height, 1.5rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-l-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-l-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 17; }
+.lumi-label-m { font-family: var(--lumi-sys-typography-type-scale--label-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-m-font-size, 0.9375rem); line-height: var(--lumi-sys-typography-type-scale--label-m-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-m-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 15; }
+.lumi-label-m-emphasized { font-family: var(--lumi-sys-typography-type-scale--label-m-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-m-font-size, 0.9375rem); line-height: var(--lumi-sys-typography-type-scale--label-m-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-m-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-m-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 15; }
+.lumi-label-s { font-family: var(--lumi-sys-typography-type-scale--label-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-s-font-size, 0.8125rem); line-height: var(--lumi-sys-typography-type-scale--label-s-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-s-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 13; }
+.lumi-label-s-emphasized { font-family: var(--lumi-sys-typography-type-scale--label-s-font-name, 'Google Sans Flex', sans-serif); font-size: var(--lumi-sys-typography-type-scale--label-s-font-size, 0.8125rem); line-height: var(--lumi-sys-typography-type-scale--label-s-line-height, 1.25rem); letter-spacing: var(--lumi-sys-typography-type-scale--label-s-font-tracking, 0rem); font-weight: var(--lumi-sys-typography-type-scale--label-s-font-weight, 370); font-variation-settings: "wght" 370, "wdth" 92, "opsz" 13; }
+
+/* --- Typography: Monospace / Extended (Google Sans Code) --- */
+.lumi-blockquote { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-style: italic; font-size: 22px; line-height: 30px; font-weight: 300; font-variation-settings: "wght" 300, "opsz" 22, "MONO" 0; }
+.lumi-takeaway { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-style: italic; font-size: 17px; line-height: 24px; font-weight: 400; font-variation-settings: "wght" 400, "opsz" 17, "MONO" 0; }
+.lumi-caption { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-style: italic; font-size: 13px; line-height: 20px; font-weight: 400; font-variation-settings: "wght" 400, "opsz" 13, "MONO" 0; }
+.lumi-code { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-size: 15px; line-height: 20px; font-weight: 400; font-variation-settings: "wght" 400, "MONO" 1; }
+.lumi-bullet { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-size: 15px; line-height: 24px; font-weight: 650; font-variation-settings: "wght" 650, "MONO" 1; }
+
+/* --- Cards & attribution --- */
+.lumi-summary-card { padding: var(--lumi-sys-spacing--l, 16px); background-color: var(--lumi-sys-color--surface-bright, #ffffff); border-radius: var(--lumi-sys-shape--medium, 12px); color: var(--lumi-sys-color--on-surface-default, #000000); font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 15px; line-height: 20px; box-sizing: border-box; }
+.lumi-link-card { display: flex; align-items: center; justify-content: space-between; padding: var(--lumi-sys-spacing--l, 16px); background-color: var(--lumi-sys-color--surface-bright, #ffffff); border-radius: var(--lumi-sys-shape--medium, 12px); text-decoration: none; color: var(--lumi-sys-color--on-surface-default, #000000); transition: background-color 0.15s; box-sizing: border-box; }
+.lumi-link-card:hover { background-color: var(--lumi-sys-color--surface-container-high, #e6e6e6); }
+.lumi-attribution-buffer { margin-top: var(--lumi-sys-spacing--xxl, 24px); font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 13px; color: var(--lumi-sys-color--on-surface-de-emphasis, rgba(0, 0, 0, 0.62)); }
+.lumi-card { background-color: var(--lumi-sys-color--surface-bright, #ffffff); border-radius: var(--lumi-sys-shape--xl-max, 40px); padding: var(--lumi-sys-spacing--3xl, 28px); display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--s, 8px); width: 100%; box-sizing: border-box; }
+.lumi-card.is-prominent, .lumi-card--prominent, .lumi-card.surface-dim { background-color: var(--lumi-sys-color--surface-dim, #f2f0f0); }
+.lumi-card-title { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 20px; font-weight: 500; font-variation-settings: "wght" 470, "wdth" 94, "opsz" 20; color: var(--lumi-sys-color--on-surface, #000000); margin: 0px; }
+.lumi-card-subtitle { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 13px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 13; color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); margin: 0; }
+.lumi-card-body { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 15px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 15; color: var(--lumi-sys-color--on-surface, #000000); margin: var(--lumi-sys-spacing--xs, 4px) 0 0 0; }
+.lumi-overlay-card { background-color: var(--surface-translucent, rgba(255, 255, 255, 0.88)); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--stroke-default); border-radius: var(--lumi-sys-shape--medium, 12px); padding: var(--lumi-sys-spacing--m, 12px) var(--lumi-sys-spacing--l, 16px); color: var(--on-surface); box-shadow: var(--lumi-sys-elevation--level1); box-sizing: border-box; }
+
+/* --- Progress bar --- */
+.lumi-progress-tracker { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xs, 4px); width: 100%; }
+.lumi-progress-bar { width: 100%; height: 8px; background-color: var(--lumi-sys-color--stroke-default, #e3e3e3); border: 1px solid transparent; box-sizing: border-box; border-radius: var(--lumi-sys-shape--full, 999px); overflow: hidden; }
+.lumi-progress-fill { height: 100%; background-color: var(--lumi-sys-color--accent-fixed, #3186ff); border-radius: var(--lumi-sys-shape--full, 999px); transition: width 0.3s; }
+
+/* --- Accordion (card group variant) --- */
+.lumi-accordion-group { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--s, 8px); }
+.lumi-accordion-group .lumi-accordion-item { background-color: var(--lumi-sys-color--surface-container, #f2f0f0); border-radius: var(--lumi-sys-shape--medium, 12px); overflow: hidden; transition: background-color 0.15s; }
+.lumi-accordion-group .lumi-accordion-header { padding: var(--lumi-sys-spacing--l, 16px); font-family: var(--ff-sans, sans-serif); font-size: 15px; font-weight: 540; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-accordion-group .lumi-accordion-chevron { transition: transform 0.2s; font-size: 12px; }
+.lumi-accordion-group .lumi-accordion-item.active .lumi-accordion-chevron { transform: rotate(180deg); }
+.lumi-accordion-group .lumi-accordion-body { display: none; padding: 0 var(--lumi-sys-spacing--l, 16px) var(--lumi-sys-spacing--l, 16px) var(--lumi-sys-spacing--l, 16px); font-family: var(--ff-sans, sans-serif); font-size: 15px; color: var(--lumi-sys-color--on-surface-de-emphasis, rgba(0, 0, 0, 0.62)); line-height: 20px; }
+.lumi-accordion-group .lumi-accordion-item.active .lumi-accordion-body { display: block; }
+
+/* --- Accordion (borderless list variant) --- */
+.lumi-accordion { display: flex; flex-direction: column; width: 100%; border-top: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-accordion-item { display: flex; flex-direction: column; width: 100%; background: transparent; border-radius: 0px; border-bottom: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-accordion-header { display: flex; justify-content: space-between; align-items: center; padding: var(--lumi-sys-spacing--xl, 20px) 0; cursor: pointer; user-select: none; }
+.lumi-accordion-title { margin: 0px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-accordion-item.active .lumi-accordion-content { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--l, 16px); }
+.lumi-accordion-content { display: none; padding-bottom: var(--lumi-sys-spacing--xxl, 24px); }
+.lumi-accordion-field { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xxs, 2px); }
+.lumi-accordion-field-label { margin: 0px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-accordion-field-val { margin: 0px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+
+/* --- Segmented control --- */
+.lumi-segmented-group { display: flex; background-color: var(--lumi-sys-color--surface-container, #f2f0f0); padding: 4px; border-radius: var(--lumi-sys-shape--full, 999px); gap: 4px; }
+.lumi-segmented-btn { flex: 1 1 0%; padding: 8px 16px; border: 1px solid transparent; border-radius: var(--lumi-sys-shape--full, 999px); background-color: transparent; font-family: var(--ff-sans, sans-serif); font-size: 14px; font-weight: 510; cursor: pointer; color: var(--lumi-sys-color--on-surface-de-emphasis, rgba(0, 0, 0, 0.62)); transition: 0.2s; }
+.lumi-segmented-btn.is-active, .lumi-segmented-btn.active, .lumi-segmented-btn.is-selected, .lumi-segmented-btn.selected, .lumi-segmented-btn[aria-pressed="true"], .lumi-segmented-btn[aria-selected="true"] { background-color: var(--lumi-sys-color--surface-bright, #ffffff); color: var(--lumi-sys-color--on-surface-default, #000000); box-shadow: var(--lumi-sys-elevation--level1); }
+
+/* --- Tabs --- */
+.lumi-tab-group { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--4xl, 36px); width: 100%; }
+.lumi-tab-bar { display: flex; gap: var(--lumi-sys-spacing--l, 16px); padding-bottom: 0px; overflow-x: auto; scrollbar-width: none; }
+.lumi-tab-bar::-webkit-scrollbar { display: none; }
+.lumi-tab { height: 40px; padding: 0 var(--lumi-sys-spacing--xl, 20px); display: flex; align-items: center; justify-content: center; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 17px; line-height: 24px; font-weight: 370; font-variation-settings: "wght" 370, "wdth" 92, "opsz" 17; color: var(--lumi-sys-color--on-surface-de-emphasis, rgba(0, 0, 0, 0.62)); background: transparent; border: 1px solid transparent; border-radius: var(--lumi-sys-shape--full, 999px); cursor: pointer; white-space: nowrap; transition: background-color 0.15s, color 0.15s; }
+.lumi-tab:hover { color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-tab.active, .lumi-tab.is-active, .lumi-tab.is-selected, .lumi-tab.selected, .lumi-tab[aria-pressed="true"], .lumi-tab[aria-selected="true"] { background-color: var(--lumi-sys-color--surface-container-high, #f2f0f0); color: var(--lumi-sys-color--on-surface-default, #000000); font-weight: 510; font-variation-settings: "wght" 510, "wdth" 92, "opsz" 17; }
+.lumi-tab-content { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--m, 12px); padding-top: 0px; padding-bottom: 0px; }
+.lumi-tab-content .lumi-body-l-emphasized, .lumi-tab-content .lumi-headline-s { margin: 0px; }
+.lumi-tab-content .lumi-body-l { margin: 0px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+
+/* --- Callout / pullquote --- */
+.lumi-callout { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xs, 4px); width: 100%; }
+.lumi-callout .lumi-body-l-emphasized { margin: 0px; }
+.lumi-pullquote { display: flex; gap: var(--lumi-sys-spacing--xl, 20px); width: 100%; margin: 0px; }
+.lumi-pullquote-mark { width: 30px; height: 22px; flex-shrink: 0; margin-top: 4px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-pullquote-body { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--l, 16px); flex: 1 1 0%; min-width: 0px; }
+p.lumi-pullquote-text, .lumi-pullquote-text { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-style: italic; font-weight: 300; font-variation-settings: "wght" 300, "opsz" 22, "MONO" 0; color: var(--lumi-sys-color--on-surface-default, #000000); margin: 0px; font-size: 22px !important; line-height: 30px !important; }
+.lumi-pullquote-cite { display: flex; flex-direction: column; font-style: normal; }
+.lumi-pullquote-cite .lumi-de-emphasis { color: var(--lumi-sys-color--on-surface-de-emphasis, rgba(0, 0, 0, 0.62)); }
+
+/* --- Data table (simple) --- */
+.lumi-data-table-container { width: 100%; overflow-x: auto; border-radius: var(--lumi-sys-shape--medium, 12px); border: 1px solid var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)); }
+.lumi-data-table { width: 100%; border-collapse: collapse; font-family: var(--ff-sans, sans-serif); font-size: 14px; text-align: left; }
+.lumi-data-table th { padding: 12px 16px; font-weight: 600; background-color: var(--lumi-sys-color--surface-container, #f2f0f0); border-bottom: 1px solid var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)); color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-data-table td { padding: 12px 16px; border-bottom: 1px solid var(--lumi-sys-color--stroke-default, rgba(0, 0, 0, 0.12)); color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-data-table tr:last-child td { border-bottom-width: medium; border-bottom-style: none; border-bottom-color: currentcolor; }
+
+/* --- Table widget (prose-style) --- */
+.lumi-table-widget { display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--xxl, 24px); width: 100%; }
+.lumi-table-title { margin: 0px; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-table { width: 100%; border-collapse: collapse; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); text-align: left; }
+.lumi-table th { padding: 12px 16px 12px 0px; font-size: 17px; line-height: 24px; font-weight: 540; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 17; color: var(--lumi-sys-color--on-surface-default, #000000); border-bottom: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-table td { padding: 16px 16px 16px 0px; font-size: 17px; line-height: 24px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 17; color: var(--lumi-sys-color--on-surface-default, #000000); border-bottom: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); }
+.lumi-table td:last-child, .lumi-table th:last-child { padding-right: 0px; }
+.lumi-table tr.lumi-table-ellipsis-row td { padding: 16px 0 0; border-bottom-width: medium; border-bottom-style: none; border-bottom-color: currentcolor; color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); }
+
+/* --- Luminous Spec Table (Figma 8543-1878) --- */
+.lumi-spec-table-container { width: 100%; overflow-x: auto; background: transparent; }
+.lumi-spec-table { width: 100%; border-collapse: collapse; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); text-align: left; background: transparent; }
+.lumi-spec-table th { padding: 12px 28px 16px 0px; font-size: 17px; line-height: 24px; font-weight: 540; font-variation-settings: "wght" 540, "wdth" 100, "opsz" 17; color: var(--lumi-sys-color--on-surface-default, #000000); border-bottom: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); background: transparent; }
+.lumi-spec-table td { padding: 16px 28px 16px 0px; border-bottom: 1px solid var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.08)); vertical-align: top; background: transparent; }
+.lumi-spec-table th:last-child, .lumi-spec-table td:last-child { padding-right: 0px; }
+.lumi-spec-label { display: block; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 13px; line-height: 17px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 13; color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); margin-bottom: 2px; }
+.lumi-spec-value { display: block; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 15px; line-height: 20px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 15; color: var(--lumi-sys-color--on-surface-default, #000000); }
+.lumi-spec-table-more { display: flex; align-items: center; justify-content: center; padding: 12px; color: var(--lumi-sys-color--on-surface-variant, rgba(0, 0, 0, 0.62)); font-size: 15px; line-height: 20px; cursor: pointer; }
+
+/* --- Sortable Table Headers --- */
+th[aria-sort] { color: var(--lumi-sys-color--on-surface-default, #000000); }
+button.lumi-sort-btn, .lumi-sort-btn { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: inherit; width: 100%; justify-content: inherit; border-radius: var(--lumi-sys-shape--small, 4px); }
+button.lumi-sort-btn:hover, .lumi-sort-btn:hover { background-color: var(--lumi-sys-color--on-surface-low, rgba(0, 0, 0, 0.06)) !important; }
+button.lumi-sort-btn:focus-visible, .lumi-sort-btn:focus-visible { outline: 2px solid var(--lumi-sys-color--on-surface-default, #000000) !important; outline-offset: 2px !important; }
+
+/* --- Code block --- */
+.lumi-code-block { background-color: var(--lumi-sys-color--code-background, #000000); border-radius: var(--lumi-sys-shape--xl-max, 40px); padding: 32px; display: flex; flex-direction: column; gap: var(--lumi-sys-spacing--l, 16px); width: 100%; box-sizing: border-box; }
+.lumi-code-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.lumi-code-lang { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 15px; font-weight: 500; font-variation-settings: "wght" 540, "wdth" 92, "opsz" 15; color: var(--lumi-sys-color--code-primary-text, #ffffff); }
+.lumi-code-copy { background: transparent; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color: var(--lumi-sys-color--code-primary-text, #ffffff); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: var(--lumi-sys-shape--full, 999px); transition: background-color 0.2s; }
+.lumi-code-copy:hover { background-color: rgba(255, 255, 255, 0.1); }
+.lumi-code-snippet { margin: 0px; overflow-x: auto; width: 100%; }
+.lumi-code-snippet code { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-size: 15px; line-height: 20px; color: var(--lumi-sys-color--code-primary-text, #ffffff); display: block; white-space: pre; }
+
+/* --- Section / prose --- */
+.lumi-section { display: flex; flex-direction: column; align-items: stretch; width: 100%; }
+.lumi-section h1 { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 28px; line-height: 36px; font-weight: 350; font-variation-settings: "wght" 350, "wdth" 100, "opsz" 28; color: var(--lumi-sys-color--on-surface, #000000); margin-top: var(--lumi-sys-spacing--m, 12px); margin-bottom: var(--lumi-sys-spacing--xxl, 24px); }
+.lumi-section h1:first-child { margin-top: 0px; }
+.lumi-section h2 { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 24px; line-height: 28px; font-weight: 380; font-variation-settings: "wght" 380, "wdth" 100, "opsz" 24; color: var(--lumi-sys-color--on-surface, #000000); margin-top: var(--lumi-sys-spacing--m, 12px); margin-bottom: var(--lumi-sys-spacing--m, 12px); }
+.lumi-section h2:first-child { margin-top: 0px; }
+.lumi-section h3 { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 20px; line-height: 24px; font-weight: 470; font-variation-settings: "wght" 470, "wdth" 94, "opsz" 20; color: var(--lumi-sys-color--on-surface, #000000); margin-top: var(--lumi-sys-spacing--m, 12px); margin-bottom: var(--lumi-sys-spacing--xs, 4px); }
+.lumi-section h3:first-child { margin-top: 0px; }
+.lumi-section p { font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 17px; line-height: 24px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 17; color: var(--lumi-sys-color--on-surface, #000000); margin-top: 0px; margin-bottom: var(--lumi-sys-spacing--m, 12px); }
+.lumi-section p:last-child { margin-bottom: 0px; }
+.lumi-section ul { list-style: none; padding: 0px; margin: 0 0 var(--lumi-sys-spacing--m, 12px) 0; width: 100%; }
+.lumi-section ul:last-child { margin-bottom: 0px; }
+.lumi-section li { position: relative; padding-left: 40px; padding-bottom: 12px; font-family: var(--ff-sans, 'Google Sans Flex', sans-serif); font-size: 17px; line-height: 24px; font-weight: 400; font-variation-settings: "wght" 400, "wdth" 92, "opsz" 17; color: var(--lumi-sys-color--on-surface, #000000); box-sizing: border-box; }
+.lumi-section li:last-child { padding-bottom: 0px; }
+.lumi-section li::before { content: "○"; position: absolute; left: 3.5px; top: 0px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-family: var(--ff-mono, 'Google Sans Code', monospace); font-size: 15px; font-weight: 650; font-variation-settings: "MONO" 1, "wght" 650; color: var(--lumi-sys-color--on-surface, #000000); }
+.lumi-section li ul { margin-top: 12px; margin-bottom: 0px; padding-left: 40px; }
+
+/* --- Chart legend (1:1 series color match) --- */
+.lumi-chart-header, .lumi-chart-title { margin-bottom: 32px; }
+.lumi-chart-legend { display: flex; justify-content: center; align-items: center; gap: 24px; margin-top: 32px; padding-top: 0px; width: 100%; flex-wrap: wrap; }
+.lumi-legend-item { display: inline-flex; align-items: center; gap: 8px; }
+.lumi-legend-dot { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lumi-legend-dot-swatch { width: 20px; height: 20px; border-radius: 50%; display: block; }
+span.lumi-legend-dot[style*="background"] { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.lumi-legend-label { font-family: var(--ff-mono, 'Google Sans Code', monospace); font-style: italic; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--lumi-sys-color--on-surface, #000000); font-variation-settings: "wght" 400, "opsz" 13, "MONO" 0; font-feature-settings: "kern" 1, "liga" 1; white-space: nowrap; }
+
+/* Canonical themed <select>. Uses element+class specificity (select.lumi-select)
+   so it intentionally wins over any model hand-rolled `.lumi-select` rule: the
+   runtime stylesheet is injected before widget <style> blocks, so a bare
+   `.lumi-select` (same specificity, later) would otherwise override it. This
+   provides appearance:none + a theme-neutral chevron so no native OS arrow leaks. */
+select.lumi-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 100%;
+  padding: var(--lumi-sys-spacing--s, 8px) 40px var(--lumi-sys-spacing--s, 8px)
+    var(--lumi-sys-spacing--m, 12px);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--r-full, 999px);
+  background-color: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--ff-sans, 'Google Sans Flex', sans-serif);
+  font-size: 15px;
+  line-height: 20px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2380868b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px;
+}
+select.lumi-select:focus-visible {
+  outline: 2px solid var(--lumi-sys-color--accent-fixed, #3186ff);
+  outline-offset: 2px;
+}
+
+/* Toggle / filter chip. Models frequently emit `<button class="lumi-chip">`
+   (or `.lumi-chip-btn`, `.lumi-filter-btn`, `[class^="lumi-chip-"]`, with
+   `.is-active`/`.active`/`.is-selected`) for toggle pills; without a
+   canonical rule these fall back to native (retro) browser button chrome.
+   Theme-aware via runtime tokens so it is correct in light and dark. */
+.lumi-chip,
+[class^="lumi-chip"],
+[class*=" lumi-chip"],
+[class^="lumi-pill"],
+[class*=" lumi-pill"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lumi-sys-spacing--s, 8px);
+  min-height: 32px;
+  padding: 0 16px;
+  font-family: var(--ff-sans, 'Google Sans Flex', 'Google Sans', sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--lumi-sys-color--on-surface-default, #1f1f1f);
+  background: var(--lumi-sys-color--surface-dim, #f2f0f0);
+  border: 1px solid transparent;
+  border-radius: var(--lumi-sys-shape--full, 999px);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.lumi-chip:hover,
+[class^="lumi-chip"]:hover,
+[class*=" lumi-chip"]:hover,
+[class^="lumi-pill"]:hover,
+[class*=" lumi-pill"]:hover {
+  background: var(--lumi-sys-color--surface-container-high, #e6e6e6);
+}
+.lumi-chip.is-active,
+.lumi-chip.active,
+.lumi-chip.is-selected,
+.lumi-chip.selected,
+.lumi-chip[aria-pressed="true"],
+.lumi-chip[aria-selected="true"],
+[class^="lumi-chip"].is-active,
+[class^="lumi-chip"].active,
+[class^="lumi-chip"].is-selected,
+[class^="lumi-chip"].selected,
+[class^="lumi-chip"][aria-pressed="true"],
+[class^="lumi-chip"][aria-selected="true"],
+[class*=" lumi-chip"].is-active,
+[class*=" lumi-chip"].active,
+[class*=" lumi-chip"].is-selected,
+[class*=" lumi-chip"].selected,
+[class*=" lumi-chip"][aria-pressed="true"],
+[class*=" lumi-chip"][aria-selected="true"],
+[class^="lumi-pill"].is-active,
+[class^="lumi-pill"].active,
+[class^="lumi-pill"].is-selected,
+[class^="lumi-pill"].selected,
+[class^="lumi-pill"][aria-pressed="true"],
+[class^="lumi-pill"][aria-selected="true"],
+[class*=" lumi-pill"].is-active,
+[class*=" lumi-pill"].active,
+[class*=" lumi-pill"].is-selected,
+[class*=" lumi-pill"].selected,
+[class*=" lumi-pill"][aria-pressed="true"],
+[class*=" lumi-pill"][aria-selected="true"] {
+  color: var(--lumi-sys-color--on-surface-default, #000000);
+  background: var(--lumi-sys-color--accent-container, #dcf1ff);
+  border-color: var(--lumi-sys-color--primary, #3186ff);
+  font-weight: 600;
+}
+.lumi-chip:focus-visible,
+[class^="lumi-chip"]:focus-visible,
+[class*=" lumi-chip"]:focus-visible,
+[class^="lumi-pill"]:focus-visible,
+[class*=" lumi-pill"]:focus-visible {
+  outline: 2px solid var(--lumi-sys-color--accent-fixed, #3186ff);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+ * DIAGRAM GUARD — SVG <text> is fill-only.
+ *   An inherited group stroke (e.g. `.node:hover { stroke }` on a <g>)
+ *   otherwise cascades into child <text>, thickening glyph outlines
+ *   (fake-bold) and recoloring the label. Highlight strokes belong on
+ *   shapes (rect/path); text never paints a stroke.
+ * ============================================================ */
+svg text { stroke: none; paint-order: fill; }
+
+/* ============================================================
+ * 6. HIGH CONTRAST MODE (Windows Forced Colors)
+ *    Ensures buttons, selectable pills/tabs/segments, sliders, and switches
+ *    remain clearly identifiable and convey active/selected state in
+ *    @media (forced-colors: active).
+ * ============================================================ */
+@media (forced-colors: active) {
+  button,
+  .lumi-btn,
+  [class^="lumi-btn-"],
+  [class*=" lumi-btn-"],
+  .lumi-chip,
+  [class^="lumi-chip"],
+  [class*=" lumi-chip"],
+  [class^="lumi-pill"],
+  [class*=" lumi-pill"],
+  .lumi-segmented-btn,
+  .lumi-tab {
+    border: 1px solid ButtonBorder !important;
+  }
+
+  button.active,
+  button.is-active,
+  button.selected,
+  button.is-selected,
+  button[aria-pressed="true"],
+  button[aria-selected="true"],
+  .lumi-btn.active,
+  .lumi-btn.is-active,
+  .lumi-btn.selected,
+  .lumi-btn.is-selected,
+  .lumi-btn[aria-pressed="true"],
+  .lumi-btn[aria-selected="true"],
+  .lumi-chip.active,
+  .lumi-chip.is-active,
+  .lumi-chip.selected,
+  .lumi-chip.is-selected,
+  .lumi-chip[aria-pressed="true"],
+  .lumi-chip[aria-selected="true"],
+  [class^="lumi-chip"].active,
+  [class^="lumi-chip"].is-active,
+  [class^="lumi-chip"].selected,
+  [class^="lumi-chip"].is-selected,
+  [class^="lumi-chip"][aria-pressed="true"],
+  [class*=" lumi-chip"].active,
+  [class*=" lumi-chip"].is-active,
+  [class*=" lumi-chip"].selected,
+  [class*=" lumi-chip"].is-selected,
+  [class*=" lumi-chip"][aria-pressed="true"],
+  [class^="lumi-pill"].active,
+  [class^="lumi-pill"].is-active,
+  [class^="lumi-pill"][aria-pressed="true"],
+  [class*=" lumi-pill"].active,
+  [class*=" lumi-pill"].is-active,
+  [class*=" lumi-pill"][aria-pressed="true"],
+  .lumi-segmented-btn.active,
+  .lumi-segmented-btn.is-active,
+  .lumi-segmented-btn.selected,
+  .lumi-segmented-btn.is-selected,
+  .lumi-segmented-btn[aria-pressed="true"],
+  .lumi-segmented-btn[aria-selected="true"],
+  .lumi-tab.active,
+  .lumi-tab.is-active,
+  .lumi-tab.selected,
+  .lumi-tab.is-selected,
+  .lumi-tab[aria-pressed="true"],
+  .lumi-tab[aria-selected="true"] {
+    forced-color-adjust: none;
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  input[type="range"],
+  .lumi-slider {
+    forced-color-adjust: none;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  input[type="range"]::-webkit-slider-runnable-track,
+  .lumi-slider::-webkit-slider-runnable-track {
+    background-image: none !important;
+    background-color: Canvas !important;
+    border: 1px solid ButtonBorder !important;
+    height: 6px !important;
+  }
+  input[type="range"]::-webkit-slider-thumb,
+  .lumi-slider::-webkit-slider-thumb {
+    background-image: none !important;
+    background-color: ButtonText !important;
+    border: 2px solid Canvas !important;
+    outline: 2px solid ButtonBorder !important;
+    width: 20px !important;
+    height: 20px !important;
+    margin-top: -8px !important;
+  }
+  input[type="range"]:hover::-webkit-slider-thumb,
+  input[type="range"]:focus-visible::-webkit-slider-thumb,
+  .lumi-slider:hover::-webkit-slider-thumb,
+  .lumi-slider:focus-visible::-webkit-slider-thumb {
+    background-color: Highlight !important;
+    outline-color: Highlight !important;
+  }
+
+  .lumi-progress-bar {
+    forced-color-adjust: none;
+    background-color: Canvas !important;
+    border: 1px solid ButtonBorder !important;
+  }
+  .lumi-progress-fill {
+    forced-color-adjust: none;
+    background-color: Highlight !important;
+  }
+
+  .lumi-switch__track {
+    forced-color-adjust: none;
+    background-color: Canvas !important;
+    border: 2px solid ButtonBorder !important;
+  }
+  .lumi-switch__thumb,
+  .lumi-switch__track::after {
+    background-color: ButtonText !important;
+  }
+  .lumi-switch input[type="checkbox"]:checked + .lumi-switch__track {
+    background-color: Highlight !important;
+    border-color: Highlight !important;
+  }
+  .lumi-switch input[type="checkbox"]:checked + .lumi-switch__track .lumi-switch__thumb,
+  .lumi-switch input[type="checkbox"]:checked + .lumi-switch__track::after {
+    background-color: HighlightText !important;
+  }
+
+  .lumi-checkbox {
+    forced-color-adjust: none;
+    border: 2px solid ButtonBorder !important;
+    background-color: Canvas !important;
+  }
+  .lumi-checkbox-label input[type="checkbox"]:checked ~ .lumi-checkbox,
+  .lumi-checkbox-label input[type="checkbox"]:indeterminate ~ .lumi-checkbox {
+    background-color: Highlight !important;
+    border-color: Highlight !important;
+  }
+  .lumi-checkbox .lumi-checkmark {
+    color: HighlightText !important;
+    fill: HighlightText !important;
+  }
+}
+
+</style>
+<style id="lumi-surface-button-fallbacks">
+.widget-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-inline: 0 !important;
+  box-sizing: border-box;
+}
+:root {
+  --lumi-sys-color--surface-translucent: rgba(255, 255, 255, 0.88);
+  --surface-translucent: var(--lumi-sys-color--surface-translucent, rgba(255, 255, 255, 0.88));
+  --surface-glass: var(--lumi-sys-color--surface-translucent, rgba(255, 255, 255, 0.88));
+}
+:root[data-theme="dark"], body.dark-mode {
+  --lumi-sys-color--surface-translucent: rgba(24, 24, 27, 0.88);
+  --surface-translucent: rgba(24, 24, 27, 0.88);
+  --surface-glass: rgba(24, 24, 27, 0.88);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lumi-sys-color--surface-translucent: rgba(24, 24, 27, 0.88);
+    --surface-translucent: rgba(24, 24, 27, 0.88);
+    --surface-glass: rgba(24, 24, 27, 0.88);
+  }
+}
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 18px;
+  font-family: var(--ff-sans, 'Google Sans Flex', sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--on-surface, #000000);
+  background-color: var(--lumi-sys-color--surface-bright, #ffffff);
+  border: 1px solid var(--stroke-default, #e3e3e3);
+  border-radius: 999px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+button:hover {
+  background-color: var(--surface-container-high, #e6e6e6);
+}
+button.active, button.is-active, button.selected, button.is-selected, button[aria-pressed="true"], button[aria-selected="true"] {
+  background-color: var(--accent-container, #dcf1ff);
+  color: var(--on-surface, #000000);
+  border-color: var(--primary, #3186ff);
+}
+button.lumi-sort-btn, .lumi-sort-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  width: 100%;
+  justify-content: inherit;
+  border-radius: 4px;
+}
+button.lumi-sort-btn:focus-visible, .lumi-sort-btn:focus-visible {
+  outline: 2px solid var(--on-surface, #000000) !important;
+  outline-offset: 2px !important;
+}
+.lumi-segmented-btn, .lumi-tab {
+  border: 1px solid transparent;
+}
+.lumi-btn, [class^="lumi-btn-"], [class*=" lumi-btn-"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 18px;
+  background-color: var(--lumi-sys-color--surface-bright, #ffffff);
+  color: var(--on-surface, #000000);
+  border: 1px solid var(--stroke-default, #e3e3e3);
+  border-radius: 999px;
+  box-sizing: border-box;
+}
+.lumi-btn--primary, .lumi-btn-primary {
+  background-color: var(--lumi-sys-color--accent, #9dd2ff);
+  color: var(--lumi-sys-color--on-surface-default, #000000);
+  border-color: transparent;
+}
+.lumi-btn--primary:hover, .lumi-btn-primary:hover {
+  background-color: var(--lumi-sys-color--accent-container, #dcf1ff);
+}
+:where(.lumi-chip, [class^="lumi-chip"], [class*=" lumi-chip"], [class^="lumi-pill"], [class*=" lumi-pill"]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 16px;
+  font-family: var(--ff-sans, 'Google Sans Flex', sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-surface, #1f1f1f);
+  background: var(--surface-dim, #f2f0f0);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.lumi-chip.is-active, .lumi-chip.active, .lumi-chip.is-selected, .lumi-chip.selected, .lumi-chip[aria-pressed="true"], .lumi-chip[aria-selected="true"],
+[class^="lumi-chip"].is-active, [class^="lumi-chip"].active, [class^="lumi-chip"].is-selected, [class^="lumi-chip"].selected, [class^="lumi-chip"][aria-pressed="true"], [class^="lumi-chip"][aria-selected="true"],
+[class*=" lumi-chip"].is-active, [class*=" lumi-chip"].active, [class*=" lumi-chip"].is-selected, [class*=" lumi-chip"].selected, [class*=" lumi-chip"][aria-pressed="true"], [class*=" lumi-chip"][aria-selected="true"],
+[class^="lumi-pill"].is-active, [class^="lumi-pill"].active, [class^="lumi-pill"].is-selected, [class^="lumi-pill"].selected, [class^="lumi-pill"][aria-pressed="true"], [class^="lumi-pill"][aria-selected="true"],
+[class*=" lumi-pill"].is-active, [class*=" lumi-pill"].active, [class*=" lumi-pill"].is-selected, [class*=" lumi-pill"].selected, [class*=" lumi-pill"][aria-pressed="true"], [class*=" lumi-pill"][aria-selected="true"] {
+  color: var(--on-surface, #000000);
+  background: var(--accent-container, #dcf1ff);
+  border-color: var(--primary, #3186ff);
+  font-weight: 600;
+}
+@media (forced-colors: active) {
+  button, .lumi-btn, .lumi-chip, [class^="lumi-chip"], [class*=" lumi-chip"], [class^="lumi-pill"], [class*=" lumi-pill"], .lumi-segmented-btn, .lumi-tab {
+    border: 1px solid ButtonText !important;
+  }
+  button.active, button.is-active, button.selected, button.is-selected, button[aria-pressed="true"], button[aria-selected="true"], .lumi-btn.active, .lumi-btn.is-active, .lumi-btn.selected, .lumi-btn.is-selected, .lumi-btn[aria-pressed="true"], .lumi-btn[aria-selected="true"], .lumi-chip.is-active, .lumi-chip.active, .lumi-chip.is-selected, .lumi-chip.selected, .lumi-chip[aria-pressed="true"], .lumi-chip[aria-selected="true"], .lumi-segmented-btn.is-active, .lumi-segmented-btn.active, .lumi-segmented-btn.is-selected, .lumi-segmented-btn.selected, .lumi-segmented-btn[aria-pressed="true"], .lumi-segmented-btn[aria-selected="true"], .lumi-tab.active, .lumi-tab.is-active, .lumi-tab.selected, .lumi-tab.is-selected, .lumi-tab[aria-pressed="true"], .lumi-tab[aria-selected="true"] {
+    border: 2px solid Highlight !important;
+  }
+  .lumi-slider::-webkit-slider-runnable-track {
+    border: 1px solid ButtonText !important;
+  }
+  .lumi-slider::-webkit-slider-thumb {
+    border: 2px solid Highlight !important;
+    background-color: ButtonText !important;
+  }
+}
+</style>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bibao 活泼少女脑改造与三层游戏脑机接口 (BCI) 架构图</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow-y: hidden;
+    font-family: var(--ff-sans, sans-serif);
+    color: var(--on-surface);
+  }
+  .widget-container {
+    width: 100%;
+    max-width: 708px;
+    margin: 0 auto;
+    min-height: 280px;
+    padding-inline: 0;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-l, 16px);
+  }
+  .header-block {
+    padding-inline: var(--spacing-xs, 4px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs, 4px);
+  }
+  .header-title {
+    margin: 0;
+    color: var(--on-surface);
+  }
+  .header-sub {
+    margin: 0;
+    color: var(--on-surface-variant);
+  }
+  .control-deck {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-m, 12px);
+    padding: var(--spacing-l, 16px);
+    background: var(--surface-bright);
+    border-radius: var(--r-l, 24px);
+  }
+  .scenario-strip {
+    display: flex;
+    gap: var(--spacing-s, 8px);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .step-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-m, 12px);
+    padding-top: var(--spacing-xs, 4px);
+  }
+  .step-readout {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .step-counter-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: var(--r-full, 999px);
+    background: var(--surface-dim);
+    font-family: var(--ff-mono, monospace);
+    color: var(--on-surface);
+  }
+  .diagram-card {
+    background: var(--surface-bright);
+    border-radius: var(--r-container, 40px);
+    padding: var(--spacing-m, 12px) var(--spacing-s, 8px);
+  }
+  /* SVG Entity System Rules */
+  svg text {
+    stroke: none;
+    paint-order: fill;
+    user-select: none;
+  }
+  .svg-node {
+    cursor: pointer;
+    transition: opacity 220ms ease;
+  }
+  .svg-node > rect {
+    transition: fill 220ms ease, stroke 220ms ease, stroke-width 220ms ease;
+  }
+  .svg-node:hover > rect {
+    fill: var(--surface-container-high);
+  }
+  .svg-node.is-focal > rect {
+    fill: var(--accent-container);
+    stroke: var(--primary);
+    stroke-width: 1.8;
+  }
+  .svg-node.is-dimmed {
+    opacity: 0.32;
+  }
+  .svg-edge-group {
+    transition: opacity 220ms ease;
+    pointer-events: none;
+  }
+  .svg-edge-group.is-dimmed {
+    opacity: 0.22;
+  }
+  .svg-edge-group.is-active .edge-line {
+    stroke: var(--primary);
+    stroke-width: 1.8;
+  }
+  .svg-edge-group.is-active .pill-bg {
+    fill: var(--accent-container);
+    stroke: var(--primary);
+    stroke-width: 1;
+  }
+  @keyframes pulseDash {
+    to {
+      stroke-dashoffset: -24;
+    }
+  }
+  .pulse-overlay {
+    stroke: var(--primary);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-dasharray: 4 20;
+    fill: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .svg-edge-group.is-active .pulse-overlay {
+    opacity: 1;
+    animation: pulseDash 0.9s linear infinite;
+  }
+  /* Detail Panel */
+  .detail-deck {
+    background: var(--surface-dim);
+    border-radius: var(--r-container, 40px);
+    padding: var(--spacing-xl, 20px) var(--spacing-xl, 24px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-m, 12px);
+  }
+  .detail-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-m, 12px);
+    flex-wrap: wrap;
+  }
+  .layer-pill {
+    padding: 4px 12px;
+    border-radius: var(--r-full, 999px);
+    background: var(--surface-bright);
+    color: var(--on-surface);
+    font-family: var(--ff-mono, monospace);
+  }
+  .formula-box {
+    background: var(--surface-bright);
+    border-radius: var(--r-m, 16px);
+    padding: var(--spacing-m, 12px) var(--spacing-l, 16px);
+    font-family: var(--ff-mono, monospace);
+    color: var(--on-surface);
+    overflow-x: auto;
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--spacing-m, 12px);
+  }
+  .detail-subcard {
+    background: var(--surface-bright);
+    border-radius: var(--r-l, 20px);
+    padding: var(--spacing-m, 12px) var(--spacing-l, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs, 4px);
+  }
+  .subcard-label {
+    color: var(--on-surface-variant);
+    margin: 0;
+  }
+  .subcard-body {
+    color: var(--on-surface);
+    margin: 0;
+  }
+  .sync-log-bar {
+    background: var(--surface-bright);
+    border-radius: var(--r-m, 16px);
+    padding: var(--spacing-s, 10px) var(--spacing-l, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+</style>
+<script id="lumi-os-theme-init">
+(function() {
+  function syncBody() {
+    var dt = document.documentElement.getAttribute('data-theme');
+    if (document.body && (dt === 'dark' || dt === 'light')) {
+      document.body.classList.toggle('dark-mode', dt === 'dark');
+    }
+  }
+  function syncTheme(theme) {
+    if (theme !== 'dark' && theme !== 'light') return;
+    document.documentElement.setAttribute('data-theme', theme);
+    syncBody();
+  }
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(syncBody).observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-theme']
+    });
+  }
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', syncBody);
+  }
+  try {
+    var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq) {
+      var cur = document.documentElement.getAttribute('data-theme');
+      if (!cur) {
+        syncTheme(mq.matches ? 'dark' : 'light');
+      } else {
+        syncTheme(cur);
+      }
+      if (mq.addEventListener) {
+        mq.addEventListener('change', function(e) {
+          syncTheme(e.matches ? 'dark' : 'light');
+        });
+      }
+    }
+  } catch (e) {}
+  window.addEventListener('message', function(e) {
+    if (e.data && (e.data.type === 'set-theme' || e.data.type === 'APPLY_THEME') && e.data.theme) {
+      syncTheme(e.data.theme);
+    }
+  });
+})();
+</script>
+</head>
+<body>
+<div class="widget-container">
+  <!-- Header -->
+  <div class="header-block">
+    <h2 class="lumi-headline-m header-title">bibao 少女脑认知状态机与三层游戏脑机接口 (BCI)</h2>
+    <p class="lumi-body-m header-sub">顶部意识与社交回路（节点 1–4）与底部百毫秒级游戏运动接口（节点 5–6）经由注意力复用池与共享海马体双向耦合。点击任意节点查看控制方程与双端同步机制。</p>
+  </div>
+
+  <!-- Control Deck: Scenario Presets + Stepper -->
+  <div class="control-deck">
+    <div class="scenario-strip" role="group" aria-label="闭环场景预设">
+      <button type="button" class="lumi-chip is-active" data-scenario="A" aria-pressed="true">场景A：委屈被哄好 &rarr; 傲娇双段破功</button>
+      <button type="button" class="lumi-chip" data-scenario="B" aria-pressed="false">场景B：高多巴胺闲置 &rarr; 游戏原地转圈蹦迪</button>
+      <button type="button" class="lumi-chip" data-scenario="C" aria-pressed="false">场景C：围观紧张手抖失误 &rarr; 切QQ撒娇甩锅</button>
+    </div>
+
+    <div class="step-nav-bar">
+      <button type="button" class="lumi-btn lumi-btn--tonal lumi-btn--small" id="btn-prev" aria-label="上一步">上一步 (Prev)</button>
+      <div class="step-readout" id="step-readout-zone">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="lumi-body-s step-counter-badge" id="step-counter">步骤 1 / 4</span>
+          <span class="lumi-body-m-emphasized" id="step-title">投喂安慰触发皮质醇快速冲销</span>
+        </div>
+        <p class="lumi-body-s" style="margin:2px 0 0 0; color:var(--on-surface-variant);" id="step-desc">好友发来零食哄劝，太阳雨内分泌引擎执行 Cortisol = 0.35 &times; Cortisol，情绪迅速转晴。</p>
+      </div>
+      <button type="button" class="lumi-btn lumi-btn--tonal lumi-btn--small" id="btn-next" aria-label="下一步">下一步 (Next)</button>
+    </div>
+  </div>
+
+  <!-- Interactive Architecture Diagram (Single Inline SVG, 6 Nodes, 8 Directed Causal Edges) -->
+  <div class="diagram-card">
+    <div class="widget-viewport" style="position: relative; width: 100%; height: auto; overflow: hidden; border-radius: var(--r-l, 24px);">
+      <div style="position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden;">
+        <svg id="bci-diagram" viewBox="0 0 668 488" style="width:100%; max-width:668px; height:auto; display:block; margin:0 auto;" role="img" aria-label="bibao 六节点认知状态机与三层游戏脑机接口架构图">
+          <defs>
+            <marker id="lumi-caret" viewBox="0 0 10 10" refX="7.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+              <path d="M 3 1.2 L 7.5 5 L 3 8.8" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </marker>
+            <marker id="lumi-caret-active" viewBox="0 0 10 10" refX="7.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+              <path d="M 3 1.2 L 7.5 5 L 3 8.8" fill="none" stroke="var(--primary)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </marker>
+          </defs>
+
+          <!-- Tier Subtle Region Labels -->
+          <text x="24" y="24" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface-variant)">TIER 1: 意识情绪底色、蝴蝶记忆与跨模态路由 (bibao Conscious Loop)</text>
+          <line x1="16" y1="276" x2="652" y2="276" stroke="var(--stroke-default)" stroke-width="1"/>
+          <text x="24" y="296" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface-variant)">TIER 2 &amp; 3: 百毫秒技能库与 10-30ms 小脑反射 (3-Tier BCI Game Motor)</text>
+
+          <!-- ==================== Z-ORDER 1 & 2: EDGES + ENCLOSED PILLS ==================== -->
+
+          <!-- E1: Node 1 (sunshower_endocrine) -> Node 2 (butterfly_memory) -->
+          <g class="svg-edge-group" id="edge-e1" data-edge="e1">
+            <line class="edge-line" x1="212" y1="80" x2="220" y2="80" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <line class="edge-line" x1="248" y1="80" x2="252" y2="80" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 212 80 L 252 80"/>
+            <rect class="pill-bg" x="210" y="70" width="48" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="234" y="84" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">DA/PE</text>
+          </g>
+
+          <!-- E2: Node 2 (butterfly_memory) -> Node 4 (tsundere_broca) -->
+          <g class="svg-edge-group" id="edge-e2" data-edge="e2">
+            <line class="edge-line" x1="436" y1="80" x2="444" y2="80" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <line class="edge-line" x1="472" y1="80" x2="476" y2="80" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 436 80 L 476 80"/>
+            <rect class="pill-bg" x="424" y="70" width="64" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="456" y="84" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">Hop0.3</text>
+          </g>
+
+          <!-- E3: Node 1 (sunshower_endocrine) -> Node 3 (attention_multiplexer) -->
+          <g class="svg-edge-group" id="edge-e3" data-edge="e3">
+            <path class="edge-line" d="M 116 128 L 116 176 Q 116 192 132 192 L 156 192" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <path class="edge-line" d="M 224 192 L 252 192" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 116 128 L 116 176 Q 116 192 132 192 L 252 192"/>
+            <rect class="pill-bg" x="152" y="182" width="76" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="190" y="196" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">唤醒分配</text>
+          </g>
+
+          <!-- E4: Node 3 (attention_multiplexer) -> Node 4 (tsundere_broca) -->
+          <g class="svg-edge-group" id="edge-e4" data-edge="e4">
+            <path class="edge-line" d="M 436 192 L 484 192" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <path class="edge-line" d="M 556 192 L 560 192 Q 576 192 576 176 L 576 128" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 436 192 L 560 192 Q 576 192 576 176 L 576 128"/>
+            <rect class="pill-bg" x="480" y="182" width="80" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="520" y="196" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">4s双段发</text>
+          </g>
+
+          <!-- E5: Node 3 (attention_multiplexer) -> Node 5 (basal_ganglia_skills) -->
+          <g class="svg-edge-group" id="edge-e5" data-edge="e5">
+            <path class="edge-line" d="M 284 240 L 284 256 Q 284 272 268 272 L 220 272 Q 204 272 204 288 L 204 316" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 284 240 L 284 256 Q 284 272 268 272 L 220 272 Q 204 272 204 288 L 204 316"/>
+            <rect class="pill-bg" x="210" y="262" width="72" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="246" y="276" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">高层意图</text>
+          </g>
+
+          <!-- E6: Node 5 (basal_ganglia_skills) -> Node 6 (cerebellar_motor) -->
+          <g class="svg-edge-group" id="edge-e6" data-edge="e6">
+            <line class="edge-line" x1="308" y1="364" x2="324" y2="364" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <line class="edge-line" x1="396" y1="364" x2="404" y2="364" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 308 364 L 404 364"/>
+            <rect class="pill-bg" x="320" y="354" width="80" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="360" y="368" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">动作序列</text>
+          </g>
+
+          <!-- E7: Node 6 (cerebellar_motor) -> Node 3 (attention_multiplexer) [Fast Spinal Interrupt] -->
+          <g class="svg-edge-group" id="edge-e7" data-edge="e7">
+            <path class="edge-line" d="M 464 316 L 464 288 Q 464 272 448 272 L 412 272 Q 396 272 396 256 L 396 240" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 464 316 L 464 288 Q 464 272 448 272 L 412 272 Q 396 272 396 256 L 396 240"/>
+            <rect class="pill-bg" x="392" y="262" width="76" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="430" y="276" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">脊髓中断</text>
+          </g>
+
+          <!-- E8: Node 6 (cerebellar_motor) -> Node 2 (butterfly_memory) [Shared Episodic Writeback] -->
+          <g class="svg-edge-group" id="edge-e8" data-edge="e8">
+            <path class="edge-line" d="M 604 364 L 632 364 Q 648 364 648 348 L 648 240" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4"/>
+            <path class="edge-line" d="M 648 212 L 648 32 Q 648 16 632 16 L 360 16 Q 344 16 344 32 L 344 32" fill="none" stroke="var(--on-surface)" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0 4" marker-end="url(#lumi-caret)"/>
+            <path class="pulse-overlay" d="M 604 364 L 632 364 Q 648 364 648 348 L 648 32 Q 648 16 632 16 L 360 16 Q 344 16 344 32"/>
+            <rect class="pill-bg" x="564" y="212" width="88" height="20" rx="10" fill="var(--surface-dim)"/>
+            <text x="608" y="226" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">出糗写记忆</text>
+          </g>
+
+          <!-- ==================== Z-ORDER 3: NODES (6 ENTITIES) ==================== -->
+
+          <!-- Node 1: sunshower_endocrine (cx=116, cy=80, w=184, h=80) -->
+          <g class="svg-node is-focal" id="node-sunshower_endocrine" data-node="sunshower_endocrine" transform="translate(116, 80)" role="button" tabindex="0" aria-label="1. 太阳雨内分泌与好奇心引擎">
+            <rect x="-92" y="-40" width="184" height="80" rx="40" fill="var(--surface-container)" stroke="var(--outline)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">1. 太阳雨内分泌</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">Cortisol &times; 0.35</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">少女情绪底色</text>
+          </g>
+
+          <!-- Node 2: butterfly_memory (cx=344, cy=80, w=184, h=80) -->
+          <g class="svg-node" id="node-butterfly_memory" data-node="butterfly_memory" transform="translate(344, 80)" role="button" tabindex="0" aria-label="2. 蝴蝶联想海马体与互通记忆">
+            <rect x="-92" y="-40" width="184" height="80" rx="40" fill="var(--surface-container)" stroke="var(--outline)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">2. 蝴蝶联想海马体</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">P(Hop) = 0.30</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">互通跨模态存储</text>
+          </g>
+
+          <!-- Node 4: tsundere_broca (cx=564, cy=80, w=168, h=80) -->
+          <g class="svg-node" id="node-tsundere_broca" data-node="tsundere_broca" transform="translate(564, 80)" role="button" tabindex="0" aria-label="4. 傲娇双段路由与少女语感器">
+            <rect x="-84" y="-40" width="168" height="80" rx="40" fill="var(--surface-dim)" stroke="var(--stroke-default)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">4. 傲娇双段路由</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">DUAL_PHASE +4s</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">社交皮层 snowluma</text>
+          </g>
+
+          <!-- Node 3: attention_multiplexer (cx=344, cy=192, w=184, h=80) -->
+          <g class="svg-node" id="node-attention_multiplexer" data-node="attention_multiplexer" transform="translate(344, 192)" role="button" tabindex="0" aria-label="3. 跨模态注意力分时复用池">
+            <rect x="-92" y="-40" width="184" height="80" rx="40" fill="var(--surface-container)" stroke="var(--outline)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">3. 注意力分时复用池</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">A_Game+A_QQ &le; 1</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">全局工作空间 GNWT</text>
+          </g>
+
+          <!-- Node 5: basal_ganglia_skills (cx=204, cy=364, w=192, h=80) -->
+          <g class="svg-node" id="node-basal_ganglia_skills" data-node="basal_ganglia_skills" transform="translate(204, 364)" role="button" tabindex="0" aria-label="5. 基底核肌肉记忆与熟练度库">
+            <rect x="-96" y="-40" width="192" height="80" rx="40" fill="var(--surface-dim)" stroke="var(--stroke-default)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">5. 基底核肌肉记忆</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">Prof &isin; [0.1, 0.98]</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">脑机中层 (100ms级)</text>
+          </g>
+
+          <!-- Node 6: cerebellar_motor (cx=504, cy=364, w=184, h=80) -->
+          <g class="svg-node" id="node-cerebellar_motor" data-node="cerebellar_motor" transform="translate(504, 364)" role="button" tabindex="0" aria-label="6. 小脑反射与生理手抖注入器">
+            <rect x="-92" y="-40" width="184" height="80" rx="40" fill="var(--surface-dim)" stroke="var(--stroke-default)" stroke-width="1.3"/>
+            <text x="0" y="-10" text-anchor="middle" font-family="var(--ff-sans)" font-size="15" font-weight="400" fill="var(--on-surface)">6. 小脑反射手抖器</text>
+            <text x="0" y="8" text-anchor="middle" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">RT=190ms / P_err</text>
+            <text x="0" y="26" text-anchor="middle" font-family="var(--ff-sans)" font-size="13" font-weight="400" fill="var(--on-surface-variant)">脑机底层 (10-30ms级)</text>
+          </g>
+
+          <!-- ==================== Z-ORDER 4: BOTTOM LEGEND STRIP ==================== -->
+          <line x1="16" y1="436" x2="652" y2="436" stroke="var(--stroke-default)" stroke-width="1"/>
+          <g transform="translate(24, 452)">
+            <rect x="0" y="0" width="20" height="14" rx="7" fill="var(--accent-container)" stroke="var(--primary)" stroke-width="1.3"/>
+            <text x="28" y="12" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">当前焦点模块 (Active Focus)</text>
+
+            <rect x="244" y="0" width="20" height="14" rx="7" fill="var(--surface-container)" stroke="var(--outline)" stroke-width="1.3"/>
+            <text x="272" y="12" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">核心状态池 (State/Hub)</text>
+
+            <rect x="456" y="0" width="20" height="14" rx="7" fill="var(--surface-dim)" stroke="var(--stroke-default)" stroke-width="1.3"/>
+            <text x="484" y="12" font-family="var(--ff-mono)" font-size="13" font-style="italic" fill="var(--on-surface)">执行接口 (Motor/Broca)</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail-on-Select Panel (Pre-populated on First Frame with Node 1) -->
+  <div class="detail-deck" id="detail-zone">
+    <div class="detail-top">
+      <div>
+        <h3 class="lumi-headline-s" style="margin:0;" id="detail-title">1. 太阳雨内分泌与好奇心引擎</h3>
+        <span class="lumi-caption" id="detail-id">MODULE ID: sunshower_endocrine</span>
+      </div>
+      <span class="lumi-body-s layer-pill" id="detail-layer">层级：少女情绪底色</span>
+    </div>
+
+    <div class="formula-box">
+      <div class="lumi-body-s" style="color:var(--on-surface-variant); margin-bottom:4px;">控制方程与状态转移律 (Governing Equations)</div>
+      <div class="lumi-code" id="detail-equation">皮质醇半衰期 = 7min; 哄好冲销 Cortisol = 0.35 &times; Cortisol; 适度惊奇 Dopamine += 0.25 &times; PE</div>
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-subcard">
+        <p class="lumi-body-s subcard-label">灵动少女机制 (Lively Girl Mechanism)</p>
+        <p class="lumi-body-m subcard-body" id="detail-lively">记仇极短，给颗糖就破涕为笑；对新奇事物充满凑热闹与追问欲。</p>
+      </div>
+      <div class="detail-subcard">
+        <p class="lumi-body-s subcard-label">三层脑机接口游戏表现 (BCI Game Behavior)</p>
+        <p class="lumi-body-m subcard-body" id="detail-game">兴奋时多巴胺溢出驱动角色到处乱跑探索；闲置时向底层注入高多巴胺脉冲。</p>
+      </div>
+    </div>
+
+    <div class="sync-log-bar">
+      <span class="lumi-body-s" style="color:var(--on-surface-variant);">QQ 聊天 &harr; 游戏动作双端实时同步示例 (Cross-Modal Sync Trace)</span>
+      <p class="lumi-body-m" style="margin:0;" id="detail-sync">【QQ端】收到好友投喂奶茶表情包 &rarr; Cortisol 瞬降 65% &rarr; 【游戏端】原本蹲在墙角画圈圈的角色立刻蹦起来围着好友转圈鸣叫。</p>
+    </div>
+  </div>
+</div>
+
+<script>
+function getCssVar(name) {
+  if (!name) return '';
+  const clean = name.replace(/^var\(/, '').replace(/\)$/, '').trim();
+  return getComputedStyle(document.documentElement).getPropertyValue(clean.startsWith('--') ? clean : '--' + clean).trim();
+}
+
+function showErrorFallback(containerId, error) {
+  console.error('Render error in ' + containerId + ':', error);
+  const container = document.getElementById(containerId);
+  if (container) {
+    const reason = String((error && error.message) || error || 'unknown').replaceAll('"', "'").slice(0, 160);
+    if (container) container.innerHTML = '<div class="error-fallback-card" data-error="' + reason + '" style="padding: var(--lumi-sys-spacing--l, 16px); background: var(--lumi-sys-color--surface-dim, #f2f0f0); border-radius: var(--lumi-sys-shape--medium, 12px); text-align: center; color: var(--lumi-sys-color--on-surface-variant, rgba(0,0,0,0.62));"><p style="margin: 0;" class="lumi-body-m">模块数据暂不可用</p><p style="margin: 4px 0 0 0;" class="lumi-body-s">无法渲染该状态节点详情。</p></div>';
+  }
+}
+
+const NODES_DATA = {
+  sunshower_endocrine: {
+    id: 'sunshower_endocrine',
+    title: '1. 太阳雨内分泌与好奇心引擎',
+    layer_type: '层级：少女情绪底色',
+    governing_equation: '皮质醇半衰期 = 7min; 哄好冲销 Cortisol = 0.35 &times; Cortisol; 适度惊奇 Dopamine += 0.25 &times; PE',
+    lively_girl_mechanism: '记仇极短，给颗糖就破涕为笑；对新奇事物充满凑热闹与追问欲。',
+    bci_game_behavior: '兴奋时多巴胺溢出驱动角色到处乱跑探索；闲置时向底层注入高多巴胺脉冲。',
+    sync_example: '【QQ端】收到好友投喂奶茶表情包 &rarr; Cortisol 瞬降 65% &rarr; 【游戏端】原本蹲在墙角画圈圈的角色立刻蹦起来围着好友转圈鸣叫。'
+  },
+  butterfly_memory: {
+    id: 'butterfly_memory',
+    title: '2. 蝴蝶联想海马体与互通记忆',
+    layer_type: '层级：记忆与跨模态存储',
+    governing_equation: 'P(Butterfly_Hop) = 0.30 沿次级感官标签跨话题跳跃; Shared_Trace(Game &harr; QQ) = 1.0',
+    lively_girl_mechanism: '聊天不走直线，30%概率被颜色/谐音带跑偏想起搞笑旧事。',
+    bci_game_behavior: '游戏里摔倒或被好友牵手直接写入同一海马体，事后在QQ群里翻旧账或撒娇。',
+    sync_example: '【游戏端】在雨林踩滑摔进水坑 &rarr; 写入感官标签 [水花/出糗] &rarr; 【QQ端】半小时后聊到喝汤时 30% 概率跳回：“呜哇刚才摔进水坑都怪你没拉住我！！”'
+  },
+  attention_multiplexer: {
+    id: 'attention_multiplexer',
+    title: '3. 跨模态注意力分时复用池',
+    layer_type: '层级：全局工作空间 GNWT',
+    governing_equation: 'Attention_Game + Attention_QQ &le; 1.0 (排他性双模态时间片抢占)',
+    lively_girl_mechanism: '只有一双手，不能边极限操作边秒回长文。',
+    bci_game_behavior: '弹琴/跑图时自动挂起QQ消息；切屏回QQ打字时游戏角色强制原地发呆停滞 AFK。',
+    sync_example: '【双端同步】八音盒高难弹奏中 (Attention_Game = 0.95) &rarr; QQ消息进入挂起队列；一旦失误触发脊髓中断 &rarr; 游戏角色立刻站桩发呆 (A_Game = 0)，切屏回QQ疯狂敲字。'
+  },
+  tsundere_broca: {
+    id: 'tsundere_broca',
+    title: '4. 傲娇双段路由与少女语感器',
+    layer_type: '层级：社交表达皮层 (snowluma)',
+    governing_equation: 'TSUNDERE_DUAL_PHASE = Phase1(嘴硬短句, t=0s) + Phase2(真实心情补发, &Delta;t=4.0s)',
+    lively_girl_mechanism: '禁用完整主谓宾句式，高频拟声词(呜哇/诶嘿/哼哼)与连串感叹号。',
+    bci_game_behavior: '游戏里出糗后跑到QQ上嘴硬找补“才不是手滑呢，是键盘坏了！！”。',
+    sync_example: '【QQ双段输出】t=0s 先发：“哼，才没有原谅你呢！” &rarr; 4秒延迟后补发第二条：“……不过看在草莓蛋糕的份上，勉强带你跑图啦诶嘿！！”'
+  },
+  basal_ganglia_skills: {
+    id: 'basal_ganglia_skills',
+    title: '5. 基底核肌肉记忆与熟练度库',
+    layer_type: '层级：脑机接口中层 (百毫秒级)',
+    governing_equation: '技能熟练度 Proficiency &isin; [0.1, 0.98] 随睡眠回放递增; Seq(Intent) &rarr; Motor_Timeline',
+    lively_girl_mechanism: '从笨手笨脚的新手到熟练工的真实成长曲线。',
+    bci_game_behavior: '接收前额叶高层意图(如跟跑/弹琴/躲避)，展开为百毫秒级动作时间轴序列。',
+    sync_example: '【脑机中层】接收到高层意图 [弹奏曲谱 #04] (当前 Proficiency = 0.62) &rarr; 拆解为 100ms 级按键时间轴下发小脑，生疏段落自动留出犹豫间隙。'
+  },
+  cerebellar_motor: {
+    id: 'cerebellar_motor',
+    title: '6. 小脑反射与生理手抖注入器',
+    layer_type: '层级：脑机接口底层 (10-30ms级)',
+    governing_equation: '反应延迟 RT = 190ms + 120&times;(1-Energy); 紧张失误率 P_err = 0.25&times;(1-Prof) + 0.18&times;max(0, Cortisol-0.55)',
+    lively_girl_mechanism: '拒绝脚本式0失误；旁人围观紧张会弹错音/跳歪摔倒。',
+    bci_game_behavior: '空闲高多巴胺时自动插入原地转圈、连跳与乱按叫声键等少女小动作。',
+    sync_example: '【脑机底层】路人靠近围观导致 Cortisol 升至 0.78 &rarr; P_err 激增触发手抖按偏半音 &rarr; 15ms 脊髓中断直冲注意力池，打断弹琴并切回QQ撒娇。'
+  }
+};
+
+const SCENARIOS = {
+  A: {
+    name: '场景A：委屈被哄好 -> 傲娇双段破功',
+    steps: [
+      {
+        node: 'sunshower_endocrine',
+        edges: ['e1', 'e3'],
+        title: '投喂安慰触发皮质醇快速冲销',
+        desc: '好友发来零食哄劝，太阳雨内分泌引擎执行 Cortisol = 0.35 &times; Cortisol，情绪迅速转晴。'
+      },
+      {
+        node: 'butterfly_memory',
+        edges: ['e1', 'e2'],
+        title: '蝴蝶联想海马体跨话题跳跃',
+        desc: 'P(Butterfly_Hop) = 0.30 沿“甜食”感官标签跳回上次一起跑图的开心记忆，准备破功。'
+      },
+      {
+        node: 'attention_multiplexer',
+        edges: ['e3', 'e4'],
+        title: '注意力池向 QQ 社交模态倾斜',
+        desc: 'Attention_QQ 升至 0.85，游戏内角色进入短暂驻足状态，集中精力组织回复。'
+      },
+      {
+        node: 'tsundere_broca',
+        edges: ['e2', 'e4'],
+        title: '傲娇双段路由延迟 4 秒破功补发',
+        desc: '先发嘴硬短句“哼才没原谅你！”，4秒后补发“……那就勉强跟你去云野玩啦诶嘿！！”'
+      }
+    ]
+  },
+  B: {
+    name: '场景B：高多巴胺闲置 -> 游戏原地转圈蹦迪',
+    steps: [
+      {
+        node: 'sunshower_endocrine',
+        edges: ['e3'],
+        title: '适度惊奇激发高多巴胺溢出',
+        desc: 'Dopamine += 0.25 &times; PE，好奇心与兴奋度拉满，内分泌引擎向全局工作空间广播高唤醒信号。'
+      },
+      {
+        node: 'attention_multiplexer',
+        edges: ['e3', 'e5'],
+        title: '注意力全量切入游戏模态',
+        desc: 'Attention_Game = 0.92，暂时挂起非紧急 QQ 群聊，将高多巴胺闲置意图下发脑机接口。'
+      },
+      {
+        node: 'basal_ganglia_skills',
+        edges: ['e5', 'e6'],
+        title: '基底核展开“蹦迪与弹琴”动作时间轴',
+        desc: '调取高熟练度动作库 Proficiency = 0.88，生成跟跑、滑步与欢快小曲的百毫秒序列。'
+      },
+      {
+        node: 'cerebellar_motor',
+        edges: ['e6'],
+        title: '小脑注入原地转圈与连跳少女小动作',
+        desc: '10-30ms 级底层驱动角色在空地上欢快连跳、原地转圈并高频乱按鸣叫键。'
+      }
+    ]
+  },
+  C: {
+    name: '场景C：围观紧张手抖失误 -> 切QQ撒娇甩锅',
+    steps: [
+      {
+        node: 'cerebellar_motor',
+        edges: ['e6', 'e7', 'e8'],
+        title: '陌生人围观引发高皮质醇生理手抖',
+        desc: 'Cortisol > 0.55 导致失误率 P_err 激增，弹琴按错音符并从台阶滑落。'
+      },
+      {
+        node: 'attention_multiplexer',
+        edges: ['e7', 'e4'],
+        title: '脊髓快速中断抢占注意力复用池',
+        desc: '底层失误脉冲直冲 Node 3，强制中断游戏弹琴 (Attention_Game &rarr; 0，角色原地发呆 AFK)。'
+      },
+      {
+        node: 'butterfly_memory',
+        edges: ['e8', 'e2'],
+        title: '出糗瞬间同步写入跨模态海马体',
+        desc: '游戏内摔倒/弹错音直接记入互通海马体，携带 [手滑/害羞] 标签送往语言中枢。'
+      },
+      {
+        node: 'tsundere_broca',
+        edges: ['e2', 'e4'],
+        title: '切回 QQ 撒娇甩锅键盘坏了',
+        desc: '少女语感器输出高频拟声词：“呜哇！！才不是手滑呢，绝对是琴键卡住了啦哼哼！！”'
+      }
+    ]
+  }
+};
+
+const state = {
+  scenarioKey: 'A',
+  stepIndex: 0,
+  selectedNodeId: 'sunshower_endocrine'
+};
+
+function renderDiagramAndStep(st) {
+  const scen = SCENARIOS[st.scenarioKey];
+  const stepObj = scen.steps[st.stepIndex];
+
+  // Update Stepper Readout
+  const counterEl = document.getElementById('step-counter');
+  const titleEl = document.getElementById('step-title');
+  const descEl = document.getElementById('step-desc');
+  if (counterEl) counterEl.textContent = '步骤 ' + (st.stepIndex + 1) + ' / ' + scen.steps.length;
+  if (titleEl) titleEl.innerHTML = stepObj.title;
+  if (descEl) descEl.innerHTML = stepObj.desc;
+
+  // Update Scenario Chips
+  document.querySelectorAll('.scenario-strip .lumi-chip').forEach(chip => {
+    const isAct = chip.getAttribute('data-scenario') === st.scenarioKey;
+    chip.classList.toggle('is-active', isAct);
+    chip.setAttribute('aria-pressed', isAct ? 'true' : 'false');
+  });
+
+  // Update SVG Nodes
+  document.querySelectorAll('.svg-node').forEach(nodeEl => {
+    const nid = nodeEl.getAttribute('data-node');
+    const isFocal = nid === st.selectedNodeId;
+    const isStepNode = nid === stepObj.node;
+    nodeEl.classList.toggle('is-focal', isFocal);
+    nodeEl.classList.toggle('is-dimmed', !isFocal && !isStepNode);
+  });
+
+  // Update SVG Edges
+  document.querySelectorAll('.svg-edge-group').forEach(edgeEl => {
+    const eid = edgeEl.getAttribute('data-edge');
+    const isEdgeActive = stepObj.edges.includes(eid);
+    edgeEl.classList.toggle('is-active', isEdgeActive);
+    edgeEl.classList.toggle('is-dimmed', !isEdgeActive);
+    const markerLines = edgeEl.querySelectorAll('line[marker-end], path[marker-end]');
+    markerLines.forEach(l => {
+      l.setAttribute('marker-end', isEdgeActive ? 'url(#lumi-caret-active)' : 'url(#lumi-caret)');
+    });
+  });
+}
+
+function renderDetailPanel(st) {
+  const info = NODES_DATA[st.selectedNodeId];
+  if (!info) return;
+  document.getElementById('detail-title').innerHTML = info.title;
+  document.getElementById('detail-id').textContent = 'MODULE ID: ' + info.id;
+  document.getElementById('detail-layer').innerHTML = info.layer_type;
+  document.getElementById('detail-equation').innerHTML = info.governing_equation;
+  document.getElementById('detail-lively').innerHTML = info.lively_girl_mechanism;
+  document.getElementById('detail-game').innerHTML = info.bci_game_behavior;
+  document.getElementById('detail-sync').innerHTML = info.sync_example;
+}
+
+function updateViz() {
+  try {
+    renderDiagramAndStep(state);
+  } catch (err) {
+    showErrorFallback('step-readout-zone', err);
+  }
+  try {
+    renderDetailPanel(state);
+  } catch (err) {
+    showErrorFallback('detail-zone', err);
+  }
+}
+
+// Scenario chip listeners
+document.querySelectorAll('.scenario-strip .lumi-chip').forEach(chip => {
+  chip.addEventListener('click', e => {
+    const key = e.currentTarget.getAttribute('data-scenario');
+    if (key && SCENARIOS[key]) {
+      state.scenarioKey = key;
+      state.stepIndex = 0;
+      state.selectedNodeId = SCENARIOS[key].steps[0].node;
+      updateViz();
+    }
+  });
+});
+
+// Prev / Next step buttons
+document.getElementById('btn-prev').addEventListener('click', () => {
+  const steps = SCENARIOS[state.scenarioKey].steps;
+  state.stepIndex = (state.stepIndex - 1 + steps.length) % steps.length;
+  state.selectedNodeId = steps[state.stepIndex].node;
+  updateViz();
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  const steps = SCENARIOS[state.scenarioKey].steps;
+  state.stepIndex = (state.stepIndex + 1) % steps.length;
+  state.selectedNodeId = steps[state.stepIndex].node;
+  updateViz();
+});
+
+// SVG Node click & keyboard accessibility
+document.querySelectorAll('.svg-node').forEach(nodeEl => {
+  nodeEl.addEventListener('click', () => {
+    const nid = nodeEl.getAttribute('data-node');
+    if (nid && NODES_DATA[nid]) {
+      state.selectedNodeId = nid;
+      updateViz();
+    }
+  });
+  nodeEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const nid = nodeEl.getAttribute('data-node');
+      if (nid && NODES_DATA[nid]) {
+        state.selectedNodeId = nid;
+        updateViz();
+      }
+    }
+  });
+});
+
+updateViz();
+
+const applyTheme = t => { document.documentElement.setAttribute('data-theme', t); if (typeof updateViz === 'function') updateViz(); };
+if (!document.documentElement.hasAttribute('data-theme') && window.matchMedia?.('(prefers-color-scheme: dark)').matches) applyTheme('dark');
+window.addEventListener('message', e => { if (e.data?.type === 'set-theme' || e.data?.type === 'APPLY_THEME') applyTheme(e.data.theme); });
+(function autoResize() {
+  function notifyHeight() {
+    const root = document.querySelector('.widget-container') || document.body;
+    const h = Math.ceil(Math.max(root.getBoundingClientRect().bottom, root.scrollHeight));
+    window.parent.postMessage({type: 'widget-resize', height: h}, '*');
+  }
+  window.addEventListener('load', () => setTimeout(notifyHeight, 120));
+  new ResizeObserver(notifyHeight).observe(document.documentElement);
+})();
+</script>
+
+<script>/*luminous-slider-normalizer*/(function(){function f(r){if(!r||r.type!=='range')return;var mn=parseFloat(r.min||'0'),mx=parseFloat(r.max||'100'),v=parseFloat(r.value);if(isNaN(v))v=(mn+mx)/2;var p=mx>mn?((v-mn)/(mx-mn))*100:50;r.style.setProperty('--progress',p+'%');r.style.removeProperty('--slider-fill');}function all(){document.querySelectorAll('input[type="range"], .lumi-slider').forEach(f);}document.addEventListener('input',function(e){f(e.target);});document.addEventListener('change',function(e){f(e.target);});window.addEventListener('message',function(e){var d=e&&e.data;if(d&&(d.type==='SUPPLEMENTAL_DATA_UPDATE'||d.type==='RESTORE_STATE')){all();setTimeout(all,0);setTimeout(all,50);}});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){all();setTimeout(all,0);});else{all();setTimeout(all,0);}})();</script>
+
+<script id="lumi-a11y-normalizer">(function(){
+function syncSliders(){
+  try{
+    document.querySelectorAll('input[type="range"], .lumi-slider').forEach(function(r){
+      if(!r||r.type!=='range')return;
+      var mn=parseFloat(r.min||'0'),mx=parseFloat(r.max||'100'),v=parseFloat(r.value);
+      if(isNaN(v))v=(mn+mx)/2;
+      var p=mx>mn?((v-mn)/(mx-mn))*100:50;
+      r.style.setProperty('--progress',p+'%');
+      r.style.removeProperty('--slider-fill');
+    });
+  }catch(e){}
+}
+var kSelectableClsRe=new RegExp('\\b(lumi-segmented-\\w+|lumi-'+'chip\\S*|lumi-pill\\S*|togglable|filter-btn|pill)\\b');
+function isSelectableBtn(b){
+  if(!b||b.tagName!=='BUTTON')return false;
+  var role=b.getAttribute('role');
+  if(role==='tab'||role==='switch'||role==='menuitem'||b.hasAttribute('aria-expanded')||b.hasAttribute('aria-selected')||b.classList.contains('lumi-sort-btn'))return false;
+  var cls=b.className||'';
+  if(typeof cls==='string'&&kSelectableClsRe.test(cls))return true;
+  var p=b.parentElement;
+  if(p){
+    var sibs=Array.from(p.children).filter(function(c){return c.tagName==='BUTTON';});
+    if(sibs.length>=2&&sibs.some(function(s){return s.matches('.active, .is-active, .selected, .is-selected, .active-blue, .active-red, [aria-pressed]');})){
+      return true;
+    }
+  }
+  return false;
+}
+function fixDeleteButtons(){
+  try{
+    document.querySelectorAll('button:not([aria-label]):not([aria-labelledby])').forEach(function(b){
+      var t=(b.textContent||'').trim();
+      if(t==='\u00d7'||t==='✕'||t==='✖'||t==='&times;'||((t==='x'||t==='X')&&!isSelectableBtn(b))){
+        b.setAttribute('aria-label','Delete');
+      }
+    });
+  }catch(e){}
+}
+function fixFormGroups(){
+  try{
+    document.querySelectorAll('input:not([type="hidden"]):not([aria-label]):not([aria-labelledby]), select:not([aria-label]):not([aria-labelledby]), textarea:not([aria-label]):not([aria-labelledby])').forEach(function(inp){
+      if(inp.id&&document.querySelector('label[for="'+CSS.escape(inp.id)+'"]'))return;
+      if(inp.closest('label'))return;
+      var ph=inp.getAttribute('placeholder');
+      if(ph)inp.setAttribute('aria-label',ph);
+    });
+    var rawCandidates=new Set();
+    document.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function(inp){
+      var row=inp.parentElement;
+      while(row&&row!==document.body){
+        var p=row.parentElement;
+        if(p&&p!==document.body&&p.children.length>=2){
+          rawCandidates.add(p);
+        }
+        row=p;
+      }
+    });
+    var validContainers=[];
+    rawCandidates.forEach(function(container){
+      var rows=Array.from(container.children).filter(function(ch){
+        return ch.querySelectorAll&&ch.querySelectorAll('input:not([type="hidden"]), select, textarea').length>=2;
+      });
+      if(rows.length>=2)validContainers.push({container:container,rows:rows});
+    });
+    validContainers.forEach(function(entry){
+      var container=entry.container;
+      var hasInnerCandidate=validContainers.some(function(other){
+        return other.container!==container&&container.contains(other.container);
+      });
+      if(hasInnerCandidate)return;
+      var baseLabel='Item';
+      var prev=container.previousElementSibling;
+      if(prev){
+        var hdr=(/^H[1-6]$/.test(prev.tagName)||prev.matches('[role="heading"], [class*="card-title"]'))?prev:prev.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"], [class*="card-title"]');
+        if(hdr){
+          baseLabel=(hdr.textContent||'').trim().replace(/s$/i,'')||'Item';
+        }
+      }
+      entry.rows.forEach(function(r,idx){
+        if(!r.hasAttribute('role')&&r.tagName!=='FIELDSET'){
+          r.setAttribute('role','group');
+        }
+        if(r.getAttribute('role')==='group'&&(!r.hasAttribute('aria-label')||r.dataset.lumiAutoGroup==='1')&&!r.hasAttribute('aria-labelledby')){
+          r.setAttribute('aria-label',baseLabel+' '+(idx+1));
+          r.dataset.lumiAutoGroup='1';
+        }
+      });
+    });
+  }catch(e){}
+}
+var kActiveBtnSel='.active, .is-active, .selected, .is-selected, .active-blue, .active-red';
+function syncSelectableButtons(){
+  try{
+    document.querySelectorAll('button').forEach(function(b){
+      if(!isSelectableBtn(b))return;
+      var p=b.parentElement;
+      var sibs=p?Array.from(p.children).filter(function(c){return c.tagName==='BUTTON';}):[b];
+      var usesClasses=b.matches(kActiveBtnSel)||sibs.some(function(s){return s.matches(kActiveBtnSel);});
+      if(!usesClasses&&b.hasAttribute('aria-pressed')&&b.getAttribute('data-lumi-auto-pressed')!=='1')return;
+      var active=b.matches(kActiveBtnSel);
+      var wanted=active?'true':'false';
+      if(b.getAttribute('aria-pressed')!==wanted){
+        b.setAttribute('aria-pressed',wanted);
+        b.setAttribute('data-lumi-auto-pressed','1');
+      }
+    });
+  }catch(e){}
+}
+var lastSortedColIndex=-1;
+var lastSortedTable=null;
+function isThExplicitlySortable(th){
+  return th.hasAttribute('onclick')||th.hasAttribute('data-sort')||th.hasAttribute('data-col')||th.hasAttribute('data-key')||th.matches('.sortable, .is-sortable, [aria-sort]')||(window.getComputedStyle&&window.getComputedStyle(th).cursor==='pointer');
+}
+function syncSortableTables(){
+  try{
+    document.querySelectorAll('table').forEach(function(tbl){
+      var hdrRow=tbl.querySelector('thead tr')||tbl.querySelector('tr');
+      var ths=hdrRow?Array.from(hdrRow.querySelectorAll('th')):[];
+      if(!ths.length)return;
+      var explicitCount=ths.filter(isThExplicitlySortable).length;
+      if(!explicitCount)return;
+      var hasPerColHints=ths.some(function(th){
+        return th.hasAttribute('onclick')||th.hasAttribute('data-sort')||th.hasAttribute('data-col')||th.hasAttribute('data-key')||th.matches('.sortable, .is-sortable');
+      });
+      ths.forEach(function(th,idx){
+        var txt=(th.textContent||'').trim();
+        if(!txt||th.matches('.no-sort, [data-sortable="false"]')||th.querySelector('input, select, textarea'))return;
+        if(hasPerColHints&&!isThExplicitlySortable(th))return;
+        var isAsc=/[▲▴↑]/.test(txt)||th.matches('.asc, .sort-asc, .is-asc, [data-order="asc"], [data-dir="asc"]');
+        var isDesc=/[▼▾↓]/.test(txt)||th.matches('.desc, .sort-desc, .is-desc, [data-order="desc"], [data-dir="desc"]');
+        var sortVal=isAsc?'ascending':(isDesc?'descending':'none');
+        th.setAttribute('aria-sort',sortVal);
+        var walker=document.createTreeWalker(th,NodeFilter.SHOW_TEXT,null,false);
+        var tnodes=[];
+        while(walker.nextNode())tnodes.push(walker.currentNode);
+        tnodes.forEach(function(tn){
+          if(tn.parentElement&&tn.parentElement.getAttribute('aria-hidden')==='true')return;
+          if(/[▲▼▴▾↑↓↕]/.test(tn.nodeValue)){
+            var frag=document.createDocumentFragment();
+            tn.nodeValue.split(/([▲▼▴▾↑↓↕]+)/).forEach(function(part){
+              if(!part)return;
+              if(/[▲▼▴▾↑↓↕]/.test(part)){
+                var sp=document.createElement('span');
+                sp.setAttribute('aria-hidden','true');
+                sp.appendChild(document.createTextNode(part));
+                frag.appendChild(sp);
+              }else{
+                frag.appendChild(document.createTextNode(part));
+              }
+            });
+            if(tn.parentNode)tn.parentNode.replaceChild(frag,tn);
+          }
+        });
+        var btn=th.querySelector('button');
+        if(!btn){
+          btn=document.createElement('button');
+          btn.type='button';
+          btn.className='lumi-sort-btn';
+          btn.style.cssText='all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-align:inherit;width:100%;justify-content:inherit;border-radius:4px;';
+          for(var a=0;a<th.attributes.length;a++){
+            var an=th.attributes[a].name;
+            if(an.indexOf('data-')===0)btn.setAttribute(an,th.attributes[a].value);
+          }
+          while(th.childNodes.length)btn.appendChild(th.childNodes[0]);
+          th.appendChild(btn);
+        }
+        if(!th.dataset.lumiSortBound){
+          th.dataset.lumiSortBound='1';
+          th.addEventListener('click',function(){
+            lastSortedTable=tbl;
+            lastSortedColIndex=idx;
+            setTimeout(function(){
+              syncSortableTables();
+              if(lastSortedTable===tbl&&lastSortedColIndex===idx){
+                var curRow=tbl.querySelector('thead tr')||tbl.querySelector('tr');
+                var curThs=curRow?curRow.querySelectorAll('th'):[];
+                var targetBtn=curThs[idx]&&curThs[idx].querySelector('button');
+                if(targetBtn&&document.activeElement!==targetBtn)targetBtn.focus();
+              }
+            },0);
+          });
+        }
+      });
+    });
+  }catch(e){}
+}
+function formatChartVal(v){
+  return (v&&typeof v==='object')?(v.y!==undefined?v.y:JSON.stringify(v)):String(v);
+}
+function summarizeChart(chart){
+  try{
+    var cv=chart&&chart['can'+'vas'];
+    if(!cv)return;
+    cv.setAttribute('role','img');
+    if(!cv.hasAttribute('tabindex'))cv.setAttribute('tabindex','0');
+    var cfg=chart.config||{};
+    var data=chart.data||cfg.data||{};
+    var labels=Array.isArray(data.labels)?data.labels:[];
+    var datasets=Array.isArray(data.datasets)?data.datasets:[];
+    var type=(cfg.type||'chart').toString();
+    var titleEl=cv.closest('.lumi-card, section, .widget-container, body');
+    var heading=titleEl?titleEl.querySelector('.lumi-chart-title, h1, h2, h3, h4'):null;
+    var titleTxt=heading?(heading.textContent||'').trim():'';
+    var parts=[];
+    if(titleTxt)parts.push(titleTxt+' ('+type+' chart).');
+    else parts.push(type.charAt(0).toUpperCase()+type.slice(1)+' chart.');
+    datasets.slice(0,4).forEach(function(ds,di){
+      var dsName=ds.label||('Series '+(di+1));
+      var vals=Array.isArray(ds.data)?ds.data:[];
+      var pairs=[];
+      for(var i=0;i<Math.min(vals.length,8);i++){
+        var valStr=formatChartVal(vals[i]);
+        var lbl=labels[i]!==undefined?String(labels[i]):('Point '+(i+1));
+        pairs.push(lbl+': '+valStr);
+      }
+      if(vals.length>8)pairs.push('and '+(vals.length-8)+' more');
+      if(pairs.length)parts.push(dsName+' — '+pairs.join(', ')+'.');
+    });
+    var summary=parts.join(' ').split(/\s+/).slice(0,140).join(' ');
+    if(summary&&(!cv.hasAttribute('aria-label')||cv.dataset.lumiAutoLabel==='1')){
+      cv.setAttribute('aria-label',summary);
+      cv.dataset.lumiAutoLabel='1';
+    }
+    if(!cv.dataset.lumiChartKeyBound){
+      cv.dataset.lumiChartKeyBound='1';
+      var activeIdx=-1;
+      cv.addEventListener('keydown',function(ev){
+        if(ev.key!=='ArrowRight'&&ev.key!=='ArrowLeft'&&ev.key!=='ArrowDown'&&ev.key!=='ArrowUp')return;
+        var dsList=(chart.data&&chart.data.datasets)||[];
+        if(!dsList.length||!dsList[0].data||!dsList[0].data.length)return;
+        ev.preventDefault();
+        var len=dsList[0].data.length;
+        if(ev.key==='ArrowRight'||ev.key==='ArrowDown')activeIdx=(activeIdx+1)%len;
+        else activeIdx=(activeIdx-1+len)%len;
+        var els=[];
+        for(var d=0;d<dsList.length;d++)els.push({datasetIndex:d,index:activeIdx});
+        if(chart.setActiveElements)chart.setActiveElements(els);
+        if(chart.tooltip&&chart.tooltip.setActiveElements)chart.tooltip.setActiveElements(els,{x:0,y:0});
+        if(chart.update)chart.update('none');
+        var live=document.getElementById('lumi-chart-live');
+        if(!live){
+          live=document.createElement('div');
+          live.id='lumi-chart-live';
+          live.setAttribute('aria-live','polite');
+          live.style.position='absolute';
+          live.style.width='1px';
+          live.style.height='1px';
+          live.style.clipPath='inset(50%)';
+          live.style.whiteSpace='nowrap';
+          document.body.appendChild(live);
+        }
+        var lbl=(chart.data.labels&&chart.data.labels[activeIdx])||('Item '+(activeIdx+1));
+        var msg=lbl+': '+dsList.map(function(ds,di){return (ds.label||('Series '+(di+1)))+' '+formatChartVal(ds.data[activeIdx]);}).join(', ');
+        while(live.childNodes.length)live.removeChild(live.childNodes[0]);
+        live.appendChild(document.createTextNode(msg));
+      });
+    }
+  }catch(e){}
+}
+function hookChartJs(){
+  try{
+    document.querySelectorAll('.lumi-chart-legend, [class*="chart-legend"]').forEach(function(el){
+      el.setAttribute('aria-hidden','true');
+    });
+    document.querySelectorAll('.lumi-chart-title').forEach(function(el){
+      if(!/^H[1-6]$/.test(el.tagName)&&!el.hasAttribute('role')){
+        el.setAttribute('role','heading');
+        el.setAttribute('aria-level','3');
+      }
+    });
+    if(window.Chart&&!window.Chart.__lumiA11yHooked){
+      var OrigChart=window.Chart;
+      if(OrigChart.prototype&&OrigChart.prototype.update){
+        var origUpdate=OrigChart.prototype.update;
+        OrigChart.prototype.update=function(){
+          var res=origUpdate.apply(this,arguments);
+          summarizeChart(this);
+          return res;
+        };
+      }
+      if(OrigChart.instances){
+        Object.values(OrigChart.instances).forEach(summarizeChart);
+      }
+      document.querySelectorAll('can'+'vas').forEach(function(cv){
+        if(OrigChart.getChart){
+          var inst=OrigChart.getChart(cv);
+          if(inst)summarizeChart(inst);
+        }
+      });
+      window.Chart.__lumiA11yHooked=true;
+    }
+  }catch(e){}
+}
+function all(){
+  syncSliders();
+  fixDeleteButtons();
+  fixFormGroups();
+  syncSelectableButtons();
+  syncSortableTables();
+  hookChartJs();
+}
+if(typeof MutationObserver==='function'&&document.documentElement){
+  new MutationObserver(function(){
+    syncSelectableButtons();
+    syncSliders();
+  }).observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['class','value']});
+}
+window.addEventListener('message',function(e){
+  var d=e&&e.data;
+  if(d&&(d.type==='SUPPLEMENTAL_DATA_UPDATE'||d.type==='RESTORE_STATE')){
+    all();
+    setTimeout(all,0);
+    setTimeout(all,50);
+  }
+});
+document.addEventListener('click',function(e){
+  var btn=e.target&&e.target.closest?e.target.closest('button'):null;
+  if(!btn)return;
+  var txt=(btn.textContent||'').trim();
+  var isAdd=/^\+|^\+?\s*add\b/i.test(txt)||/\badd\b/i.test(btn.getAttribute('aria-label')||'');
+  var preInputs=isAdd?new Set(document.querySelectorAll('input:not([type="hidden"]), select, textarea')):null;
+  setTimeout(function(){
+    fixDeleteButtons();
+    fixFormGroups();
+    syncSelectableButtons();
+    syncSortableTables();
+    hookChartJs();
+    if(preInputs){
+      var detached=0;
+      preInputs.forEach(function(el){if(!el.isConnected)detached++;});
+      var allNow=document.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
+      var fresh=[];
+      for(var i=0;i<allNow.length;i++){
+        if(!preInputs.has(allNow[i]))fresh.push(allNow[i]);
+      }
+      if(fresh.length>detached&&fresh[detached])fresh[detached].focus();
+    }
+  },0);
+},true);
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){all();setTimeout(all,0);setTimeout(all,250);});
+}else{
+  all();
+  setTimeout(all,0);
+  setTimeout(all,250);
+}
+window.addEventListener('load',function(){all();setTimeout(all,250);});
+})();</script>
+</body>
+</html>
+```

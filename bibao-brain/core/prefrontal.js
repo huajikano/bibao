@@ -77,7 +77,11 @@ export function buildPerceptionFrame(ctx) {
         })()
       : '',
     facts.length ? `记得的事：\n${facts.map((text) => `  · ${text}`).join('\n')}` : '',
-    episodes.length
+    // 绝大多数时候，回忆只染色语气，不把旧事摆到台面上复读
+    digest && digest.implicit
+      ? `<隐式记忆染色：${digest.implicit}。带着这个底色说话，但不要主动提起过去的具体事件>`
+      : '',
+    episodes.length && (!digest || !digest.implicit)
       ? `还想得起的两件事：\n${episodes.map((item) => `  · ${item.title}——${item.narrative}`).join('\n')}`
       : '',
     memories.length ? `相关的旧事：${memoryLine}。` : '',
@@ -86,6 +90,9 @@ export function buildPerceptionFrame(ctx) {
     `预测误差 ${pe.toFixed(2)}${pe > PARAMS.defensePE ? '（高于防御阈值）' : ''}。${appraisalHint?.subtext ? `潜台词预判：${appraisalHint.subtext}。` : ''}`,
     `本轮预算：max_expression_chars=${budget.maxChars}，最多 ${budget.maxBubbles} 条气泡。`,
     `状态机预判路由：${routeHint}。以比宝的第一人称反应，不要讨好，不要当助手，不要长篇大论。`,
+    digest && digest.tension
+      ? `此刻的心理张力：想亲近 ${digest.tension.affection_pull}／要面子 ${digest.tension.pride_defense}／想逗他 ${digest.tension.playful_tease}／想分享 ${digest.tension.sharing_overflow}。在这四股力之间自己权衡，不要只挑一个演。`
+      : '',
     '同一件事如果已经追问过两轮，就换个说法，或者先把它放下——人不会把一句话原地复读三遍。',
   ]
     .filter(Boolean)

@@ -59,6 +59,20 @@ export class NeuroState {
   }
 
   /** 注入外部刺激的神经增量（LLM 也只能给到这一层，且被截断）。 */
+  /**
+   * 一颗糖哄好：正在气头上时，一个够强的正向多巴胺脉冲会把皮质醇打掉一大半。
+   * 不写死"生气就一定要哄 3 次"，只让激素自己塌下去。
+   */
+  overrideByReward(delta = {}) {
+    const dopamine = Number(delta.dopamine ?? 0)
+    if (dopamine >= 0.12 && this.cortisol > 0.45) {
+      this.hormones.cortisol = Math.max(0.15, this.hormones.cortisol * 0.35)
+      this.prideDefense = Math.min(1, (this.prideDefense ?? 0) + 0.25)
+      return true
+    }
+    return false
+  }
+
   applyStimulus(delta = {}, meta = {}) {
     this.quietMin = 0
     const applied = {}
@@ -72,6 +86,7 @@ export class NeuroState {
       applied[key] = Number((this.hormones[key] - before).toFixed(4))
     }
 
+    this.overrideByReward(delta)
     if (Number.isFinite(delta.energy)) {
       this.energy = clamp(this.energy + Math.max(-25, Math.min(25, delta.energy)), 0, 100)
     }

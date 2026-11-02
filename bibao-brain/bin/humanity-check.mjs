@@ -115,6 +115,39 @@ const fresh = (seed = 7) => {
   }
   check('气头上会打完又删', aborts >= 1, `12 次里有 ${aborts} 次删掉了`)
 }
+// M. 一颗糖就哄好（跨通道拮抗）
+{
+  const brain = fresh(11)
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '你就是个废物', channel: 'private' })
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '你真讨厌 烦死了', channel: 'private' })
+  const before = brain.state.cortisol
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '你真的好厉害 我好喜欢你', channel: 'private' })
+  const drop = 1 - brain.state.cortisol / before
+  check('给颗糖就破涕为笑', drop > 0.5 && (brain.state.prideDefense ?? 0) > 0, `皮质醇降 ${Math.round(drop * 100)}%，嘴硬值 ${(brain.state.prideDefense ?? 0).toFixed(2)}`)
+}
+
+// N. 记忆不复读：默认只染色，不摆事实
+{
+  const brain = fresh()
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '上次一起去看的那场演出', channel: 'private' })
+  let tinted = 0
+  for (let index = 0; index < 20; index += 1) {
+    const quiet = brain.digestFor(brain.social.get('u1'), { pe: 0 })
+    if (quiet.implicit && quiet.episodes.length === 0) tinted += 1
+  }
+  const loud = brain.digestFor(brain.social.get('u1'), { pe: 0.9 })
+  check('平时只染色不复读', tinted >= 12, `20 次里 ${tinted} 次只染色`)
+  check('被戳到痛处才翻旧账', Boolean(loud.implicit) === false, `episodes=${loud.episodes.length}`)
+}
+
+// O. 连续张力：不是开关，是四个连续值
+{
+  const brain = fresh()
+  await brain.perceive({ entityId: 'u1', entityName: '阿岚', text: '在吗', channel: 'private' })
+  const tension = brain.tensionFor(brain.social.get('u1'), 0.4)
+  const values = Object.values(tension)
+  check('张力是连续值且互相独立', values.every((value) => value >= 0 && value <= 1) && new Set(values).size > 1, JSON.stringify(tension))
+}
 // J. 会习惯：同一句反复说，反应越来越淡
 {
   const brain = fresh()
