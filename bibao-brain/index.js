@@ -1063,6 +1063,11 @@ export function apply(ctx, config = {}) {
   /** 自动打一局：保守打法，只做"看商店 / 买便宜卡 / 升级 / 等"，不 D 牌不站位。 */
   async function runAuto() {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    // 一开始就把游戏钉在最上层：否则 DSH 窗口会盖住它，点击全打在聊天窗口上
+    const winName = settings.game.window ?? 'TFT'
+    await inputAgent
+      .request('/topmost', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ match: winName, on: true }) })
+      .catch(() => null)
     while (auto.running) {
       auto.step += 1
       try {
@@ -1101,9 +1106,11 @@ export function apply(ctx, config = {}) {
           info = null
         }
         const scene = String(info?.scene ?? 'other')
-        const gold = Number(info?.gold ?? 0)
-        const level = Number(info?.level ?? 0) || 1
-        const health = Number(info?.health ?? 100) || 100
+        // 只有商店/战斗画面上的数字才可信；加载画面模型会编数
+        const reliable = scene === 'shop' || scene === 'combat'
+        const gold = reliable ? Number(info?.gold ?? 0) : 0
+        const level = reliable ? Number(info?.level ?? 0) || 1 : 0
+        const health = reliable ? Number(info?.health ?? 100) || 100 : 0
         const stage = String(info?.stage ?? '')
         const bench = Number(info?.bench ?? 0) || 0
         const cards = (Array.isArray(info?.cards) ? info.cards : [])
