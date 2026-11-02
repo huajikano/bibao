@@ -3634,7 +3634,6 @@ window.__ModuleLoader__.load({
           ['persona', '人物'],
           ['senses', '感官'],
           ['friends', '好友'],
-          ['game', '游戏'],
           ['settings', t('tabSettings')],
         ]
         return h(
@@ -3698,7 +3697,6 @@ window.__ModuleLoader__.load({
           tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
           tab === 'persona' ? h(PersonaPanel, { t, snap }) : null,
           tab === 'friends' ? h(FriendsPanel, { t, snap }) : null,
-          tab === 'game' ? h(GamePanel, { t, snap }) : null,
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
         )
       }

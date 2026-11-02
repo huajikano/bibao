@@ -56,7 +56,7 @@ const DEFAULTS = {
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: true, model: 'zcode/GLM-5.3-Flash', maxPerHour: 20 },
   // 手：默认关着；开着就会真的动鼠标键盘
-  game: { control: false, layout: null },
+  game: { control: false, layout: null, autoStart: false },
   llm: {
     baseURL: 'https://api.deepseek.com',
     apiKey: '',
@@ -288,7 +288,7 @@ export function apply(ctx, config = {}) {
 
   async function boot() {
     // 手：插件自己负责起；起不来只记日志，永远不抛
-    if (!handsTimer) {
+    if (settings.game.autoStart === true && !handsTimer) {
       handsTimer = setInterval(() => {
         void ensureHands({ log: (line) => void appendSnowLog({ at: Date.now(), kind: 'hands', line }).catch(() => {}) }).catch(() => {})
       }, 30000)
