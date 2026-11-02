@@ -203,6 +203,25 @@ await call('POST', '/settings', {
   llm: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat', apiKey: '', profiles: {} },
 })
 
+/* —— 好友面板：不需要手动加，互动 10 条自动进入，并显示账号 —— */
+for (let index = 0; index < 9; index += 1) {
+  await call('POST', '/talk', { text: '在吗', entityId: 'u_friend', entityName: '新朋友' })
+}
+const beforeTen = await call('GET', '/friends')
+check(
+  '9 条互动还不会进好友面板',
+  !(beforeTen.data.friends ?? []).some((item) => item.id === 'u_friend'),
+  `friends=${(beforeTen.data.friends ?? []).length}`,
+)
+await call('POST', '/talk', { text: '在吗', entityId: 'u_friend', entityName: '新朋友' })
+const afterTen = await call('GET', '/friends')
+const autoFriend = (afterTen.data.friends ?? []).find((item) => item.id === 'u_friend')
+check(
+  '10 条互动自动进面板，并带账号',
+  Boolean(autoFriend) && autoFriend.interactions >= 10 && autoFriend.account === 'u_friend',
+  JSON.stringify(autoFriend ?? null),
+)
+
 /* —— LLM 钳制层：不合规的输出必须被截断或被丢弃 —— */
 const makeStream = (payload) =>
   (async function* stream() {

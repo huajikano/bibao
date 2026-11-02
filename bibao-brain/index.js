@@ -86,7 +86,8 @@ const DEFAULTS = {
     pokeReply: true,
     // 戳一戳是直接对着她，默认不按群白名单拦；不想在某个群回可以把这项关掉
     pokeAnyGroup: true,
-    pokeBack: false,
+    // 被戳后戳回去一下（只一下）；同一对象 20 秒内不重复
+    pokeBack: true,
     // auto：snowluma 的 wsClients 开着就反向监听；client：连 snowluma 的 3001；reverse：强制反向监听
     wsMode: 'auto',
     wsServer: { enabled: false, host: '127.0.0.1', port: 8080, path: '/ws', token: '' },
@@ -157,6 +158,7 @@ export function apply(ctx, config = {}) {
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
   const pokeReplyCooldown = new Map()
+  const pokeBackCooldown = new Map()
   let funnel = null
   let gate = null
   let loading = null
@@ -229,7 +231,8 @@ export function apply(ctx, config = {}) {
   function friendList() {
     return brain.social
       .snapshot()
-      .filter((row) => row.friend)
+      .filter((row) => (row.interactions ?? 0) >= 10)
+      .sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0) || b.intimacy - a.intimacy)
       .map((row) => ({
         id: row.id,
         name: row.name,
@@ -239,6 +242,10 @@ export function apply(ctx, config = {}) {
         impression: row.impression ?? '',
         interactions: row.interactions ?? 0,
         tags: row.tags ?? [],
+        friendSource: row.friendSource ?? 'self',
+        friendAt: row.friendAt ?? null,
+        // 账号就是 QQ；单独给前端用，不覆盖昵称
+        account: row.id,
       }))
   }
 
@@ -1250,7 +1257,7 @@ export function apply(ctx, config = {}) {
     const relation = brain.social.ensure(userId, String(event.sender_name ?? userId))
     const targetsSelf = targetId === selfId
     if (targetsSelf) {
-      brain.social.adjust(userId, { intimacy: 0.6 })
+      brain.social.adjust(userId, { intimacy: 0.6 }, { count: false })
       // 睡着的时候戳一下能把人叫醒
       const woke = brain.isAsleep() ? brain.wake() : false
       const line = woke ? `${relation.name}把你戳醒了` : `${relation.name}戳了你一下`
@@ -1264,13 +1271,22 @@ export function apply(ctx, config = {}) {
           appendSnowLog({ at: Date.now(), kind: 'poke-reply-error', groupId, userId, error: String(error?.message ?? error).slice(0, 160) }),
         )
       }
-      // 极少数情况下回戳一下（默认关闭）
-      if (settings.snowluma.pokeBack && snow.bridge && Math.random() < 0.15) {
-        try {
-          await snow.bridge.call('send_poke', { group_id: Number(groupId) || undefined, user_id: Number(userId) })
-          await appendSnowLog({ at: Date.now(), kind: 'poke-out', groupId, userId })
-        } catch (error) {
-          await appendSnowLog({ at: Date.now(), kind: 'poke-error', message: String(error?.message ?? error).slice(0, 120) })
+      // 戳回去：只戳一下，同一对象 20 秒内不重复，避免无限互戳
+      if (settings.snowluma.pokeBack && snow.bridge) {
+        const backKey = `${groupId || 'private'}:${userId}`
+        const backAt = Date.now()
+        if ((pokeBackCooldown.get(backKey) ?? 0) <= backAt) {
+          pokeBackCooldown.set(backKey, backAt + 20_000)
+          if (pokeBackCooldown.size > 300) pokeBackCooldown.delete(pokeBackCooldown.keys().next().value)
+          try {
+            await snow.bridge.call('send_poke', {
+              group_id: Number(groupId) || undefined,
+              user_id: Number(userId),
+            })
+            await appendSnowLog({ at: backAt, kind: 'poke-out', groupId, userId, group: Boolean(groupId) })
+          } catch (error) {
+            await appendSnowLog({ at: Date.now(), kind: 'poke-error', message: String(error?.message ?? error).slice(0, 120) })
+          }
         }
       }
       return
@@ -2678,7 +2694,7 @@ export function apply(ctx, config = {}) {
           if (!id) return fail('缺少 id', 400)
           const relation = brain.social.get(id)
           if (!relation) return fail('没有这个人', 404)
-          if (!relation.friend) return fail('不是好友，不能在面板里改', 403)
+          if ((relation.interactions ?? 0) < 10) return fail('互动还不满 10 条，她自己还没把这个人记进好友', 403)
           brain.social.setRelation(id, {
             intimacy: body.intimacy,
             trust: body.trust,

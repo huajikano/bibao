@@ -33,7 +33,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享，41 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，29 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / LLM 钳制，31 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
@@ -61,6 +61,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.2` | 戳一戳回戳（只一下）、好友面板改为互动 10 条自动进入并由她管理、显示 QQ 账号小字 |
 | [`v0.8.1`](https://github.com/huajikano/bibao/releases/tag/v0.8.1) | 反向 WS 服务端（snowluma wsClient 直连 8080/ws）、任意群戳一戳回复、表情包描述可编辑 |
 | [`v0.8.0`](https://github.com/huajikano/bibao/releases/tag/v0.8.0) | 对话线程、默认关闭的主动分享、QQ 盲评样本；修表情包导入、戳一戳回复、WS 配置保存与重连 |
 | [`v0.7.0`](https://github.com/huajikano/bibao/releases/tag/v0.7.0) | 人格一致提示词、自我复盘/元认知、她自己的生活流、模糊记忆、多脑机接口适配层；修 QQ 表情包发送崩溃 |

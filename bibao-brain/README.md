@@ -103,6 +103,9 @@ node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 | WS 客户端连不上 | 3000/3001 没开，或 token 只放 header；selfId 在手填配置时可能为空 | **反向 WS 服务端**：监听 `ws://127.0.0.1:8080/ws`，snowluma 的 `wsClients` 主动连进来；token 同时支持 query/header；事件与动作走同一条连接；连接状态写入日志与 `/state.snow.wsStatus` |
 | 表情包描述不能改 | 自动识别结果直接落库，没有编辑入口 | 收藏夹每张图都有「改描述」，保存到 `StickerBook.update()`；主面板和独立控制台都可用 |
 | 戳一戳只对白名单群有反应 | 复用了群消息白名单 | `pokeAnyGroup` 默认开：戳一戳是直接对着她，默认不按群白名单拦；可在设置关掉 |
+| 需要戳回去 | 旧版 `pokeBack` 默认关、只有 15% 概率 | 默认开；被戳后**只戳一下**，同一对象 20 秒内不重复，避免无限互戳 |
+| 好友面板门槛 | 只有 `friend` 标记（私聊一次就有） | 改为**互动 ≥ 10 条自动进入**，不需要手动加好友；`friendSource='self'` 表示她自己记的 |
+| 好友面板看不到账号 | 只显示昵称 | 昵称旁边加小号 QQ（`bb-friendId`，10.5px），并按互动次数排序 |
 
 ---
 
@@ -307,7 +310,7 @@ bibao-brain/
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
 | `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
-| `node bin/host-smoke.mjs` | 29/29 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/host-smoke.mjs` | 31/31 通过（路由、持久化、好友 10 条门槛、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |
 | 客户端槽位 | `sidebar.panellist` 出现 `bibao`（order 6），`main` 出现 `bibao` 面板注册 |

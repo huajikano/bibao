@@ -436,13 +436,13 @@ async function loadFriends() {
     el('friendCount').textContent = '共 ' + friends.length + ' 人';
     el('friends').innerHTML = friends.map((friend) =>
       '<div class="item" style="flex-direction:column;align-items:stretch">' +
-        '<div class="row"><strong>' + esc(friend.name) + '</strong><span class="muted">聊过 ' + friend.interactions + ' 次</span></div>' +
+        '<div class="row"><strong>' + esc(friend.name) + '</strong><span class="muted" style="font-size:11px">' + esc(friend.account || friend.id) + '</span><span class="muted">聊过 ' + friend.interactions + ' 次</span></div>' +
         '<label class="field">好感 <span>' + friend.intimacy + '</span><input type="range" min="-50" max="100" value="' + friend.intimacy + '" data-friend="' + esc(friend.id) + '" data-field="intimacy" /></label>' +
         '<label class="field">信任 <span>' + friend.trust + '</span><input type="range" min="0" max="100" value="' + friend.trust + '" data-friend="' + esc(friend.id) + '" data-field="trust" /></label>' +
         '<label class="field">敬畏 <span>' + friend.powerFear + '</span><input type="range" min="0" max="100" value="' + friend.powerFear + '" data-friend="' + esc(friend.id) + '" data-field="powerFear" /></label>' +
         '<input type="text" value="' + esc(friend.impression) + '" placeholder="她对这个人的印象" data-friend="' + esc(friend.id) + '" data-field="impression" />' +
         '<div class="row"><button class="btn primary" data-save="' + esc(friend.id) + '">保存这个人</button></div>' +
-      '</div>').join('') || '<div class="muted">还没有好友。有人私聊过她就会出现在这里。</div>';
+      '</div>').join('') || '<div class="muted">还没有她自己记住的人。聊过 10 条以上就会自动出现。</div>';
     el('friends').querySelectorAll('button[data-save]').forEach((button) => {
       button.onclick = async () => {
         const id = button.dataset.save;

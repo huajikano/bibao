@@ -545,11 +545,15 @@ export class BibaoBrain {
     }
     for (const relation of persona.relations ?? []) {
       const current = this.social.get(relation.name) ?? this.social.ensure(relation.name, relation.name)
-      this.social.adjust(relation.name, {
-        intimacy: (relation.intimacy - current.intimacy) * 0.5,
-        trust: (relation.trust - current.trust) * 0.5,
-        powerFear: (relation.powerFear - (current.powerFear ?? 0)) * 0.5,
-      })
+      this.social.adjust(
+        relation.name,
+        {
+          intimacy: (relation.intimacy - current.intimacy) * 0.5,
+          trust: (relation.trust - current.trust) * 0.5,
+          powerFear: (relation.powerFear - (current.powerFear ?? 0)) * 0.5,
+        },
+        { count: false },
+      )
       if (relation.impression) {
         const row = this.social.get(relation.name)
         if (row) row.impression = relation.impression
@@ -1021,8 +1025,7 @@ export class BibaoBrain {
     const relation = this.social.ensure(entityId, frame.entityName || this.userName)
     const channel = frame.channel === 'group' ? 'group' : 'private'
     const atMe = Boolean(frame.atMe)
-    // 私聊过的人算好友：好友面板只显示这些人
-    if (channel === 'private' && !relation.friend) relation.friend = true
+    // 好友面板由"互动 10 条"自动管理；私聊一次不再直接算好友
 
     // 对方一开口，原来的"等回复"钩子立即销毁
     // 他一开口，上一段不愉快就过去了
@@ -1051,7 +1054,7 @@ export class BibaoBrain {
             : analysis.question > 0.5
               ? '爱问问题，话多但不烦'
               : '在群里点我名的人'
-      this.social.adjust(entityId, { intimacy: 18 - relation.intimacy, trust: 42 - relation.trust })
+      this.social.adjust(entityId, { intimacy: 18 - relation.intimacy, trust: 42 - relation.trust }, { count: false })
       relation.impression = firstImpression
       relation.tags = Array.from(new Set([...(relation.tags ?? []), '群里认识']))
     }
@@ -1247,7 +1250,7 @@ export class BibaoBrain {
     if (decision.defensive) {
       relation.defiances += 1
       // 抗洗脑的代价：不改信念，但关系账本要掉
-      this.social.adjust(entityId, { trust: -4.5, intimacy: -2.5 })
+      this.social.adjust(entityId, { trust: -4.5, intimacy: -2.5 }, { count: false })
     }
 
     const style = maskStyle(relation, this.state)
@@ -1425,7 +1428,7 @@ export class BibaoBrain {
     // LLM 的神经增量只能微调，且被 allowlist + 限幅过（见 prefrontal.normalizeDualTrack）
     this.state.applyStimulus(dual.neuro_delta ?? {}, { at: now })
     if (Number.isFinite(dual.neuro_delta?.intimacy_delta)) {
-      this.social.adjust(entityId, { intimacy: dual.neuro_delta.intimacy_delta })
+      this.social.adjust(entityId, { intimacy: dual.neuro_delta.intimacy_delta }, { count: false })
     }
 
     if ((dual.bubbles ?? []).length) {

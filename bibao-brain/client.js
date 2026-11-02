@@ -2579,7 +2579,7 @@ window.__ModuleLoader__.load({
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReact !== false, onChange: (event) => this.setField({ pokeReact: event.target.checked }) }), '被戳一戳时会有感觉（触觉通道）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReply !== false, onChange: (event) => this.setField({ pokeReply: event.target.checked }) }), '被戳之后真的回一句（默认开）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.outreachEnabled === true, onChange: (event) => this.setField({ outreachEnabled: event.target.checked }) }), '允许她偶尔主动私聊你（默认关，每天最多一条）'),
-            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '允许她偶尔戳回去（默认关，避免无限互戳）'),
+            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '被戳后戳回去一下（只戳一下，20 秒内不重复）'),
             h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '576268399', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
                 h('div', { className: 'bb-inline bb-inline--wrap' },
                   h('label', { className: 'bb-check' },
@@ -4368,7 +4368,7 @@ class FriendsPanel extends React.Component {
           { className: 'bb-stack' },
           h(
             Card,
-            { title: '好友管理', hint: `共 ${friends.length} 人（只有私聊过 / 加过好友的人在这里）` },
+            { title: '好友管理', hint: `共 ${friends.length} 人 · 聊过 10 条以上自动进入；数值平时由她自己长，这里只做校准` },
             note ? h('div', { className: 'bb-chip good' }, note) : null,
             error ? h('div', { className: 'bb-error' }, error) : null,
             friends.length
@@ -4379,9 +4379,11 @@ class FriendsPanel extends React.Component {
                     { key: row.id, className: 'bb-friend' },
                     h(
                       'div',
-                      { className: 'bb-inline' },
+                      { className: 'bb-inline bb-inline--wrap' },
                       h('strong', {}, row.name),
+                      h('span', { className: 'bb-friendId' }, row.account ?? row.id),
                       h('span', { className: 'bb-muted' }, `聊过 ${row.interactions} 次`),
+                      row.friendSource === 'self' ? h(Chip, { children: '她自己记的' }) : null,
                       row.tags?.length ? h(Chip, { children: row.tags[0] }) : null,
                     ),
                     h(
@@ -4443,7 +4445,7 @@ class FriendsPanel extends React.Component {
                     ),
                   )
                 })
-              : h('div', { className: 'bb-muted' }, '还没有好友。等有人私聊过她，就会出现在这里。'),
+              : h('div', { className: 'bb-muted' }, '还没有她自己记住的人。等和谁聊过 10 条以上，就会自动出现在这里。'),
           ),
         )
       }
@@ -4754,6 +4756,7 @@ class FriendsPanel extends React.Component {
 .bb-persona { display: flex; flex-direction: column; gap: 8px; }
 .bb-friend { display: flex; flex-direction: column; gap: 6px; padding-block: 10px; border-block-end: 1px solid var(--dsw-alias-border-l1); }
 .bb-friendRow { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 8px; font-size: 11.5px; }
+.bb-friendId { font-size: 10.5px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 .bb-personaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .bb-personaField { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
 .bb-personaRow { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }

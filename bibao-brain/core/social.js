@@ -24,6 +24,9 @@ export class SocialMemory {
       tags: Array.isArray(input.tags) ? input.tags.slice(0, 6) : (current?.tags ?? []),
       impression: input.impression ?? current?.impression ?? '',
       friend: Boolean(input.friend ?? current?.friend),
+      // 好友由她自己管：互动够了自动记住；手动添加只是兼容旧存档
+      friendSource: input.friendSource ?? current?.friendSource ?? (input.friend ? 'manual' : null),
+      friendAt: input.friendAt ?? current?.friendAt ?? null,
       manualAt: input.manualAt ?? current?.manualAt ?? 0,
       interactions: Number(input.interactions ?? current?.interactions ?? 0),
       lastAt: current?.lastAt ?? null,
@@ -51,13 +54,20 @@ export class SocialMemory {
     return found
   }
 
-  adjust(id, delta = {}) {
+  adjust(id, delta = {}, { count = true } = {}) {
     const relation = this.ensure(id)
     if (Number.isFinite(delta.intimacy)) relation.intimacy = clamp(relation.intimacy + delta.intimacy, -100, 100)
     if (Number.isFinite(delta.trust)) relation.trust = clamp(relation.trust + delta.trust, 0, 100)
     if (Number.isFinite(delta.powerFear)) relation.powerFear = clamp(relation.powerFear + delta.powerFear)
     if (delta.impression) relation.impression = delta.impression
-    relation.interactions += 1
+    // 一轮对话只该算一条互动：同轮内的 LLM 微调、初始印象、防御扣分不重复计数
+    if (count) relation.interactions += 1
+    // 不用手动加好友：聊够 10 条，她自己把这个人记进好友面板。
+    if (!relation.friend && relation.interactions >= 10) {
+      relation.friend = true
+      relation.friendSource = 'self'
+      relation.friendAt = Date.now()
+    }
     return relation
   }
 
