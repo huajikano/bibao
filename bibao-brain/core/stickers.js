@@ -97,6 +97,19 @@ export class StickerBook {
     return chosen
   }
 
+  /** 手动改描述/情绪/图上的字：自动识别只是草稿，最终解释权归用户。 */
+  async update(id, patch = {}) {
+    await this.load()
+    const item = this.items.find((row) => row.id === String(id))
+    if (!item) return null
+    if (typeof patch.gist === 'string') item.gist = patch.gist.trim().slice(0, 30)
+    if (typeof patch.mood === 'string' && patch.mood.trim()) item.mood = patch.mood.trim().slice(0, 4)
+    if (typeof patch.text === 'string') item.text = patch.text.trim().slice(0, 20)
+    item.updatedAt = Date.now()
+    await this._flush()
+    return { ...item }
+  }
+
   async remove(id) {
     await this.load()
     const item = this.items.find((row) => row.id === id)

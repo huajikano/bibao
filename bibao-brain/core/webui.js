@@ -473,10 +473,19 @@ async function loadStickers() {
       '<div class="sticker"><img src="/api/bibao/stickers/file?id=' + encodeURIComponent(item.id) + '&token=' + encodeURIComponent(token) + '" alt="" />' +
       '<div class="gist">' + esc(item.gist) + '</div>' +
       '<div class="row"><span class="chip">' + esc(item.mood || '日常') + '</span><span class="muted">用 ' + (item.uses || 0) + ' 次</span></div>' +
-      '<div class="row"><button class="btn" data-send="' + esc(item.id) + '">发一张</button><button class="btn" data-del="' + esc(item.id) + '">删掉</button></div></div>').join('') ||
+      '<div class="row"><button class="btn" data-edit="' + esc(item.id) + '">改描述</button><button class="btn" data-send="' + esc(item.id) + '">发一张</button><button class="btn" data-del="' + esc(item.id) + '">删掉</button></div></div>').join('') ||
       '<div class="muted">还没有收藏</div>';
     el('stickerGrid').querySelectorAll('[data-del]').forEach((button) => {
       button.onclick = async () => { await post('/stickers', { remove: button.dataset.del }); loadStickers(); };
+    });
+    el('stickerGrid').querySelectorAll('[data-edit]').forEach((button) => {
+      button.onclick = async () => {
+        const item = items.find((row) => row.id === button.dataset.edit);
+        const gist = window.prompt('这张表情包在表达什么？', item?.gist || '');
+        if (gist == null) return;
+        try { await post('/stickers', { update: { id: button.dataset.edit, gist } }); toast('描述已更新'); loadStickers(); }
+        catch (error) { toast('更新失败：' + error.message); }
+      };
     });
     el('stickerGrid').querySelectorAll('[data-send]').forEach((button) => {
       button.onclick = async () => {

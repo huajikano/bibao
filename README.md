@@ -35,7 +35,8 @@ node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记�
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / LLM 钳制，29 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
-node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入（假视觉端点）4 项
+node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
+node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
 
@@ -60,6 +61,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.1` | 反向 WS 服务端（snowluma wsClient 直连 8080/ws）、任意群戳一戳回复、表情包描述可编辑 |
 | [`v0.8.0`](https://github.com/huajikano/bibao/releases/tag/v0.8.0) | 对话线程、默认关闭的主动分享、QQ 盲评样本；修表情包导入、戳一戳回复、WS 配置保存与重连 |
 | [`v0.7.0`](https://github.com/huajikano/bibao/releases/tag/v0.7.0) | 人格一致提示词、自我复盘/元认知、她自己的生活流、模糊记忆、多脑机接口适配层；修 QQ 表情包发送崩溃 |
 | [`v0.0.3`](https://github.com/huajikano/bibao/releases/tag/v0.0.3) | SQLite 持久层、夜间事实归纳、词法向量检索、时间校准（附 `bibao.tgz`） |
@@ -69,13 +71,13 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 ## 状态
 
 - Phase 1（纯认知沙盒）：6/6 通过
-- Phase 2（snowluma 感知与运动皮层）：已接通 OneBot HTTP/WS，群白名单 + 防抖 + 三层漏斗；
-  真实群消息已验证能触发回复
+- Phase 2（snowluma 感知与运动皮层）：已接通 OneBot HTTP/WS + **反向 WS**（snowluma `wsClients` 直连 `8080/ws`），
+  群白名单 + 防抖 + 三层漏斗；真实群消息已验证能触发回复
 - 成长层：人格一致的动态提示词、自我复盘（证据 → 经验 → 六维说话倾向）、生活流、模糊记忆
 - 关系层：对话线程（没聊完的事会留一条线、两天后放下）、默认关闭的主动私聊分享
 - 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
 - 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；当前只读通道已接
-- QQ 修复：表情包导入（缺 `shrinkImage`）、被戳后真正回一句、WS 配置重启不丢、WS token 进查询串并记录连接状态
+- QQ 修复：表情包导入（缺 `shrinkImage`）与描述编辑、任意群被戳后真正回一句、反向 WS 连接、WS 配置重启不丢
 - 界面：设置页七标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 感官 / 设置）+ 独立控制台
 
 路线图见 [docs/ROADMAP.md](docs/ROADMAP.md)，多接口说明见 [docs/BCI.md](docs/BCI.md)。

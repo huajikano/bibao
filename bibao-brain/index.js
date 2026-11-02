@@ -20,6 +20,7 @@ import { BibaoBrain } from './core/brain.js'
 import { GroupAttentionFunnel, defaultGroups } from './core/group.js'
 import { runSandbox } from './core/sandbox.js'
 import { SnowlumaBridge, wsUrlWithToken } from './core/snowluma.js'
+import { OneBotWsServer } from './core/onebot-ws-server.js'
 import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
@@ -83,7 +84,12 @@ const DEFAULTS = {
     // 戳一戳：会有感觉，但不自动戳回去
     pokeReact: true,
     pokeReply: true,
+    // 戳一戳是直接对着她，默认不按群白名单拦；不想在某个群回可以把这项关掉
+    pokeAnyGroup: true,
     pokeBack: false,
+    // auto：snowluma 的 wsClients 开着就反向监听；client：连 snowluma 的 3001；reverse：强制反向监听
+    wsMode: 'auto',
+    wsServer: { enabled: false, host: '127.0.0.1', port: 8080, path: '/ws', token: '' },
   },
 }
 
@@ -98,6 +104,7 @@ const DEMO_MEMBERS = [
 export function apply(ctx, config = {}) {
   const settings = { ...DEFAULTS, ...(config && typeof config === 'object' ? config : {}) }
   settings.snowluma = { ...DEFAULTS.snowluma, ...(config?.snowluma ?? {}) }
+  settings.snowluma.wsServer = { ...DEFAULTS.snowluma.wsServer, ...(config?.snowluma?.wsServer ?? {}) }
   settings.llm = { ...DEFAULTS.llm, ...(config?.llm ?? {}) }
   settings.tuning = { ...DEFAULTS.tuning, ...(config?.tuning ?? {}) }
   settings.growth = { ...DEFAULTS.growth, ...(config?.growth ?? {}) }
@@ -339,7 +346,7 @@ export function apply(ctx, config = {}) {
         if (saved?.snowluma && typeof saved.snowluma === 'object') {
           // 以前只恢复 enabled/sendEnabled/allowGroups，手填的 WS/HTTP 地址与 token
           // 重启后会丢失，表现为"配置保存了但客户端连不上"。这里逐字段恢复。
-          for (const key of ['enabled', 'sendEnabled', 'allowPrivate', 'pokeReact', 'pokeBack', 'pokeReply', 'recallEnabled', 'stickers']) {
+          for (const key of ['enabled', 'sendEnabled', 'allowPrivate', 'pokeReact', 'pokeBack', 'pokeReply', 'pokeAnyGroup', 'recallEnabled', 'stickers']) {
             if (typeof saved.snowluma[key] === 'boolean') settings.snowluma[key] = saved.snowluma[key]
           }
           for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId', 'configDir']) {
@@ -349,6 +356,12 @@ export function apply(ctx, config = {}) {
             settings.snowluma.maxReplyChars = Number(saved.snowluma.maxReplyChars)
           }
           if (Array.isArray(saved.snowluma.allowGroups)) settings.snowluma.allowGroups = saved.snowluma.allowGroups.map(String)
+          if (saved.snowluma.wsMode === 'auto' || saved.snowluma.wsMode === 'client' || saved.snowluma.wsMode === 'reverse') {
+            settings.snowluma.wsMode = saved.snowluma.wsMode
+          }
+          if (saved.snowluma.wsServer && typeof saved.snowluma.wsServer === 'object') {
+            settings.snowluma.wsServer = { ...DEFAULTS.snowluma.wsServer, ...saved.snowluma.wsServer }
+          }
         }
         if (saved?.tuning && typeof saved.tuning === 'object') settings.tuning = { ...DEFAULTS.tuning, ...saved.tuning }
         if (saved?.growth && typeof saved.growth === 'object') settings.growth = { ...DEFAULTS.growth, ...saved.growth }
@@ -541,6 +554,7 @@ export function apply(ctx, config = {}) {
         stickers: settings.snowluma.stickers !== false,
         pokeReact: settings.snowluma.pokeReact !== false,
         pokeReply: settings.snowluma.pokeReply !== false,
+        pokeAnyGroup: settings.snowluma.pokeAnyGroup !== false,
         pokeBack: settings.snowluma.pokeBack === true,
         connected: snow.connected,
         wsStatus: snow.wsStatus ?? null,
@@ -549,6 +563,7 @@ export function apply(ctx, config = {}) {
         selfName: snow.selfName,
         httpBase: settings.snowluma.httpBase || snow.cfg?.httpBase || '',
         wsUrl: settings.snowluma.wsUrl || snow.cfg?.wsUrl || '',
+        mode: snow.cfg?.mode ?? 'client',
         hasHttpToken: Boolean(settings.snowluma.httpToken || snow.cfg?.httpToken),
         hasWsToken: Boolean(settings.snowluma.wsToken || snow.cfg?.wsToken),
         stats: snow.bridge?.stats ?? null,
@@ -743,7 +758,7 @@ export function apply(ctx, config = {}) {
   async function loadSnowConfig() {
     const conf = settings.snowluma
     // 逐字段合并：手填的优先，没填的才回落到 snowluma 自己的 onebot 配置
-    let base = { httpBase: '', httpToken: '', wsUrl: '', wsToken: '', selfId: String(conf.selfId ?? '') }
+    let base = { httpBase: '', httpToken: '', wsUrl: '', wsToken: '', selfId: String(conf.selfId ?? ''), reverse: null }
     // 总是读一次 snowluma 自己的配置：即使用户手填了 WS/HTTP，也要拿到 selfId，
     // 否则戳一戳的目标判断会失效，自己的消息也不会被过滤。
     {
@@ -754,12 +769,18 @@ export function apply(ctx, config = {}) {
           const raw = JSON.parse(await readFile(path.join(conf.configDir, file), 'utf8'))
           const http = raw.networks?.httpServers?.[0]
           const ws = raw.networks?.wsServers?.[0]
+          // snowluma 的 old 版本可能不写 enabled 字段；有 url 且没有被显式关掉就算开着
+          const wsClient = (raw.networks?.wsClients ?? []).find((item) => item?.url && item?.enabled !== false)
           base = {
             selfId: String(String(file).match(/\d+/)?.[0] ?? conf.selfId ?? ''),
             httpBase: http ? `http://${http.host}:${http.port}` : '',
             httpToken: http?.accessToken ?? '',
             wsUrl: ws ? `ws://${ws.host}:${ws.port}${ws.path && ws.path !== '/' ? ws.path : '/'}` : '',
             wsToken: ws?.accessToken ?? '',
+            // snowluma 自己的 wsClients 开着 = 它在找我们，应该由我们监听
+            reverse: wsClient
+              ? { url: String(wsClient.url ?? ''), token: String(wsClient.accessToken ?? ''), name: String(wsClient.name ?? '') }
+              : null,
           }
         }
       } catch (error) {
@@ -775,6 +796,7 @@ export function apply(ctx, config = {}) {
       httpToken: conf.httpToken || base.httpToken,
       wsUrl: conf.wsUrl || base.wsUrl,
       wsToken: conf.wsToken || base.wsToken,
+      reverse: base.reverse,
     }
   }
 
@@ -785,6 +807,114 @@ export function apply(ctx, config = {}) {
     } catch {
       /* 日志写不进去不影响主流程 */
     }
+  }
+
+  /**
+   * 反向 WS：snowluma 的 wsClients 主动连到我们。
+   * 它不再依赖 3000/3001 是否开着；事件和动作都走同一条连接。
+   */
+  async function startReverseSnow(cfg) {
+    const conf = settings.snowluma.wsServer ?? {}
+    const fallbackUrl = String(conf.url ?? 'ws://127.0.0.1:8080/ws')
+    const targetUrl = String(conf.enabled ? conf.url || fallbackUrl : cfg.reverse?.url || fallbackUrl)
+    let parsed = null
+    try {
+      parsed = new URL(targetUrl)
+    } catch {
+      snow.reason = `反向 WS 地址非法：${targetUrl}`
+      return false
+    }
+    const host = String(conf.enabled && conf.host ? conf.host : parsed.hostname || '127.0.0.1')
+    const port = Number(conf.enabled && conf.port ? conf.port : parsed.port || 8080)
+    const path = String(conf.enabled && conf.path ? conf.path : parsed.pathname || '/ws')
+    const token = String(conf.enabled && conf.token ? conf.token : cfg.reverse?.token || conf.token || '')
+
+    let setupReverse = async () => {}
+    let reverseSetup = false
+    const server = new OneBotWsServer({
+      host,
+      port,
+      path,
+      token,
+      logger: (line) => {
+        console.warn('[bibao:reverse-ws]', line)
+        void appendSnowLog({ at: Date.now(), kind: 'reverse-ws-log', line })
+      },
+      onEvent: (event) => {
+        void handleSnowEvent(event)
+      },
+      onStatus: (status) => {
+        snow.connected = Boolean(status.connected)
+        snow.lastStatus = { ...status }
+        snow.wsStatus = status.connected
+          ? { ok: true, at: Date.now(), url: `ws://${host}:${port}${path}`, mode: 'reverse' }
+          : { ok: false, at: Date.now(), url: `ws://${host}:${port}${path}`, mode: 'reverse' }
+        if (status.connected) {
+          snow.reason = ''
+          void appendSnowLog({ at: Date.now(), kind: 'ws-status', connected: true, mode: 'reverse' })
+          void setupReverse()
+        } else {
+          void appendSnowLog({ at: Date.now(), kind: 'ws-status', connected: false, mode: 'reverse', code: status.code ?? null })
+        }
+      },
+    })
+    snow.bridge = server
+    snow.cfg = {
+      ...cfg,
+      wsUrl: `ws://${host}:${port}${path}`,
+      wsToken: token,
+      selfId: String(cfg.selfId ?? ''),
+      mode: 'reverse',
+    }
+    snow.reason = `反向 WS 监听 ws://${host}:${port}${path}，等待 snowluma wsClient 连接`
+    try {
+      await server.listen()
+    } catch (error) {
+      snow.bridge = null
+      snow.reason = `反向 WS 监听失败：${String(error?.message ?? error).slice(0, 120)}`
+      await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-error', host, port, path, error: snow.reason })
+      return false
+    }
+    await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-listen', url: `ws://${host}:${port}${path}`, token: token ? 'set' : 'none' })
+
+    setupReverse = async () => {
+      if (reverseSetup) return
+      reverseSetup = true
+      try {
+        const login = await server.loginInfo()
+        snow.selfName = login?.nickname ?? ''
+        const selfId = String(login?.user_id ?? server.selfId ?? cfg.selfId ?? '')
+        snow.cfg.selfId = selfId
+        server.selfId = selfId
+        const groups = await server.groupList()
+        funnel = new GroupAttentionFunnel({ social: brain.social, interests: brain.interests, userName: brain.name })
+        for (const group of groups) {
+          funnel.addGroup({
+            id: String(group.group_id),
+            name: group.group_name,
+            memberCount: Number(group.member_count ?? 0),
+            layer: 'muted',
+          })
+        }
+        const first =
+          groups.find((group) => (settings.snowluma.allowGroups ?? []).includes(String(group.group_id))) ?? groups[0]
+        if (first) funnel.focus(String(first.group_id), Date.now())
+        snow.reason = ''
+        await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-ready', selfId, groups: groups.length })
+      } catch (error) {
+        reverseSetup = false
+        snow.reason = `反向 WS 已连接，但初始化失败：${String(error?.message ?? error).slice(0, 120)}`
+      }
+    }
+
+    // 不阻塞启动：snowluma 的 wsClient 每 10 秒重试一次，连上后 onStatus 会初始化
+    void server
+      .waitForPeer(12_000)
+      .then(setupReverse)
+      .catch(() => {
+        snow.reason = `反向 WS 已在 ${host}:${port}${path} 监听，等待 snowluma wsClient 连接`
+      })
+    return true
   }
 
   async function startSnow() {
@@ -803,6 +933,16 @@ export function apply(ctx, config = {}) {
       return
     }
     snow.cfg = cfg
+    // snowluma 的 wsClients 开着 = 它在主动连出来；此时应该由我们监听，
+    // 而不是继续去连它可能根本没开的 3001。
+    const reverseWanted =
+      settings.snowluma.wsMode === 'reverse' ||
+      (settings.snowluma.wsMode !== 'client' && (settings.snowluma.wsServer?.enabled === true || Boolean(cfg.reverse?.url)))
+    if (reverseWanted) {
+      const started = await startReverseSnow(cfg)
+      if (started) return
+      // 监听失败（端口被占/地址非法）才回落到正向连接，并保留失败原因
+    }
     let wsOk = await probeWs(cfg.wsUrl, cfg.wsToken)
     if (!wsOk.ok && cfg.fallbackWsUrl && cfg.fallbackWsUrl !== cfg.wsUrl) {
       snow.reason = '自定义 WS 连不上（' + cfg.wsUrl + '：' + wsOk.error + '），已回退到 ' + cfg.fallbackWsUrl
@@ -1095,7 +1235,7 @@ export function apply(ctx, config = {}) {
     const targetId = String(event.target_id ?? '')
     if (!userId || userId === selfId) return
     const groupId = String(event.group_id ?? '')
-    if (groupId && !(settings.snowluma.allowGroups ?? []).map(String).includes(groupId)) return
+    if (groupId && settings.snowluma.pokeAnyGroup === false && !(settings.snowluma.allowGroups ?? []).map(String).includes(groupId)) return
 
     const key = `poke:${event.time ?? 0}:${userId}:${targetId}`
     if (pokeSeen.has(key)) return
@@ -1149,7 +1289,7 @@ export function apply(ctx, config = {}) {
     if (!brain || !snow.bridge) return
     if (!settings.snowluma.sendEnabled) return
     if (!groupId && !settings.snowluma.allowPrivate) return
-    if (groupId && !(settings.snowluma.allowGroups ?? []).map(String).includes(String(groupId))) return
+    if (groupId && settings.snowluma.pokeAnyGroup === false && !(settings.snowluma.allowGroups ?? []).map(String).includes(String(groupId))) return
 
     const cooldownKey = `${groupId || 'private'}:${userId}`
     const now = Date.now()
@@ -1852,6 +1992,7 @@ export function apply(ctx, config = {}) {
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
                 pokeReply: settings.snowluma.pokeReply,
+                pokeAnyGroup: settings.snowluma.pokeAnyGroup,
                 pokeBack: settings.snowluma.pokeBack,
                 recallEnabled: settings.snowluma.recallEnabled === true,
                 stickers: settings.snowluma.stickers !== false,
@@ -1861,6 +2002,8 @@ export function apply(ctx, config = {}) {
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
                 wsToken: settings.snowluma.wsToken,
+                wsMode: settings.snowluma.wsMode,
+                wsServer: settings.snowluma.wsServer,
               },
               llm: settings.llm,
               tuning: settings.tuning,
@@ -2028,7 +2171,13 @@ export function apply(ctx, config = {}) {
         if (!stickers) return json({ items: [], stats: { count: 0, used: 0 } })
         if (request.method === 'POST') {
           const body = await readBody(request)
-          if (body.remove) await stickers.remove(String(body.remove))
+          const update = body.update && typeof body.update === 'object' ? body.update : body.id ? body : null
+          if (update?.id) {
+            const item = await stickers.update(String(update.id), update)
+            if (!item) return fail('没有这张', 404)
+            await appendSnowLog({ at: Date.now(), kind: 'sticker-update', id: item.id, gist: item.gist, mood: item.mood })
+            return json({ ok: true, item, items: await stickers.load(), stats: await stickers.stats() })
+          } else if (body.remove) await stickers.remove(String(body.remove))
           else if (body.send) {
             const item = (await stickers.load()).find((row) => row.id === String(body.send))
             if (!item) return fail('没有这张', 404)
@@ -2645,7 +2794,7 @@ export function apply(ctx, config = {}) {
           if (Array.isArray(body.snowluma.allowGroups)) {
             settings.snowluma.allowGroups = body.snowluma.allowGroups.map(String)
           }
-          for (const key of ['allowPrivate', 'pokeReact', 'pokeReply', 'pokeBack', 'recallEnabled', 'stickers']) {
+          for (const key of ['allowPrivate', 'pokeReact', 'pokeReply', 'pokeAnyGroup', 'pokeBack', 'recallEnabled', 'stickers']) {
             if (typeof body.snowluma[key] === 'boolean') settings.snowluma[key] = body.snowluma[key]
           }
           for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId']) {
@@ -2653,6 +2802,10 @@ export function apply(ctx, config = {}) {
           }
           if (Number.isFinite(Number(body.snowluma.maxReplyChars))) {
             settings.snowluma.maxReplyChars = Math.max(10, Math.min(200, Number(body.snowluma.maxReplyChars)))
+          }
+          if (['auto', 'client', 'reverse'].includes(body.snowluma.wsMode)) settings.snowluma.wsMode = body.snowluma.wsMode
+          if (body.snowluma.wsServer && typeof body.snowluma.wsServer === 'object') {
+            settings.snowluma.wsServer = { ...settings.snowluma.wsServer, ...body.snowluma.wsServer }
           }
         }
         if (body.tuning && typeof body.tuning === 'object') {
@@ -2728,6 +2881,7 @@ export function apply(ctx, config = {}) {
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
                 pokeReply: settings.snowluma.pokeReply,
+                pokeAnyGroup: settings.snowluma.pokeAnyGroup,
                 pokeBack: settings.snowluma.pokeBack,
                 recallEnabled: settings.snowluma.recallEnabled === true,
                 stickers: settings.snowluma.stickers !== false,
@@ -2737,6 +2891,8 @@ export function apply(ctx, config = {}) {
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
                 wsToken: settings.snowluma.wsToken,
+                wsMode: settings.snowluma.wsMode,
+                wsServer: settings.snowluma.wsServer,
               },
               llm: settings.llm,
               tuning: settings.tuning,
@@ -2863,6 +3019,7 @@ export function apply(ctx, config = {}) {
                 allowPrivate: settings.snowluma.allowPrivate,
                 pokeReact: settings.snowluma.pokeReact,
                 pokeReply: settings.snowluma.pokeReply,
+                pokeAnyGroup: settings.snowluma.pokeAnyGroup,
                 pokeBack: settings.snowluma.pokeBack,
                 recallEnabled: settings.snowluma.recallEnabled === true,
                 stickers: settings.snowluma.stickers !== false,
@@ -2872,6 +3029,8 @@ export function apply(ctx, config = {}) {
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
                 wsToken: settings.snowluma.wsToken,
+                wsMode: settings.snowluma.wsMode,
+                wsServer: settings.snowluma.wsServer,
               },
               llm: settings.llm,
               tuning: settings.tuning,

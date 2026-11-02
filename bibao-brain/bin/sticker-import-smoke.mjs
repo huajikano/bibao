@@ -100,6 +100,14 @@ check(
 
 const list = await call('GET', '/stickers')
 check('导入后能从收藏夹读回', (list.data?.items ?? []).length >= 1, `items=${list.data?.items?.length ?? 0}`)
+const updated = await call('POST', '/stickers', {
+  update: { id: imported.data?.item?.id, gist: '我自己的描述', mood: '无语' },
+})
+check(
+  '描述可以自定义',
+  updated.status === 200 && updated.data?.item?.gist === '我自己的描述' && updated.data?.item?.mood === '无语',
+  `${updated.data?.item?.gist ?? updated.data?.error} · ${updated.data?.item?.mood ?? ''}`,
+)
 const fileRoute = [...routes.values()].find((item) => item.path === '/api/bibao/stickers/file' && item.methods.includes('GET'))
 const fileResponse = await fileRoute.fetch(
   new Request(`http://localhost/api/bibao/stickers/file?id=${imported.data?.item?.id ?? 'bad'}`),

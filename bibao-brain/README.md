@@ -64,7 +64,8 @@ growth:
 ```bash
 node bin/growth-smoke.mjs     # 41 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享
 node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
-node bin/sticker-import-smoke.mjs # 4 项：表情包导入（假视觉端点）
+node bin/sticker-import-smoke.mjs # 5 项：表情包导入 + 描述编辑（假视觉端点）
+node bin/ws-reverse-smoke.mjs # 6 项：反向 WS 握手 / 事件 / 动作 / 群列表
 node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 ```
 
@@ -99,7 +100,9 @@ node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 | 表情包导入失败 | 主面板调用了不存在的 `shrinkImage` | 补上 canvas 缩放 + PNG/JPEG 选择；失败时显示具体错误 |
 | 戳一戳没反应 | 只写触觉感知，从不生成回复 | `respondToPoke()` 走完整语言区，20 秒/对象冷却；默认开，可在设置关 |
 | WS 配置保存后重启丢失 | 启动时只恢复 `enabled/sendEnabled/allowGroups` | 逐字段恢复 HTTP/WS 地址、token、selfId、poke 开关等 |
-| WS 客户端连不上 | token 只放 header（Node WebSocket 不一定支持）；selfId 在手填配置时可能为空 | token 同时进 `?access_token=`；始终读 snowluma 配置拿 selfId；连接状态写入 `snowluma-log.jsonl` 与 `/state.snow.wsStatus` |
+| WS 客户端连不上 | 3000/3001 没开，或 token 只放 header；selfId 在手填配置时可能为空 | **反向 WS 服务端**：监听 `ws://127.0.0.1:8080/ws`，snowluma 的 `wsClients` 主动连进来；token 同时支持 query/header；事件与动作走同一条连接；连接状态写入日志与 `/state.snow.wsStatus` |
+| 表情包描述不能改 | 自动识别结果直接落库，没有编辑入口 | 收藏夹每张图都有「改描述」，保存到 `StickerBook.update()`；主面板和独立控制台都可用 |
+| 戳一戳只对白名单群有反应 | 复用了群消息白名单 | `pokeAnyGroup` 默认开：戳一戳是直接对着她，默认不按群白名单拦；可在设置关掉 |
 
 ---
 
@@ -117,9 +120,14 @@ node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 | **Phase 1** | 纯认知内核 + 生物钟 + 6 大无接口沙盒验脑 | ✅ 本包已实现，6/6 通过 |
 | **Phase 2** | `snowluma` 感知 / 运动皮层挂载（QQ 私聊与群聊） | 🟡 传输层已接上，默认只读观察 |
 
-Phase 2 的传输层在 `core/snowluma.js`：WS `ws://127.0.0.1:3001` 收 OneBot 事件，HTTP `http://127.0.0.1:3000` 发
-`send_private_msg / send_group_msg / delete_msg`。端口与 token 直接读 snowluma 自己的
-`config/onebot_<uin>.json`，不复制密钥。群聊仍走三层漏斗与 3s 防抖，私聊直接进丘脑。
+Phase 2 的传输层有两条路：
+
+- `core/snowluma.js`：插件连 snowluma 的 WS `3001` 收事件，HTTP `3000` 发动作；
+- `core/onebot-ws-server.js`：**反向 WS**，插件监听 `ws://127.0.0.1:8080/ws`，snowluma 的
+  `wsClients` 主动连进来，事件和动作都走同一条连接。`wsClients` 开着时自动选这条，
+  端口/token 直接从 `config/onebot_<uin>.json` 读，不复制密钥。
+
+两条路都走三层漏斗与 3s 防抖，私聊直接进丘脑。
 
 安全阀：`snowluma.sendEnabled` 默认 **false**。此时它照常感知、点火、写记忆，只是把"本来会发什么"
 记进 `snowluma-log.jsonl`，不会真的对真人开口。要她真的说话，把 `sendEnabled` 改成 true，
@@ -267,6 +275,7 @@ bibao-brain/
 │  ├─ threads.js         对话线程：没聊完的事、两天后自动放下
 │  ├─ outreach.js        主动分享的纯决策：该不该先说、说什么
 │  ├─ bci-hub.js         多脑机接口：能力声明、只读/动作策略、限频、审计
+│  ├─ onebot-ws-server.js 反向 WS 服务端：snowluma wsClient 直连 8080/ws
 │  ├─ broca.js           本地语言组装（双轨 JSON、去标点、预算）
 │  ├─ prefrontal.js      感知帧、LLM 输出钳制、双轨生成
 │  ├─ brain.js           门面：perceive / advance / sleep / recall / reviewSelf / snapshot
@@ -296,6 +305,8 @@ bibao-brain/
 | `node bin/sandbox.mjs` | 6/6 通过，约 40ms |
 | `node bin/growth-smoke.mjs` | 41/41 通过（人格、复盘、生活流、模糊记忆、线程、主动分享、WS token） |
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
+| `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
+| `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
 | `node bin/host-smoke.mjs` | 29/29 通过（路由、持久化、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |

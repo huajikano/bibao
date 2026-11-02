@@ -1021,13 +1021,17 @@ window.__ModuleLoader__.load({
         ),
         h(
           Card,
-          { title: t('snowTitle'), hint: snow.httpBase || 'snowluma' },
+          { title: t('snowTitle'), hint: `${snow.mode === 'reverse' ? '反向 WS' : '正向 WS'} ${snow.wsUrl || snow.httpBase || 'snowluma'}` },
           h(
             'div',
             { className: 'bb-inline bb-inline--wrap' },
             h(Chip, {
               children: snow.connected ? t('snowConnected') : t('snowOffline'),
               tone: snow.connected ? 'good' : 'bad',
+            }),
+            h(Chip, {
+              children: snow.mode === 'reverse' ? 'wsClient → 本机监听' : '连 snowluma 3001',
+              tone: snow.mode === 'reverse' ? 'on' : '',
             }),
             h(Chip, {
               children: snow.sendEnabled ? t('snowSending') : t('snowReadOnly'),
@@ -3823,10 +3827,28 @@ window.__ModuleLoader__.load({
     class StickersPanel extends React.Component {
       constructor(props) {
         super(props)
-        this.state = { items: [], stats: { count: 0, used: 0 }, note: '', busy: false }
+        this.state = { items: [], stats: { count: 0, used: 0 }, note: '', busy: false, editingId: '', draftGist: '' }
         this.load = this.load.bind(this)
         this.remove = this.remove.bind(this)
         this.send = this.send.bind(this)
+      }
+
+      startEdit(item) {
+        this.setState({ editingId: item.id, draftGist: item.gist ?? '' })
+      }
+
+      async saveEdit(item) {
+        this.setState({ busy: true })
+        try {
+          await request('/stickers', {
+            method: 'POST',
+            body: JSON.stringify({ update: { id: item.id, gist: this.state.draftGist } }),
+          })
+          this.setState({ busy: false, editingId: '', note: '描述已更新' })
+          await this.load()
+        } catch (error) {
+          this.setState({ busy: false, note: '更新失败：' + error.message })
+        }
       }
 
       componentDidMount() {
@@ -3900,7 +3922,7 @@ window.__ModuleLoader__.load({
       }
 
       render() {
-        const { items, stats, note, busy } = this.state
+        const { items, stats, note, busy, editingId, draftGist } = this.state
         return h(
           Card,
           { title: '表情包收藏', hint: `共 ${stats.count} 张 · 用过 ${stats.used} 张` },
@@ -3934,7 +3956,18 @@ window.__ModuleLoader__.load({
                       'div',
                       { key: item.id, className: 'bb-sticker' },
                       h('img', { className: 'bb-stickerImg', src: `/api/bibao/stickers/file?id=${item.id}`, alt: item.gist, loading: 'lazy' }),
-                      h('div', { className: 'bb-stickerGist' }, item.gist || '（没有描述）'),
+                      editingId === item.id
+                        ? h('input', {
+                            className: 'bb-input',
+                            value: draftGist,
+                            maxLength: 30,
+                            onChange: (event) => this.setState({ draftGist: event.target.value }),
+                            onKeyDown: (event) => {
+                              if (event.key === 'Enter') this.saveEdit(item)
+                              if (event.key === 'Escape') this.setState({ editingId: '', draftGist: '' })
+                            },
+                          })
+                        : h('div', { className: 'bb-stickerGist' }, item.gist || '（没有描述）'),
                       h(
                         'div',
                         { className: 'bb-inline' },
@@ -3944,6 +3977,12 @@ window.__ModuleLoader__.load({
                       h(
                         'div',
                         { className: 'bb-inline' },
+                        editingId === item.id
+                          ? [
+                              h('button', { key: 'save', type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.saveEdit(item) }, '保存'),
+                              h('button', { key: 'cancel', type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.setState({ editingId: '', draftGist: '' }) }, '取消'),
+                            ]
+                          : h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.startEdit(item) }, '改描述'),
                         h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.send(item) }, '发一张'),
                         h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.remove(item) }, '删掉'),
                       ),
