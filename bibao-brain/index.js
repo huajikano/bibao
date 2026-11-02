@@ -1093,7 +1093,8 @@ export function apply(ctx, config = {}) {
         }
         auto.lastHash = thumbHash
         const file = path.join(dataDir, 'screens', `auto-${Date.now()}.jpg`)
-        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        const winRect = (await inputAgent.rect(settings.game.window ?? 'TFT')) ?? null
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg', rect: winRect })
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
         const ask = '只输出 JSON：{"scene":"shop 或 augment 或 combat 或 carousel 或 other","stage":"3-2","level":7,"health":60,"gold":0,"bench":0,"augments":[[0.35,0.45],[0.5,0.45],[0.65,0.45]],"cards":[{"name":"名字","cost":1,"x":0.3,"y":0.94}]}。scene 里 augment 表示"三选一强化符文"界面；augments 是三个选项的中心坐标（0~1）；cards 只在底部商店出现时给；cost 是卡的金币价格。'

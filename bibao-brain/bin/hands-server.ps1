@@ -203,13 +203,19 @@ while ($running) {
         }
         'shot' {
           $s = Get-Screen
-          $raw = New-Object System.Drawing.Bitmap $s.width, $s.height
+          $cx = $s.x; $cy = $s.y; $cw = $s.width; $ch = $s.height
+          if ($null -ne $argv.rect) {
+            $cx = [int]$argv.rect.x; $cy = [int]$argv.rect.y
+            $cw = [int]$argv.rect.w; $ch = [int]$argv.rect.h
+            if ($cw -le 0 -or $ch -le 0) { $cx = $s.x; $cy = $s.y; $cw = $s.width; $ch = $s.height }
+          }
+          $raw = New-Object System.Drawing.Bitmap $cw, $ch
           $g = [System.Drawing.Graphics]::FromImage($raw)
-          $g.CopyFromScreen($s.x, $s.y, 0, 0, $raw.Size)
+          $g.CopyFromScreen($cx, $cy, 0, 0, $raw.Size)
           $maxWidth = if ($null -ne $argv.maxWidth) { [int]$argv.maxWidth } else { 0 }
-          if ($maxWidth -gt 0 -and $maxWidth -lt $s.width) {
-            $scale = $maxWidth / $s.width
-            $w = [int]($s.width * $scale); $h = [int]($s.height * $scale)
+          if ($maxWidth -gt 0 -and $maxWidth -lt $cw) {
+            $scale = $maxWidth / $cw
+            $w = [int]($cw * $scale); $h = [int]($ch * $scale)
             $small = New-Object System.Drawing.Bitmap $w, $h
             $g2 = [System.Drawing.Graphics]::FromImage($small)
             $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -221,7 +227,7 @@ while ($running) {
             $outW = $w; $outH = $h
           } else {
             $raw.Save([string]$argv.path, [System.Drawing.Imaging.ImageFormat]::Png)
-            $outW = $s.width; $outH = $s.height
+            $outW = $cw; $outH = $ch
           }
           $g.Dispose(); $raw.Dispose()
           Write-Json $ctx 200 @{ ok = $true; path = [string]$argv.path; width = $outW; height = $outH }
