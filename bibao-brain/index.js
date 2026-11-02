@@ -1640,6 +1640,70 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/game/look',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!vision) return fail('视觉模型没配置', 400)
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动：双击 bibao-brain/bin/start-hands.bat', 503)
+        const body = await readBody(request)
+        const file = path.join(dataDir, 'screens', `look-${Date.now()}.jpg`)
+        await mkdir(path.dirname(file), { recursive: true })
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        const size = await inputAgent.size()
+        const base64 = (await readFile(file)).toString('base64')
+        const ask = [
+          '这是电脑屏幕截图，里面可能有《云顶之弈》或《金铲铲之战》。',
+          '只输出 JSON，不要解释：',
+          '{"found":true,"phase":"prep 或 combat 或 idle","gold":0,"health":0,"level":0,',
+          '"shop":[{"slot":0,"name":"棋子名","x":0.5,"y":0.5}],',
+          '"buttons":{"roll":{"x":0.5,"y":0.5},"level":{"x":0.5,"y":0.5}},',
+          '"note":"一句话描述你看到的界面"}',
+          '坐标必须是 0~1 的相对值（相对整张图），找不到的项给 null。',
+        ].join('\n')
+        const result = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 1600 })
+        let parsed = null
+        try {
+          const raw = String(result.text ?? '')
+          parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+        } catch {
+          parsed = null
+        }
+        const toPixels = (point) =>
+          point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))
+            ? { x: Math.round(Number(point.x) * size.width), y: Math.round(Number(point.y) * size.height) }
+            : null
+        const view = parsed
+          ? {
+              found: Boolean(parsed.found),
+              phase: parsed.phase ?? '',
+              gold: parsed.gold ?? null,
+              health: parsed.health ?? null,
+              level: parsed.level ?? null,
+              shop: (Array.isArray(parsed.shop) ? parsed.shop : []).map((card) => ({
+                slot: Number(card.slot ?? 0),
+                name: String(card.name ?? ''),
+                pixel: toPixels(card),
+              })),
+              roll: toPixels(parsed.buttons?.roll),
+              levelUp: toPixels(parsed.buttons?.level),
+              note: String(parsed.note ?? '').slice(0, 80),
+            }
+          : null
+        const auto = body.remember !== false && view
+        if (auto && view.roll) {
+          settings.game.layout = {
+            ...(settings.game.layout ?? {}),
+            roll: [view.roll.x, view.roll.y],
+            shop: view.shop.map((card) => (card.pixel ? [card.pixel.x, card.pixel.y] : null)).filter(Boolean),
+          }
+          schedulePersist(200)
+        }
+        return json({ ok: true, file, screen: size, view, raw: result.text.slice(0, 600) })
+      },
+    },
+    {
       path: '/game/act',
       methods: ['POST'],
       handler: async (request) => {

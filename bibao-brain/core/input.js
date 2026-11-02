@@ -85,7 +85,7 @@ export class InputAgent {
     return this.act('type', { text })
   }
 
-  shot(file) {
-    return this.act('shot', { path: file }, 20000)
+  shot(file, { maxWidth = 0, format = 'png' } = {}) {
+    return this.act('shot', { path: file, maxWidth, format }, 20000)
   }
 }

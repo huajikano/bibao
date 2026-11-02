@@ -51,6 +51,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
           body: JSON.stringify({
             model,
             max_tokens: maxTokens,
+            reasoning_effort: 'low',
             messages: [
               {
                 role: 'user',

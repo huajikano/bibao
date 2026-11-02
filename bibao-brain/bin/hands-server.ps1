@@ -110,12 +110,31 @@ while ($running) {
         }
         'shot' {
           $s = Get-Screen
-          $bmp = New-Object System.Drawing.Bitmap $s.width, $s.height
-          $g = [System.Drawing.Graphics]::FromImage($bmp)
-          $g.CopyFromScreen($s.x, $s.y, 0, 0, $bmp.Size)
-          $bmp.Save([string]$argv.path, [System.Drawing.Imaging.ImageFormat]::Png)
-          $g.Dispose(); $bmp.Dispose()
-          Write-Json $ctx 200 @{ ok = $true; path = [string]$argv.path }
+          $raw = New-Object System.Drawing.Bitmap $s.width, $s.height
+          $g = [System.Drawing.Graphics]::FromImage($raw)
+          $g.CopyFromScreen($s.x, $s.y, 0, 0, $raw.Size)
+          $maxWidth = if ($null -ne $argv.maxWidth) { [int]$argv.maxWidth } else { 0 }
+          if ($maxWidth -gt 0 -and $maxWidth -lt $s.width) {
+            $scale = $maxWidth / $s.width
+            $w = [int]($s.width * $scale); $h = [int]($s.height * $scale)
+            $small = New-Object System.Drawing.Bitmap $w, $h
+            $g2 = [System.Drawing.Graphics]::FromImage($small)
+            $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g2.DrawImage($raw, 0, 0, $w, $h)
+            $g2.Dispose()
+            if ([string]$argv.format -eq 'jpeg') {
+              $small.Save([string]$argv.path, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            } else {
+              $small.Save([string]$argv.path, [System.Drawing.Imaging.ImageFormat]::Png)
+            }
+            $small.Dispose()
+            $outW = $w; $outH = $h
+          } else {
+            $raw.Save([string]$argv.path, [System.Drawing.Imaging.ImageFormat]::Png)
+            $outW = $s.width; $outH = $s.height
+          }
+          $g.Dispose(); $raw.Dispose()
+          Write-Json $ctx 200 @{ ok = $true; path = [string]$argv.path; width = $outW; height = $outH }
         }
         default { Write-Json $ctx 400 @{ ok = $false; error = "unknown cmd $cmd" } }
       }
