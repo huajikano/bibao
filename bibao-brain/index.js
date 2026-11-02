@@ -26,6 +26,7 @@ import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
 import { ensureHands, handsAlive } from './core/hands.js'
+import { decideTft } from './core/tft.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1066,7 +1067,7 @@ export function apply(ctx, config = {}) {
         await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
-        const ask = '只输出 JSON：{"scene":"shop 或 combat 或 carousel 或 other","gold":0,"cards":[{"name":"名字","x":0.3,"y":0.94}]}。cards 只在底部商店出现时给，坐标是相对整图的 0~1。'
+        const ask = '只输出 JSON：{"scene":"shop 或 combat 或 carousel 或 other","stage":"3-2","level":7,"health":60,"gold":0,"bench":0,"cards":[{"name":"名字","cost":1,"x":0.3,"y":0.94}]}。cards 只在底部商店出现时给，坐标是相对整图的 0~1，cost 是这张卡的金币价格。'
         const seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
         let info = null
         try {
@@ -1077,24 +1078,43 @@ export function apply(ctx, config = {}) {
         }
         const scene = String(info?.scene ?? 'other')
         const gold = Number(info?.gold ?? 0)
+        const level = Number(info?.level ?? 0) || 1
+        const health = Number(info?.health ?? 100) || 100
+        const stage = String(info?.stage ?? '')
+        const bench = Number(info?.bench ?? 0) || 0
         const cards = (Array.isArray(info?.cards) ? info.cards : []).filter((card) => Number.isFinite(Number(card?.x)))
-        auto.log.push({ at: Date.now(), step: auto.step, scene, gold, cards: cards.length })
         if (scene === 'shop' && cards.length >= 3) {
-          // 保守：钱多于 12 才买最便宜的那张（粗略用中间那张当目标，避免乱点）
-          if (gold > 12) {
-            const pick = cards[Math.min(cards.length - 1, 2)]
-            const x = Math.round(Number(pick.x) * size.width)
-            const y = Math.round(Number(pick.y) * size.height)
-            await inputAgent.click(x, y)
-            auto.bought += 1
-            await appendSnowLog({ at: Date.now(), kind: 'auto-buy', x, y, gold, name: String(pick.name ?? '') })
-            await sleep(1500)
-          } else {
-            await sleep(3000)
+          // 决策层：留钱 / 升级 / 买牌 / 残血 D 牌
+          const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: cards, bench })
+          auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage, cards: cards.length, plan: plan.reason })
+          for (const action of plan.actions.slice(0, 6)) {
+            if (!auto.running) break
+            if (action.type === 'buy' && cards[action.slot]) {
+              const card = cards[action.slot]
+              const x = Math.round(Number(card.x) * size.width)
+              const y = Math.round(Number(card.y) * size.height)
+              await inputAgent.click(x, y)
+              auto.bought += 1
+              await appendSnowLog({ at: Date.now(), kind: 'auto-buy', name: String(card.name ?? ''), x, y, gold })
+              await sleep(900)
+            } else if (action.type === 'level' && settings.game.layout?.level) {
+              const point = settings.game.layout.level
+              await inputAgent.click(point[0], point[1])
+              await sleep(600)
+            } else if (action.type === 'roll' && settings.game.layout?.roll) {
+              const point = settings.game.layout.roll
+              for (let index = 0; index < Math.min(3, action.times ?? 1); index += 1) {
+                await inputAgent.click(point[0], point[1])
+                await sleep(500)
+              }
+            }
           }
+          await sleep(1200)
         } else if (scene === 'combat' || scene === 'carousel') {
+          auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage })
           await sleep(6000)
         } else {
+          auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage })
           await sleep(5000)
         }
         await sleep(1200)
