@@ -11,7 +11,8 @@ export class SocialMemory {
   }
 
   upsert(input = {}) {
-    const id = String(input.qq ?? input.id ?? '')
+    // 档案里的关系可能只有名字：用名字当 id，不要因此让整个大脑起不来
+    const id = String(input.qq ?? input.id ?? input.name ?? '')
     if (!id) throw new Error('relation needs qq id')
     const current = this.relations.get(id)
     const next = {

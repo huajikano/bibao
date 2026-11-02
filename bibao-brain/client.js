@@ -367,7 +367,7 @@ window.__ModuleLoader__.load({
     async function request(pathname, options = {}) {
       // 某些链路会把 POST 的 body 丢掉，所以同一份 JSON 再塞进查询串，Host 两边都认
       let url = `${API}${pathname}`
-      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 6000) {
+      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 1500) {
         url += `${url.includes('?') ? '&' : '?'}payload=${encodeURIComponent(options.body)}`
       }
       const response = await fetch(new URL(url, window.location.origin), {
@@ -2196,6 +2196,7 @@ window.__ModuleLoader__.load({
           },
           personaSeed: { name: '', ageNow: 22, brief: '' },
           personaDraft: null,
+          personaDraftId: '',
           personaBusy: false,
           personaNote: '',
         }
@@ -2952,12 +2953,17 @@ window.__ModuleLoader__.load({
         const seed = {
           name: seedForm.name || undefined,
           ageNow: seedForm.ageNow || undefined,
-          tone: brief && brief.length <= 60 ? brief : undefined,
-          wound: brief && brief.length <= 60 ? brief : undefined,
+          city: seedForm.city || undefined,
+          occupation: seedForm.occupation || undefined,
+          tone: seedForm.tone || undefined,
+          wound: seedForm.wound || undefined,
+          userName: seedForm.userName || undefined,
+          userRelation: seedForm.userRelation || undefined,
           oneLine: brief && brief.length <= 60 ? brief : undefined,
-          // 长文本当成"原著设定"交给模型，短句才当性格描述
+          // 长文本当成"原著设定"交给模型；短句补进性格描述
           canon: brief.length > 60 ? brief.slice(0, 2400) : undefined,
         }
+        if (brief && brief.length <= 60) seed.tone = [seed.tone, brief].filter(Boolean).join('，')
         this.setState({ personaBusy: true, personaNote: '生成中…（可能要十几秒）' })
         try {
           const data = await request('/biography/generate', {
@@ -2966,6 +2972,7 @@ window.__ModuleLoader__.load({
           })
           this.setState({
             personaDraft: data.persona,
+            personaDraftId: data.draftId ?? '',
             personaBusy: false,
             personaNote:
               (data.source === 'ai' ? 'AI 生成' : '模板生成') +
@@ -2982,7 +2989,7 @@ window.__ModuleLoader__.load({
         try {
           const data = await request('/biography/apply', {
             method: 'POST',
-            body: JSON.stringify({ persona: this.state.personaDraft, mode }),
+            body: JSON.stringify({ draftId: this.state.personaDraftId, mode }),
           })
           this.setState((prev) => ({
             personaBusy: false,
@@ -3487,24 +3494,37 @@ window.__ModuleLoader__.load({
               { className: 'bb-persona' },
               h(
                 'div',
-                { className: 'bb-personaRow' },
-                h('input', {
-                  className: 'bb-input',
-                  placeholder: '她的名字',
-                  value: seedForm.name,
-                  onChange: (event) =>
-                    this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, name: event.target.value } })),
-                }),
-                h('input', {
-                  className: 'bb-input',
-                  type: 'number',
-                  min: '16',
-                  max: '60',
-                  placeholder: '年龄',
-                  value: seedForm.ageNow,
-                  onChange: (event) =>
-                    this.setState((prev) => ({ personaSeed: { ...prev.personaSeed, ageNow: Number(event.target.value) } })),
-                }),
+                { className: 'bb-personaGrid' },
+                [
+                  ['name', '名字（必填）', 'text'],
+                  ['ageNow', '现在年龄（必填）', 'number'],
+                  ['city', '城市（可选）', 'text'],
+                  ['occupation', '职业（可选）', 'text'],
+                  ['tone', '性格气质（可选）', 'text'],
+                  ['wound', '核心伤口（可选）', 'text'],
+                  ['userName', '你怎么称呼（可选）', 'text'],
+                  ['userRelation', '你和她的关系（可选）', 'text'],
+                ].map(([field, label, type]) =>
+                  h(
+                    'label',
+                    { key: field, className: 'bb-personaField' },
+                    h('span', { className: 'bb-muted' }, label),
+                    h('input', {
+                      className: 'bb-input',
+                      type,
+                      min: type === 'number' ? '16' : undefined,
+                      max: type === 'number' ? '60' : undefined,
+                      value: seedForm[field] ?? '',
+                      onChange: (event) =>
+                        this.setState((prev) => ({
+                          personaSeed: {
+                            ...prev.personaSeed,
+                            [field]: type === 'number' ? Number(event.target.value) : event.target.value,
+                          },
+                        })),
+                    }),
+                  ),
+                ),
               ),
               h('textarea', {
                 className: 'bb-textarea',
@@ -3985,6 +4005,8 @@ window.__ModuleLoader__.load({
   backdrop-filter: blur(6px);
 }
 .bb-persona { display: flex; flex-direction: column; gap: 8px; }
+.bb-personaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.bb-personaField { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
 .bb-personaRow { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }
 .bb-personaList { display: flex; flex-direction: column; gap: 4px; max-block-size: 280px; overflow: auto; }
 .bb-tune { display: flex; flex-direction: column; gap: 6px; }

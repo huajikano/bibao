@@ -84,6 +84,9 @@ export function apply(ctx, config = {}) {
   let biography = null
   let brain = null
   let store = null
+  // AI 生成的人物草稿：应用时只发 id，避免把几 KB 的 JSON 塞进 URL（会 431）
+  let personaDraft = null
+  let personaDraftId = ''
   let funnel = null
   let gate = null
   let loading = null
@@ -1231,7 +1234,9 @@ export function apply(ctx, config = {}) {
           persona = fallback.persona
           source = 'template'
         }
-        return json({ source, warnings, persona, prompt: buildGenerationPrompt(seed) })
+        personaDraft = persona
+        personaDraftId = `draft_${Date.now().toString(36)}`
+        return json({ source, warnings, persona, draftId: personaDraftId, prompt: buildGenerationPrompt(seed) })
       },
     },
     {
@@ -1240,27 +1245,31 @@ export function apply(ctx, config = {}) {
       handler: async (request) => {
         await boot()
         const body = await readBody(request)
-        const checked = validatePersona(body.persona ?? {}, { seed: body.persona?.seed ?? {} })
+        const incoming =
+          body.draftId && body.draftId === personaDraftId && personaDraft ? personaDraft : body.persona ?? {}
+        const checked = validatePersona(incoming, { seed: incoming?.seed ?? {} })
         if (!checked.ok) return fail(`档案不合法：${checked.errors.slice(0, 3).join('；')}`, 400)
         const persona = checked.persona
         const mode = body.mode === 'rebuild' ? 'rebuild' : 'merge'
         const rev = new Date().toISOString().replace(/[:.]/g, '-')
         try {
           await mkdir(dataDir, { recursive: true })
-          await copyFile(biographyFile, path.join(dataDir, `biography.rev-${rev}.json`))
+          await copyFile(path.join(dataDir, 'biography.json'), path.join(dataDir, `biography.rev-${rev}.json`))
         } catch {
           /* 还没有旧档就不用备份 */
         }
         const saved = { ...persona }
         delete saved.seed
         await mkdir(dataDir, { recursive: true })
-        await writeFile(biographyFile, JSON.stringify(saved, null, 2), 'utf8')
-        biography = saved
         let result = { mode, rev }
         if (mode === 'rebuild') {
+          // 重建才改档案：整颗大脑按新人生重来
+          await writeFile(path.join(dataDir, 'biography.json'), JSON.stringify(saved, null, 2), 'utf8')
+          biography = saved
           rebuildBrain(saved)
           result = { ...result, rebuilt: true }
         } else {
+          // 合并只进记忆，不动档案：老经历还在，新的补进去
           result = { ...result, ...brain.injectBiography(saved) }
           schedulePersist(200)
         }
