@@ -866,7 +866,7 @@ export function apply(ctx, config = {}) {
    * 反向 WS：snowluma 的 wsClients 主动连到我们。
    * 它不再依赖 3000/3001 是否开着；事件和动作都走同一条连接。
    */
-  async function startReverseSnow(cfg) {
+  async function startReverseSnow(cfg, attempt = 0) {
     const conf = settings.snowluma.wsServer ?? {}
     const fallbackUrl = String(conf.url ?? 'ws://127.0.0.1:8080/ws')
     const targetUrl = String(conf.enabled ? conf.url || fallbackUrl : cfg.reverse?.url || fallbackUrl)
@@ -924,8 +924,24 @@ export function apply(ctx, config = {}) {
       await server.listen()
     } catch (error) {
       snow.bridge = null
-      snow.reason = `反向 WS 监听失败：${String(error?.message ?? error).slice(0, 120)}`
-      await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-error', host, port, path, error: snow.reason })
+      try {
+        server.close()
+      } catch {
+        /* 已经关了 */
+      }
+      const text = String(error?.message ?? error).slice(0, 120)
+      snow.reason = `反向 WS 监听 ${host}:${port}${path} 失败：${text}`
+      await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-error', host, port, path, attempt, error: text })
+      // 插件热重载时旧实例可能还占着 8080 一小会儿：退避重试，不要直接掉回正向连接
+      if (attempt < 6) {
+        const delay = 1200 * (attempt + 1)
+        snow.reason = `反向 WS 监听失败（${text}），${Math.round(delay / 1000)}s 后重试`
+        const timer = setTimeout(() => {
+          void startReverseSnow(cfg, attempt + 1).catch(() => {})
+        }, delay)
+        if (typeof timer.unref === 'function') timer.unref()
+        return true
+      }
       return false
     }
     await appendSnowLog({ at: Date.now(), kind: 'ws-reverse-listen', url: `ws://${host}:${port}${path}`, token: token ? 'set' : 'none' })
@@ -993,8 +1009,9 @@ export function apply(ctx, config = {}) {
       (settings.snowluma.wsMode !== 'client' && (settings.snowluma.wsServer?.enabled === true || Boolean(cfg.reverse?.url)))
     if (reverseWanted) {
       const started = await startReverseSnow(cfg)
-      if (started) return
-      // 监听失败（端口被占/地址非法）才回落到正向连接，并保留失败原因
+      if (!started) snow.reason ||= `反向 WS 没有起来（${settings.snowluma.wsMode}）`
+      // 反向模式失败时不要偷偷连 8080/3001：把真实原因留在 snow.reason 里
+      return
     }
     let wsOk = await probeWs(cfg.wsUrl, cfg.wsToken)
     if (!wsOk.ok && cfg.fallbackWsUrl && cfg.fallbackWsUrl !== cfg.wsUrl) {

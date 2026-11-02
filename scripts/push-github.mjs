@@ -77,10 +77,21 @@ try {
 const files = await walk(ROOT)
 const tree = []
 for (const file of files) {
-  const blob = await call('POST', `/repos/${OWNER}/${REPO}/git/blobs`, {
-    content: (await readFile(file.full)).toString('base64'),
-    encoding: 'base64',
-  })
+  const content = (await readFile(file.full)).toString('base64')
+  let blob = null
+  let lastError = null
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      blob = await call('POST', `/repos/${OWNER}/${REPO}/git/blobs`, { content, encoding: 'base64' })
+      break
+    } catch (error) {
+      lastError = error
+      // GitHub 偶发 500/502；同一个 blob 重试即可，不要整次备份白跑
+      if (![500, 502, 503, 504].includes(error.status) || attempt === 4) break
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+    }
+  }
+  if (!blob) throw new Error(`${file.rel}: ${lastError?.message ?? 'blob failed'}`)
   tree.push({ path: file.rel, mode: '100644', type: 'blob', sha: blob.sha })
 }
 const created = await call('POST', `/repos/${OWNER}/${REPO}/git/trees`, { tree })
