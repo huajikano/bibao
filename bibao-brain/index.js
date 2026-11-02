@@ -28,6 +28,7 @@ import { TftAdapter, MotorModel } from './core/bci.js'
 import { ensureHands, handsAlive } from './core/hands.js'
 import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
+import { anchorsFor, anchorsFromWindows } from './core/layout.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1111,6 +1112,18 @@ export function apply(ctx, config = {}) {
           const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: cards, bench })
           auto.log.push({ at: Date.now(), step: auto.step, scene, gold, level, health, stage, cards: cards.length, plan: plan.reason })
           for (const action of plan.actions.slice(0, 6)) {
+            if (action.type === 'place' && settings.game.layout?.bench && settings.game.layout?.board) {
+              const from = settings.game.layout.bench[action.benchSlot ?? 0]
+              const to = settings.game.layout.board[action.row ?? 0]?.[action.col ?? 3]
+              if (from && to) await inputAgent.drag(from[0], from[1], to[0], to[1], 220)
+            } else if (action.type === 'equip' && settings.game.layout?.items && settings.game.layout?.board) {
+              const from = settings.game.layout.items[action.itemSlot ?? 0]
+              const to = settings.game.layout.board[action.row ?? 0]?.[action.col ?? 3]
+              if (from && to) await inputAgent.drag(from[0], from[1], to[0], to[1], 220)
+            } else if (action.type === 'pickup' && settings.game.layout?.center) {
+              const point = settings.game.layout.center
+              await inputAgent.click(point[0], point[1])
+            }
             if (!auto.running) break
             if (action.type === 'buy' && cards[action.slot]) {
               const card = cards[action.slot]
@@ -1744,6 +1757,30 @@ export function apply(ctx, config = {}) {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
         })
+      },
+    },
+    {
+      path: '/game/calibrate',
+      methods: ['POST'],
+      handler: async () => {
+        await boot()
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动', 503)
+        const list = (await inputAgent.request('/windows')).list ?? []
+        const anchors = anchorsFromWindows(list, settings.game.window ?? 'TFT')
+        if (!anchors) return fail('没找到游戏窗口（TFT）', 404)
+        settings.game.layout = {
+          rect: anchors.rect,
+          shop: anchors.shop.map((point) => [point.x, point.y]),
+          roll: [anchors.roll.x, anchors.roll.y],
+          level: [anchors.level.x, anchors.level.y],
+          bench: anchors.bench.map((point) => [point.x, point.y]),
+          board: anchors.board.map((row) => row.map((point) => [point.x, point.y])),
+          items: anchors.items.map((point) => [point.x, point.y]),
+          center: [anchors.center.x, anchors.center.y],
+        }
+        schedulePersist(200)
+        return json({ ok: true, layout: settings.game.layout })
       },
     },
     {
