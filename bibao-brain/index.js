@@ -1096,7 +1096,7 @@ export function apply(ctx, config = {}) {
         await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
         const size = await inputAgent.size()
         const base64 = (await readFile(file)).toString('base64')
-        const ask = '只输出 JSON：{"scene":"shop 或 combat 或 carousel 或 other","stage":"3-2","level":7,"health":60,"gold":0,"bench":0,"cards":[{"name":"名字","cost":1,"x":0.3,"y":0.94}]}。cards 只在底部商店出现时给，坐标是相对整图的 0~1，cost 是这张卡的金币价格。'
+        const ask = '只输出 JSON：{"scene":"shop 或 augment 或 combat 或 carousel 或 other","stage":"3-2","level":7,"health":60,"gold":0,"bench":0,"augments":[[0.35,0.45],[0.5,0.45],[0.65,0.45]],"cards":[{"name":"名字","cost":1,"x":0.3,"y":0.94}]}。scene 里 augment 表示"三选一强化符文"界面；augments 是三个选项的中心坐标（0~1）；cards 只在底部商店出现时给；cost 是卡的金币价格。'
         const seen = await vision.describe(`data:image/jpeg;base64,${base64}`, { prompt: ask, maxTokens: 400 })
         let info = null
         try {
@@ -1118,7 +1118,17 @@ export function apply(ctx, config = {}) {
           .map((card) => ({ name: String(card?.name ?? ''), x: Math.round(Number(card.x) * size.width), y: Math.round(Number(card.y) * size.height) }))
         auto.cards = cards
         auto.lastPlan = scene === 'shop' ? 'shop' : 'other'
-        if (scene === 'shop' && cards.length >= 3) {
+        if (scene === 'augment') {
+          const options = (Array.isArray(info?.augments) ? info.augments : []).filter((pair) => Number.isFinite(Number(pair?.[0])))
+          const pick = options[Math.floor(options.length / 2)] ?? [0.5, 0.45]
+          const ax = Math.round(Number(pick[0]) * size.width)
+          const ay = Math.round(Number(pick[1]) * size.height)
+          await inputAgent.focus(settings.game.window ?? 'TFT').catch(() => null)
+          await wait(150)
+          await inputAgent.click(ax, ay)
+          auto.log.push({ at: Date.now(), step: auto.step, scene, augment: ax + ',' + ay, count: options.length })
+          await sleep(1200)
+        } else if (scene === 'shop' && cards.length >= 3) {
           // 决策层：留钱 / 升级 / 买牌 / 残血 D 牌
           const boosted = cards.map((card) => ({ ...card, value: (Number(card.cost ?? 1) || 1) + traitBonus(card.name, auto.traits ?? []) }))
           const plan = decideTft({ stage: Number(stage.split('-')[0]) || 2, level, gold, health, shop: boosted, bench })
