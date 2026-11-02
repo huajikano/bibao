@@ -1426,12 +1426,37 @@ export function apply(ctx, config = {}) {
         if (request.method === 'POST') {
           const body = await readBody(request)
           if (body.remove) await stickers.remove(String(body.remove))
-          else if (body.use) {
+          else if (body.send) {
+            const item = (await stickers.load()).find((row) => row.id === String(body.send))
+            if (!item) return fail('没有这张', 404)
+            const to = String(body.groupId ?? (settings.snowluma.allowGroups ?? [])[0] ?? '')
+            if (!to || !snow.bridge) return fail('没有可发送的群或连接', 400)
+            const id = await snow.bridge.sendGroup(to, '', item.file)
+            await appendSnowLog({ at: Date.now(), kind: 'sticker-out', groupId: to, gist: item.gist, messageId: id })
+            item.uses = (item.uses ?? 0) + 1
+            return json({ ok: true, sent: id })
+          } else if (body.use) {
             const item = await stickers.pick(String(body.mood ?? stickerMood()))
             return json({ picked: item })
           }
         }
         return json({ items: await stickers.load(), stats: await stickers.stats() })
+      },
+    },
+    {
+      path: '/stickers/file',
+      methods: ['GET'],
+      handler: async (request) => {
+        const url = new URL(request.url)
+        const id = String(url.searchParams.get('id') ?? '')
+        if (!/^[a-f0-9]{6,16}$/.test(id)) return fail('bad id', 400)
+        const item = (await stickers?.load())?.find((row) => row.id === id)
+        if (!item) return fail('not found', 404)
+        const bytes = await readFile(item.file)
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
+        })
       },
     },
     {

@@ -3697,6 +3697,98 @@ window.__ModuleLoader__.load({
 
 
     /* ------------------------------------------------------------------ */
+    /* 表情包收藏夹                                                        */
+    /* ------------------------------------------------------------------ */
+
+    class StickersPanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { items: [], stats: { count: 0, used: 0 }, note: '', busy: false }
+        this.load = this.load.bind(this)
+        this.remove = this.remove.bind(this)
+        this.send = this.send.bind(this)
+      }
+
+      componentDidMount() {
+        this.alive = true
+        this.load()
+      }
+
+      componentWillUnmount() {
+        this.alive = false
+      }
+
+      async load() {
+        try {
+          const data = await request('/stickers')
+          if (this.alive) this.setState({ items: data.items ?? [], stats: data.stats ?? { count: 0, used: 0 } })
+        } catch (error) {
+          if (this.alive) this.setState({ note: '读取失败：' + error.message })
+        }
+      }
+
+      async remove(item) {
+        this.setState({ busy: true })
+        try {
+          await request('/stickers', { method: 'POST', body: JSON.stringify({ remove: item.id }) })
+          this.setState({ busy: false, note: '删掉了一张' })
+          await this.load()
+        } catch (error) {
+          this.setState({ busy: false, note: '删除失败：' + error.message })
+        }
+      }
+
+      async send(item) {
+        this.setState({ busy: true })
+        try {
+          await request('/stickers', { method: 'POST', body: JSON.stringify({ send: item.id }) })
+          this.setState({ busy: false, note: '发出去了' })
+          await this.load()
+        } catch (error) {
+          this.setState({ busy: false, note: '发送失败：' + error.message })
+        }
+      }
+
+      render() {
+        const { items, stats, note, busy } = this.state
+        return h(
+          Card,
+          { title: '表情包收藏', hint: `共 ${stats.count} 张 · 用过 ${stats.used} 张` },
+          note ? h('div', { className: 'bb-chip good' }, note) : null,
+          items.length
+            ? h(
+                'div',
+                { className: 'bb-stickers' },
+                items
+                  .slice()
+                  .reverse()
+                  .map((item) =>
+                    h(
+                      'div',
+                      { key: item.id, className: 'bb-sticker' },
+                      h('img', { className: 'bb-stickerImg', src: `/api/bibao/stickers/file?id=${item.id}`, alt: item.gist, loading: 'lazy' }),
+                      h('div', { className: 'bb-stickerGist' }, item.gist || '（没有描述）'),
+                      h(
+                        'div',
+                        { className: 'bb-inline' },
+                        h(Chip, { children: item.mood || '日常' }),
+                        h('span', { className: 'bb-muted' }, `用 ${item.uses ?? 0} 次`),
+                      ),
+                      h(
+                        'div',
+                        { className: 'bb-inline' },
+                        h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.send(item) }, '发一张'),
+                        h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.remove(item) }, '删掉'),
+                      ),
+                    ),
+                  ),
+              )
+            : h('div', { className: 'bb-muted' }, '还没有收藏。等群里有人发有趣的表情包，她会自己收起来。'),
+        )
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
     /* 人物：配置 → 生成 → 审核 → 应用                                      */
     /* ------------------------------------------------------------------ */
 
@@ -4088,6 +4180,7 @@ window.__ModuleLoader__.load({
         return h(
           'div',
           { className: 'bb-stack' },
+          h(StickersPanel, { t }),
           h(
             Card,
             { title: '脑机接口 · 实验性', hint: '感官皮层' },
@@ -4244,6 +4337,14 @@ window.__ModuleLoader__.load({
 .bb-personaList { display: flex; flex-direction: column; gap: 4px; max-block-size: 280px; overflow: auto; }
 .bb-tune { display: flex; flex-direction: column; gap: 6px; }
 .bb-tuneHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.bb-stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.bb-sticker {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+.bb-stickerImg { inline-size: 100%; block-size: 96px; object-fit: contain; border-radius: 6px; background: var(--dsw-alias-bg-base); }
+.bb-stickerGist { font-size: 11px; line-height: 1.3; color: var(--dsw-alias-label-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bb-senseStrip { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 8px; }
 .bb-senseChip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
