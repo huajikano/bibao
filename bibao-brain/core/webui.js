@@ -1,8 +1,9 @@
 /**
  * 独立页面（不依赖 DSH 的 React 槽位）。
  *
- * 用途：当主面板/设置页在浏览器里画不出来时，仍有一个能看状态、能说话、
- * 能配模型和 key、能跑验脑的界面。它只调用同一套 /api/bibao/* 接口。
+ * 用途：当主面板在浏览器里画不出来时，仍有一个能看状态、能说话、
+ * 能配模型、能管好友和表情包的界面。它只调用同一套 /api/bibao/* 接口。
+ * 视觉风格与设置页保持一致：同一套卡片 / 芯片 / 标签页。
  */
 
 export function renderUiHtml() {
@@ -11,287 +12,484 @@ export function renderUiHtml() {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>比宝 · 脑内</title>
+<title>比宝 · 控制台</title>
 <style>
-:root { color-scheme: light dark; --bg:#f7f6f3; --panel:#fff; --line:#e4e1da; --ink:#1f1d1a; --mute:#6b665e; --brand:#6C5CE7; }
+:root { color-scheme: light dark; --bg:#f7f6f3; --panel:#fff; --line:#e4e1da; --ink:#1f1d1a; --mute:#6b665e; --brand:#6C5CE7; --ok:#1f9d55; --bad:#c0392b; }
 @media (prefers-color-scheme: dark) { :root { --bg:#16151a; --panel:#1e1d24; --line:#332f3c; --ink:#ece9f2; --mute:#a9a3b5; } }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
-.wrap { max-width:1040px; margin:0 auto; padding:20px 18px 60px; display:flex; flex-direction:column; gap:14px; }
+.wrap { max-width:1060px; margin:0 auto; padding:20px 18px 60px; display:flex; flex-direction:column; gap:14px; }
 header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 16px; border:1px solid var(--line); border-radius:16px; background:var(--panel); }
 h1 { margin:0; font-size:18px; }
 .sub { color:var(--mute); font-size:12px; }
 .chips { margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; }
 .chip { border:1px solid var(--line); border-radius:999px; padding:2px 9px; font-size:11.5px; color:var(--mute); }
 .chip.on { color:var(--ink); border-color:color-mix(in oklab, var(--brand) 45%, transparent); background:color-mix(in oklab, var(--brand) 12%, transparent); }
-.grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
-.card { border:1px solid var(--line); border-radius:16px; background:var(--panel); padding:14px 16px; }
-.card h2 { margin:0 0 8px; font-size:13px; }
-.row { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; padding:2px 0; }
-.bar { height:6px; border-radius:999px; background:var(--line); overflow:hidden; margin-top:4px; }
-.bar > i { display:block; height:100%; background:var(--brand); }
-.muted { color:var(--mute); font-size:11.5px; }
-input, select, textarea, button { font:inherit; }
-input, select, textarea { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:9px; padding:6px 9px; width:100%; }
-button { cursor:pointer; border-radius:9px; border:1px solid var(--line); background:var(--panel); color:var(--ink); padding:6px 12px; }
-button.primary { background:var(--brand); border-color:transparent; color:#fff; }
-button:disabled { opacity:.5; cursor:default; }
-.stack { display:flex; flex-direction:column; gap:8px; }
-.inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.bubble { border:1px solid var(--line); border-radius:12px; padding:6px 10px; display:inline-block; margin:2px 0; }
-.me { background:color-mix(in oklab, var(--brand) 14%, var(--panel)); }
-.thread { display:flex; flex-direction:column; gap:8px; max-height:44vh; overflow:auto; }
-.inner { border-left:2px solid var(--brand); padding:2px 8px; color:var(--mute); font-size:11.5px; }
-.log { max-height:240px; overflow:auto; font-size:11.5px; }
-.log div { padding:3px 0; border-bottom:1px dashed var(--line); }
-label.field { display:flex; gap:8px; align-items:center; }
-label.field > span { flex:0 0 78px; color:var(--mute); font-size:11.5px; }
-.ok { color:#1f9d55; } .bad { color:#d64545; }
-pre { white-space:pre-wrap; font-size:11px; }
+.chip.bad { color:var(--bad); border-color:color-mix(in oklab, var(--bad) 45%, transparent); }
+nav { display:flex; gap:6px; flex-wrap:wrap; }
+nav button { font:inherit; font-size:12.5px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--panel); color:var(--mute); cursor:pointer; }
+nav button.on { color:var(--ink); border-color:color-mix(in oklab, var(--brand) 45%, transparent); background:color-mix(in oklab, var(--brand) 12%, transparent); }
+.panel { display:none; flex-direction:column; gap:14px; }
+.panel.on { display:flex; }
+.card { border:1px solid var(--line); border-radius:16px; background:var(--panel); padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+.card h2 { margin:0; font-size:13.5px; display:flex; align-items:center; gap:8px; }
+.card h2 span { color:var(--mute); font-weight:400; font-size:11.5px; }
+.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+.row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.muted { color:var(--mute); font-size:12px; }
+label.field { display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--mute); }
+input[type=text], input[type=password], input[type=number], textarea, select {
+  font:inherit; font-size:13px; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:8px 10px; width:100%;
+}
+textarea { resize:vertical; min-height:64px; }
+button.btn { font:inherit; font-size:12.5px; padding:7px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.btn.primary { border-color:color-mix(in oklab, var(--brand) 55%, transparent); background:color-mix(in oklab, var(--brand) 16%, transparent); }
+button.btn:disabled { opacity:.5; cursor:default; }
+input[type=range] { width:100%; accent-color:var(--brand); }
+.stat { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; }
+.list { display:flex; flex-direction:column; gap:6px; max-height:340px; overflow:auto; }
+.item { border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:12.5px; display:flex; gap:8px; align-items:center; }
+.item .grow { flex:1 1 auto; min-width:0; }
+.stickers { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr)); gap:10px; }
+.sticker { border:1px solid var(--line); border-radius:12px; padding:6px; display:flex; flex-direction:column; gap:5px; background:var(--bg); }
+.sticker img { width:100%; height:96px; object-fit:contain; border-radius:8px; background:var(--panel); }
+.sticker .gist { font-size:11px; color:var(--mute); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.toast { position:sticky; bottom:12px; align-self:center; padding:8px 14px; border-radius:999px; background:var(--ink); color:var(--bg); font-size:12.5px; opacity:0; transition:opacity .2s; }
+.toast.on { opacity:.92; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div>
-      <h1>比宝 · 脑内</h1>
-      <div class="sub" id="identity">正在唤醒…</div>
+      <h1 id="name">比宝</h1>
+      <div class="sub" id="oneLine">正在唤醒…</div>
     </div>
     <div class="chips" id="chips"></div>
   </header>
 
-  <div class="grid">
-    <section class="card">
-      <h2>神经状态</h2>
-      <div id="neuro" class="stack"></div>
-    </section>
-    <section class="card">
-      <h2>工作空间</h2>
-      <div id="slots" class="stack"></div>
-      <div class="muted" id="theta"></div>
-    </section>
-  </div>
+  <nav id="tabs">
+    <button data-tab="brain" class="on">脑内</button>
+    <button data-tab="talk">对话</button>
+    <button data-tab="memory">记忆</button>
+    <button data-tab="groups">群聊</button>
+    <button data-tab="friends">好友</button>
+    <button data-tab="stickers">表情包</button>
+    <button data-tab="settings">设置</button>
+  </nav>
 
-  <section class="card">
-    <h2>和比宝说话</h2>
-    <div class="thread" id="thread"></div>
-    <div class="inline" style="margin-top:8px">
-      <input id="msg" placeholder="说点什么，回车发送" />
-      <button class="primary" id="send">发送</button>
-      <label class="muted"><input type="checkbox" id="inner" checked style="width:auto" /> 内心独白</label>
+  <section class="panel on" id="panel-brain">
+    <div class="grid">
+      <div class="card"><h2>神经状态 <span id="clock"></span></h2><div id="neuro"></div></div>
+      <div class="card"><h2>工作空间 <span id="threshold"></span></h2><div id="slots" class="list"></div></div>
     </div>
-    <div class="muted" id="talkMeta"></div>
+    <div class="card"><h2>内心独白</h2><div class="list" id="inner"></div></div>
   </section>
 
-  <div class="grid">
-    <section class="card">
-      <h2>模型与 Key（每个逻辑可各配一套）</h2>
-      <div class="stack">
-        <label class="field"><span>baseURL</span><input id="baseURL" placeholder="https://api.deepseek.com" /></label>
-        <label class="field"><span>model</span><input id="model" placeholder="deepseek-chat" /></label>
-        <label class="field"><span>apiKey</span><input id="apiKey" type="password" placeholder="留空 = 不变" /></label>
-        <div id="profiles" class="stack"></div>
+  <section class="panel" id="panel-talk">
+    <div class="card">
+      <h2>和比宝说话 <span>先看状态，再决定回不回</span></h2>
+      <div class="row">
+        <input type="text" id="talkText" placeholder="说点什么…" style="flex:1 1 260px" />
+        <button class="btn primary" id="talkSend">发送</button>
       </div>
-    </section>
+      <div class="list" id="talkLog"></div>
+    </div>
+  </section>
 
-    <section class="card">
+  <section class="panel" id="panel-memory">
+    <div class="grid">
+      <div class="card"><h2>记忆分层 <span id="memStats"></span></h2><div class="list" id="memory"></div></div>
+      <div class="card"><h2>长期记住的事</h2><div class="list" id="facts"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-groups">
+    <div class="card"><h2>群聊状态 <span>焦点只有一个，余光最多三个</span></h2><div class="list" id="groups"></div></div>
+    <div class="card"><h2>漏斗日志</h2><div class="list" id="groupLog"></div></div>
+  </section>
+
+  <section class="panel" id="panel-friends">
+    <div class="card"><h2>好友管理 <span id="friendCount"></span></h2><div class="list" id="friends"></div></div>
+  </section>
+
+  <section class="panel" id="panel-stickers">
+    <div class="card">
+      <h2>表情包收藏 <span id="stickerStats"></span></h2>
+      <div class="row">
+        <button class="btn primary" id="stickerImport">导入表情包</button>
+        <input type="file" id="stickerFile" accept="image/*" multiple hidden />
+        <span class="muted">一次最多 10 张，自动让视觉模型写梗概和情绪</span>
+      </div>
+      <div class="stickers" id="stickerGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-settings">
+    <div class="card">
+      <h2>行为调节 <span>拉满就是当前表现</span></h2>
+      <label class="field">记忆力 <span id="memLabel"></span><input type="range" id="memoryStrength" min="0" max="1" step="0.05" /></label>
+      <label class="field">说话频率 <span id="talkLabel"></span><input type="range" id="talkativeness" min="0" max="1" step="0.05" /></label>
+    </div>
+    <div class="card">
+      <h2>对话模型 <span>必须写 provider/model</span></h2>
+      <div class="grid">
+        <label class="field">baseURL<input type="text" id="baseURL" /></label>
+        <label class="field">模型<input type="text" id="model" /></label>
+        <label class="field">API Key<input type="password" id="apiKey" placeholder="留空不变" /></label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>视觉模型 <span>看图用，和对话模型分开</span></h2>
+      <div class="grid">
+        <label class="field">模型<input type="text" id="visionModel" /></label>
+        <label class="field">每小时上限<input type="number" id="visionMax" min="1" max="200" /></label>
+      </div>
+      <div class="row">
+        <label class="row"><input type="checkbox" id="visionEnabled" /> 允许她自动看群里的图</label>
+        <button class="btn" id="visionTest">测试一下</button>
+      </div>
+    </div>
+    <div class="card">
       <h2>snowluma</h2>
-      <div class="stack">
-        <label class="field"><span>允许群</span><input id="allowGroups" placeholder="576268399" /></label>
-        <div class="inline">
-          <label class="muted"><input type="checkbox" id="allowSend" style="width:auto" /> 允许真的发到 QQ</label>
-          <label class="muted"><input type="checkbox" id="allowPrivate" style="width:auto" /> 允许私聊</label>
-        </div>
-        <div class="inline">
-          <button class="primary" id="save">保存全部</button>
-          <button id="gate">跑 6 大验脑</button>
-          <button id="sendTest">往群里发一条</button>
-        </div>
-        <div class="muted" id="saveState"></div>
-        <div class="log" id="gateOut"></div>
+      <div class="grid">
+        <label class="field">HTTP<input type="text" id="httpBase" /></label>
+        <label class="field">HTTP token<input type="password" id="httpToken" placeholder="留空不变" /></label>
+        <label class="field">WS<input type="text" id="wsUrl" /></label>
+        <label class="field">WS token<input type="password" id="wsToken" placeholder="留空不变" /></label>
+        <label class="field">允许群<input type="text" id="allowGroups" /></label>
       </div>
-    </section>
-  </div>
+      <div class="row">
+        <label class="row"><input type="checkbox" id="sendEnabled" /> 允许发送</label>
+        <label class="row"><input type="checkbox" id="recallEnabled" /> 允许冲动撤回</label>
+        <label class="row"><input type="checkbox" id="stickersEnabled" /> 允许发表情包</label>
+      </div>
+    </div>
+    <div class="row"><button class="btn primary" id="save">保存全部</button><span class="muted" id="saveNote"></span></div>
+  </section>
 
-  <div class="grid">
-    <section class="card"><h2>内心独白</h2><div class="stack" id="innerLog"></div></section>
-    <section class="card"><h2>记忆（最近）</h2><div class="stack" id="memory"></div></section>
-  </div>
+  <div class="toast" id="toast"></div>
 </div>
 <script>
-const API = '/api/bibao'
-let snap = null
-const $ = (id) => document.getElementById(id)
-const esc = (v) => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
-
-async function req(path, options) {
-  const opts = options || {}
-  let url = API + path
-  // 控制台的请求体在某些链路里会丢，POST 的 JSON 同时塞进查询串，服务端优先读 body
-  if (opts.method === 'POST' && typeof opts.body === 'string') {
-    url += (url.includes('?') ? '&' : '?') + 'payload=' + encodeURIComponent(opts.body)
-  }
-  const res = await fetch(url, { headers: { 'content-type': 'application/json' }, ...opts })
-  const text = await res.text()
-  let data = null
-  try { data = text ? JSON.parse(text) : null } catch { data = null }
-  if (!res.ok) throw new Error(data && data.error ? data.error : 'HTTP ' + res.status)
-  return data
+const token = new URL(location.href).searchParams.get('token') || '';
+const api = async (path, opts) => {
+  const url = '/api/bibao' + path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+  if (!res.ok) throw new Error((data && (data.error || data.message)) || ('HTTP ' + res.status));
+  return data;
+};
+const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+const el = (id) => document.getElementById(id);
+const esc = (value) => String(value == null ? '' : value).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+let toastTimer = null;
+function toast(text) {
+  const node = el('toast');
+  node.textContent = text;
+  node.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => node.classList.remove('on'), 2600);
 }
 
-function render(s) {
-  snap = s
-  $('identity').textContent = s.identity.oneLine + ' · ' + s.identity.age + ' 岁'
-  const cortisol = (s.neuro.hormones.find((h) => h.key === 'cortisol') || {}).value || 0
-  $('chips').innerHTML = [
-    '<span class="chip on">' + esc(s.neuro.moodLabel) + '</span>',
-    '<span class="chip">皮质醇 ' + Math.round(cortisol * 100) + '</span>',
-    '<span class="chip">精力 ' + Math.round(s.neuro.energy) + '</span>',
-    '<span class="chip">' + esc(s.clock.label) + '</span>',
-    '<span class="chip ' + (s.snow && s.snow.connected ? 'on' : '') + '">snowluma ' + (s.snow && s.snow.connected ? '在线' : '离线') + '</span>',
-    '<span class="chip ' + (s.workspace.hijacked ? 'on' : '') + '">' + (s.workspace.hijacked ? '杏仁核劫持' : '常态') + '</span>'
-  ].join('')
+document.querySelectorAll('#tabs button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('#tabs button').forEach((other) => other.classList.toggle('on', other === button));
+    document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('on'));
+    el('panel-' + button.dataset.tab).classList.add('on');
+    if (button.dataset.tab === 'friends') loadFriends();
+    if (button.dataset.tab === 'stickers') loadStickers();
+    if (button.dataset.tab === 'groups') loadGroups();
+  };
+});
 
-  $('neuro').innerHTML = s.neuro.hormones.map((h) =>
-    '<div><div class="row"><span>' + esc(h.label) + '</span><span>' + Math.round(h.value * 100) + '</span></div>' +
-    '<div class="bar"><i style="width:' + Math.round(h.value * 100) + '%"></i></div></div>'
-  ).join('')
-
-  $('slots').innerHTML = s.workspace.slots.length
-    ? s.workspace.slots.map((slot) =>
-        '<div><div class="row"><span>' + esc(slot.title) + '</span><span class="muted">' + esc(slot.kind) + '</span></div>' +
-        '<div class="muted">sal ' + slot.salience + ' · act ' + slot.activation + (slot.written ? ' · 已落库' : ' · 未落库') + '</div></div>'
-      ).join('')
-    : '<div class="muted">空</div>'
-  $('theta').textContent = 'Θ = ' + s.threshold.value + ' · 容量 ' + s.workspace.capacity + ' · 静默 ' + s.clock.silenceMin + ' 分钟'
-
-  $('innerLog').innerHTML = (s.inner || []).slice(-8).reverse().map((item) =>
-    '<div class="inner"><div class="muted">' + esc(item.kind) + ' · ' + esc(item.source || '') + '</div>' + esc(item.thought) + '</div>'
-  ).join('') || '<div class="muted">还没有</div>'
-
-  $('memory').innerHTML = (s.memory.recent || []).slice(0, 8).map((m) =>
-    '<div><div class="row"><span>' + esc(m.title) + '</span><span class="muted">' + esc(m.tier) + ' · R ' + m.r + '</span></div>' +
-    (m.narrative ? '<div class="muted">' + esc(m.narrative) + '</div>' : '') + '</div>'
-  ).join('')
-
-  if (document.activeElement !== $('baseURL')) $('baseURL').value = s.llmConfig.baseURL || ''
-  if (document.activeElement !== $('model')) $('model').value = s.llmConfig.model || ''
-  $('apiKey').placeholder = s.llmConfig.hasKey ? s.llmConfig.keyMask + '（留空 = 不变）' : '留空 = 不变'
-  $('allowGroups').value = (s.snow.allowGroups || []).join(',')
-  $('allowSend').checked = !!s.snow.sendEnabled
-  $('allowPrivate').checked = !!s.snow.allowPrivate
-
-  const prof = s.llmConfig.profiles || []
-  if (!$('profiles').dataset.built) {
-    $('profiles').innerHTML = prof.map((p) =>
-      '<div class="stack" data-logic="' + p.name + '" style="border-top:1px dashed var(--line);padding-top:6px">' +
-      '<div class="row"><strong>' + p.name + '</strong><span class="chip ' + (p.active ? 'on' : '') + '">' + esc(p.source) + '</span></div>' +
-      '<label class="field"><span>baseURL</span><input data-k="baseURL" placeholder="继承默认" /></label>' +
-      '<label class="field"><span>model</span><input data-k="model" placeholder="继承默认" /></label>' +
-      '<label class="field"><span>apiKey</span><input data-k="apiKey" type="password" placeholder="继承默认" /></label>' +
-      '</div>'
-    ).join('')
-    $('profiles').dataset.built = '1'
-  }
-  for (const p of prof) {
-    const box = $('profiles').querySelector('[data-logic="' + p.name + '"]')
-    if (!box) continue
-    const b = box.querySelector('[data-k="baseURL"]')
-    const m = box.querySelector('[data-k="model"]')
-    if (document.activeElement !== b) b.value = p.baseURL || ''
-    if (document.activeElement !== m) m.value = p.model || ''
-    box.querySelector('[data-k="apiKey"]').placeholder = p.hasKey ? p.keyMask + '（留空 = 不变）' : '继承默认'
-  }
+let snap = null;
+function renderHeader(state) {
+  el('name').textContent = state.identity.name;
+  el('oneLine').textContent = state.identity.oneLine || '';
+  el('clock').textContent = state.clock.day + ' ' + state.clock.label;
+  const chips = [];
+  chips.push('<span class="chip">精力 ' + Math.round(state.neuro.energy) + '</span>');
+  chips.push('<span class="chip">皮质醇 ' + state.neuro.cortisol.toFixed(2) + '</span>');
+  if (state.llm && state.llm.enabled) chips.push('<span class="chip on">语言区 ' + esc(state.llm.model) + '</span>');
+  else chips.push('<span class="chip bad">语言区离线</span>');
+  if (state.llm && state.llm.lastError) chips.push('<span class="chip bad">语言区降级</span>');
+  if (state.vision) chips.push('<span class="chip">视觉 ' + esc(state.vision.model) + '</span>');
+  el('chips').innerHTML = chips.join('');
+}
+function renderBrain(state) {
+  const n = state.neuro;
+  el('neuro').innerHTML = [
+    ['精力', Math.round(n.energy) + '%'],
+    ['皮质醇', n.cortisol.toFixed(2)],
+    ['多巴胺', n.dopamine.toFixed(2)],
+    ['催产素', n.oxytocin.toFixed(2)],
+    ['血清素', n.serotonin.toFixed(2)],
+    ['心境', n.mood],
+  ].map((pair) => '<div class="stat"><span class="muted">' + pair[0] + '</span><span>' + esc(pair[1]) + '</span></div>').join('');
+  el('threshold').textContent = '阈值 ' + Number(state.threshold || 0).toFixed(2);
+  const slots = state.workspace.slots || [];
+  el('slots').innerHTML = slots.length
+    ? slots.map((slot) => '<div class="item"><span class="grow">' + esc(slot.title || slot.content || '') + '</span><span class="muted">' + Number(slot.salience || 0).toFixed(2) + '</span></div>').join('')
+    : '<div class="muted">工作空间是空的</div>';
+  const inner = (state.inner || []).slice(-8).reverse();
+  el('inner').innerHTML = inner.length
+    ? inner.map((item) => '<div class="item"><span class="grow">' + esc(item.thought || '') + '</span><span class="muted">' + esc(item.kind || '') + '</span></div>').join('')
+    : '<div class="muted">还没有独白</div>';
+  const stats = state.memory.stats || {};
+  el('memStats').textContent = '共 ' + (stats.total || 0) + ' · 显意识 ' + (stats.conscious || 0) + ' · 潜意识 ' + (stats.subconscious || 0);
+  const rows = (state.memory.recent || []).slice(0, 12);
+  el('memory').innerHTML = rows.length
+    ? rows.map((row) => '<div class="item"><span class="grow">' + esc(row.title || '') + '</span><span class="muted">' + esc(row.tier || '') + '</span></div>').join('')
+    : '<div class="muted">还没有记忆</div>';
+  const facts = state.facts || [];
+  el('facts').innerHTML = facts.length
+    ? facts.map((fact) => '<div class="item"><span class="grow">' + esc(fact.text) + '</span><span class="muted">' + Math.round((fact.confidence || 0) * 100) + '%</span></div>').join('')
+    : '<div class="muted">还没有归纳出事实</div>';
 }
 
 async function refresh() {
-  try { render(await req('/state')) } catch (e) { $('identity').textContent = '读取失败：' + e.message }
+  try {
+    const state = await api('/state');
+    snap = state;
+    renderHeader(state);
+    renderBrain(state);
+    fillSettings(state);
+  } catch (error) {
+    toast('读取失败：' + error.message);
+  }
 }
 
-$('send').onclick = async () => {
-  const text = $('msg').value.trim()
-  if (!text) return
-  $('msg').value = ''
-  const thread = $('thread')
-  thread.insertAdjacentHTML('beforeend', '<div style="text-align:right"><span class="bubble me">' + esc(text) + '</span></div>')
-  $('send').disabled = true
+function fillSettings(state) {
+  const form = {
+    baseURL: (state.llmConfig && state.llmConfig.baseURL) || '',
+    model: (state.llm && state.llm.model) || '',
+    visionModel: (state.vision && state.vision.model) || '',
+    visionMax: (state.vision && state.vision.maxPerHour) || 20,
+    httpBase: (state.snow && state.snow.httpBase) || '',
+    wsUrl: (state.snow && state.snow.wsUrl) || '',
+    allowGroups: ((state.snow && state.snow.allowGroups) || []).join(','),
+  };
+  for (const key of Object.keys(form)) {
+    const node = el(key);
+    if (node && !node.dataset.dirty) node.value = form[key];
+  }
+  el('visionEnabled').checked = !!(state.vision && state.vision.enabled);
+  el('sendEnabled').checked = !!(state.snow && state.snow.sendEnabled);
+  el('recallEnabled').checked = !!(state.snow && state.snow.recallEnabled);
+  el('stickersEnabled').checked = !state.snow || state.snow.stickers !== false;
+  if (!el('memoryStrength').dataset.dirty && state.tuning) {
+    el('memoryStrength').value = state.tuning.memoryStrength;
+    el('talkativeness').value = state.tuning.talkativeness;
+    labels();
+  }
+}
+
+function labels() {
+  const memory = Number(el('memoryStrength').value);
+  const days = 60 * Math.pow(10, (memory - 1) * 4);
+  el('memLabel').textContent = memory >= 0.995
+    ? '拉满'
+    : days < 1 / 24
+      ? '半衰期约 ' + Math.round(days * 1440) + ' 分钟'
+      : days < 1
+        ? '半衰期约 ' + Math.round(days * 24) + ' 小时'
+        : '半衰期约 ' + days.toFixed(1) + ' 天';
+  const talk = Number(el('talkativeness').value);
+  el('talkLabel').textContent = talk >= 0.995
+    ? '拉满'
+    : '冷却 ' + Math.round((1 - talk) * 30) + ' 秒，一次约 ' + Math.max(1, Math.round(3 * (0.35 + 0.65 * talk))) + ' 句';
+}
+el('memoryStrength').oninput = () => { el('memoryStrength').dataset.dirty = '1'; labels(); };
+el('talkativeness').oninput = () => { el('talkativeness').dataset.dirty = '1'; labels(); };
+['baseURL', 'model', 'visionModel', 'visionMax', 'httpBase', 'wsUrl', 'allowGroups', 'apiKey', 'httpToken', 'wsToken'].forEach((id) => {
+  el(id).addEventListener('input', () => { el(id).dataset.dirty = '1'; });
+});
+
+el('save').onclick = async () => {
+  el('saveNote').textContent = '保存中…';
   try {
-    const data = await req('/talk', { method: 'POST', body: JSON.stringify({ text }) })
-    const r = data.result
-    if (!r.ignited) {
-      thread.insertAdjacentHTML('beforeend', '<div class="muted">没进意识：' + esc(r.reason) + '（sal ' + r.salience + ' < Θ ' + r.theta + '）</div>')
-    } else {
-      for (const step of r.motor || []) {
-        await new Promise((res) => setTimeout(res, Math.max(80, step.delayMs)))
-        thread.insertAdjacentHTML('beforeend', '<div><span class="bubble">' + esc(step.text) + '</span></div>')
-      }
-      if (!(r.motor || []).length) thread.insertAdjacentHTML('beforeend', '<div class="muted">（' + esc(r.dual.action_route) + '：压住不发）</div>')
-      if ($('inner').checked) thread.insertAdjacentHTML('beforeend', '<div class="inner">' + esc(r.dual.inner_monologue) + '</div>')
-      $('talkMeta').textContent = r.dual.action_route + ' · PE ' + r.pe + ' · sal ' + r.salience + ' · 预算 ' + r.budget.maxChars + ' 字 · ' + (r.dual.meta.source || 'local')
+    const body = {
+      llm: { baseURL: el('baseURL').value, model: el('model').value },
+      vision: { model: el('visionModel').value, maxPerHour: Number(el('visionMax').value), enabled: el('visionEnabled').checked },
+      snowluma: {
+        httpBase: el('httpBase').value,
+        wsUrl: el('wsUrl').value,
+        allowGroups: el('allowGroups').value.split(/[\\s,，]+/).filter(Boolean),
+        sendEnabled: el('sendEnabled').checked,
+        recallEnabled: el('recallEnabled').checked,
+        stickers: el('stickersEnabled').checked,
+      },
+      tuning: { memoryStrength: Number(el('memoryStrength').value), talkativeness: Number(el('talkativeness').value) },
+    };
+    if (el('apiKey').value) body.llm.apiKey = el('apiKey').value;
+    if (el('httpToken').value) body.snowluma.httpToken = el('httpToken').value;
+    if (el('wsToken').value) body.snowluma.wsToken = el('wsToken').value;
+    await post('/settings', body);
+    document.querySelectorAll('[data-dirty]').forEach((node) => { delete node.dataset.dirty; });
+    el('apiKey').value = '';
+    el('httpToken').value = '';
+    el('wsToken').value = '';
+    el('saveNote').textContent = '已保存';
+    toast('已保存');
+    refresh();
+  } catch (error) {
+    el('saveNote').textContent = '保存失败：' + error.message;
+  }
+};
+el('visionTest').onclick = async () => {
+  el('saveNote').textContent = '测试视觉中…';
+  try {
+    const data = await post('/vision/test', {});
+    el('saveNote').textContent = '可用：' + data.text + '（' + data.ms + 'ms）';
+  } catch (error) {
+    el('saveNote').textContent = '测试失败：' + error.message;
+  }
+};
+
+el('talkSend').onclick = async () => {
+  const text = el('talkText').value.trim();
+  if (!text) return;
+  el('talkText').value = '';
+  const log = el('talkLog');
+  log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">我：' + esc(text) + '</span></div>');
+  try {
+    const data = await api('/talk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: text, entityId: 'owner' }) });
+    const bubbles = (data.result && data.result.dual && data.result.dual.bubbles) || [];
+    const who = (data.identity && data.identity.name) || '比宝';
+    log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">' + esc(who) + '：' + esc(bubbles.join(' / ') || '（沉默）') + '</span></div>');
+    refresh();
+  } catch (error) {
+    log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">失败：' + esc(error.message) + '</span></div>');
+  }
+};
+el('talkText').addEventListener('keydown', (event) => { if (event.key === 'Enter') el('talkSend').click(); });
+
+async function loadGroups() {
+  try {
+    const data = await api('/group/state');
+    const groups = (data.group && data.group.groups) || [];
+    el('groups').innerHTML = groups.map((group) => {
+      const layer = group.layer || 'muted';
+      const buttons = ['foveal', 'peripheral', 'muted'].map((key) =>
+        '<button class="btn" data-group="' + esc(group.id) + '" data-layer="' + key + '"' + (layer === key ? ' style="border-color:var(--brand)"' : '') + '>' +
+        (key === 'foveal' ? '焦点' : key === 'peripheral' ? '余光' : '免打扰') + '</button>').join('');
+      return '<div class="item"><span class="grow">' + esc(group.name) + ' <span class="muted">' + (group.memberCount || 0) + ' 人</span></span>' + buttons + '</div>';
+    }).join('') || '<div class="muted">还没有群</div>';
+    el('groups').querySelectorAll('button[data-group]').forEach((button) => {
+      button.onclick = async () => {
+        await post('/group/layer', { groupId: button.dataset.group, layer: button.dataset.layer });
+        loadGroups();
+      };
+    });
+    const log = (data.group && data.group.log) || [];
+    el('groupLog').innerHTML = log.slice(-12).reverse().map((entry) =>
+      '<div class="item"><span class="grow">' + esc(entry.text || entry.reason || entry.kind) + '</span><span class="muted">' + esc(entry.kind) + '</span></div>').join('') || '<div class="muted">还没有日志</div>';
+  } catch (error) {
+    toast('群聊读取失败：' + error.message);
+  }
+}
+
+async function loadFriends() {
+  try {
+    const data = await api('/friends');
+    const friends = data.friends || [];
+    el('friendCount').textContent = '共 ' + friends.length + ' 人';
+    el('friends').innerHTML = friends.map((friend) =>
+      '<div class="item" style="flex-direction:column;align-items:stretch">' +
+        '<div class="row"><strong>' + esc(friend.name) + '</strong><span class="muted">聊过 ' + friend.interactions + ' 次</span></div>' +
+        '<label class="field">好感 <span>' + friend.intimacy + '</span><input type="range" min="-50" max="100" value="' + friend.intimacy + '" data-friend="' + esc(friend.id) + '" data-field="intimacy" /></label>' +
+        '<label class="field">信任 <span>' + friend.trust + '</span><input type="range" min="0" max="100" value="' + friend.trust + '" data-friend="' + esc(friend.id) + '" data-field="trust" /></label>' +
+        '<label class="field">敬畏 <span>' + friend.powerFear + '</span><input type="range" min="0" max="100" value="' + friend.powerFear + '" data-friend="' + esc(friend.id) + '" data-field="powerFear" /></label>' +
+        '<input type="text" value="' + esc(friend.impression) + '" placeholder="她对这个人的印象" data-friend="' + esc(friend.id) + '" data-field="impression" />' +
+        '<div class="row"><button class="btn primary" data-save="' + esc(friend.id) + '">保存这个人</button></div>' +
+      '</div>').join('') || '<div class="muted">还没有好友。有人私聊过她就会出现在这里。</div>';
+    el('friends').querySelectorAll('button[data-save]').forEach((button) => {
+      button.onclick = async () => {
+        const id = button.dataset.save;
+        const body = { id: id };
+        el('friends').querySelectorAll('[data-friend="' + id + '"]').forEach((node) => {
+          body[node.dataset.field] = node.dataset.field === 'impression' ? node.value : Number(node.value);
+        });
+        try {
+          await post('/friends', body);
+          toast('已保存');
+          loadFriends();
+        } catch (error) {
+          toast('保存失败：' + error.message);
+        }
+      };
+    });
+  } catch (error) {
+    toast('好友读取失败：' + error.message);
+  }
+}
+
+async function loadStickers() {
+  try {
+    const data = await api('/stickers');
+    const items = data.items || [];
+    el('stickerStats').textContent = '共 ' + ((data.stats && data.stats.count) || 0) + ' 张';
+    el('stickerGrid').innerHTML = items.slice().reverse().map((item) =>
+      '<div class="sticker"><img src="/api/bibao/stickers/file?id=' + encodeURIComponent(item.id) + '&token=' + encodeURIComponent(token) + '" alt="" />' +
+      '<div class="gist">' + esc(item.gist) + '</div>' +
+      '<div class="row"><span class="chip">' + esc(item.mood || '日常') + '</span><span class="muted">用 ' + (item.uses || 0) + ' 次</span></div>' +
+      '<div class="row"><button class="btn" data-send="' + esc(item.id) + '">发一张</button><button class="btn" data-del="' + esc(item.id) + '">删掉</button></div></div>').join('') ||
+      '<div class="muted">还没有收藏</div>';
+    el('stickerGrid').querySelectorAll('[data-del]').forEach((button) => {
+      button.onclick = async () => { await post('/stickers', { remove: button.dataset.del }); loadStickers(); };
+    });
+    el('stickerGrid').querySelectorAll('[data-send]').forEach((button) => {
+      button.onclick = async () => {
+        try { await post('/stickers', { send: button.dataset.send }); toast('发出去了'); }
+        catch (error) { toast('发送失败：' + error.message); }
+      };
+    });
+  } catch (error) {
+    toast('表情包读取失败：' + error.message);
+  }
+}
+
+el('stickerImport').onclick = () => el('stickerFile').click();
+el('stickerFile').onchange = async (event) => {
+  const files = Array.from(event.target.files || []).slice(0, 10);
+  event.target.value = '';
+  for (const file of files) {
+    try {
+      const dataUrl = await shrink(file, 320);
+      await post('/stickers/import', { dataUrl: dataUrl });
+    } catch (error) {
+      toast('导入失败：' + error.message);
     }
-    thread.scrollTop = thread.scrollHeight
-    render(data.snapshot)
-  } catch (e) {
-    thread.insertAdjacentHTML('beforeend', '<div class="bad">' + esc(e.message) + '</div>')
-  } finally {
-    $('send').disabled = false
   }
-}
-$('msg').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('send').click() })
+  toast('导入完成');
+  loadStickers();
+};
 
-$('save').onclick = async () => {
-  $('saveState').textContent = '保存中…'
-  const llm = { baseURL: $('baseURL').value, model: $('model').value, profiles: {} }
-  if ($('apiKey').value) llm.apiKey = $('apiKey').value
-  for (const box of $('profiles').querySelectorAll('[data-logic]')) {
-    const entry = { enabled: true }
-    const b = box.querySelector('[data-k="baseURL"]').value
-    const m = box.querySelector('[data-k="model"]').value
-    const k = box.querySelector('[data-k="apiKey"]').value
-    if (b) entry.baseURL = b
-    if (m) entry.model = m
-    if (k) entry.apiKey = k
-    llm.profiles[box.dataset.logic] = entry
-  }
-  try {
-    const data = await req('/settings', {
-      method: 'POST',
-      body: JSON.stringify({
-        llm,
-        snowluma: {
-          sendEnabled: $('allowSend').checked,
-          allowPrivate: $('allowPrivate').checked,
-          allowGroups: $('allowGroups').value.split(/[\\s,，]+/).filter(Boolean),
-        },
-      }),
-    })
-    $('saveState').textContent = '已保存（' + new Date().toLocaleTimeString() + '）'
-    $('apiKey').value = ''
-    for (const k of $('profiles').querySelectorAll('[data-k="apiKey"]')) k.value = ''
-    render(data.snapshot)
-  } catch (e) { $('saveState').textContent = '保存失败：' + e.message }
+function shrink(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('读取失败'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('不是图片'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
-$('sendTest').onclick = async () => {
-  $('gateOut').textContent = '发送中…'
-  try {
-    const data = await req('/snowluma/test', { method: 'POST', body: JSON.stringify({ text: '在 我上线了' }) })
-    $('gateOut').textContent = '已发送到群 ' + data.groupId + '（message_id ' + data.messageId + '）'
-  } catch (e) { $('gateOut').textContent = '发送失败：' + e.message }
-}
-
-$('gate').onclick = async () => {
-  $('gateOut').textContent = '推演中…'
-  try {
-    const data = await req('/sandbox/run', { method: 'POST', body: '{}' })
-    $('gateOut').innerHTML = data.gate.results.map((r) =>
-      '<div>' + (r.passed ? '✅' : '❌') + ' ' + esc(r.id) + ' ' + esc(r.name) + '</div>'
-    ).join('') + '<div class="muted">' + data.gate.passed + '/' + data.gate.total + ' · ' + (data.gate.phase2Unlocked ? 'Phase 2 可挂载' : 'Phase 2 锁死') + '</div>'
-  } catch (e) { $('gateOut').textContent = e.message }
-}
-
-refresh()
-setInterval(refresh, 4000)
+refresh();
+setInterval(refresh, 6000);
 </script>
 </body>
 </html>`
