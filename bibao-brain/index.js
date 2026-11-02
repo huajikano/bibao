@@ -1661,6 +1661,7 @@ export function apply(ctx, config = {}) {
         } catch {
           parsed = null
         }
+        // 模型是相对"整张截图"给坐标的，所以乘屏幕尺寸
         const cards = (Array.isArray(parsed?.cards) ? parsed.cards : [])
           .map((card, index) => ({
             slot: index,

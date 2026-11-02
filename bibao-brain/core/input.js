@@ -43,6 +43,17 @@ export class InputAgent {
     }
   }
 
+  /** 找到标题匹配的可见窗口，取面积最大的那个。 */
+  async rect(match = 'TFT') {
+    const data = await this.request('/windows')
+    const list = Array.isArray(data.list) ? data.list : []
+    const hits = list.filter((item) => item.visible && String(item.title).includes(match))
+    if (!hits.length) return null
+    hits.sort((a, b) => b.w * b.hgt - a.w * a.hgt)
+    const win = hits[0]
+    return { x: win.x, y: win.y, w: win.w, h: win.hgt, title: win.title }
+  }
+
   async focus(match) {
     return this.request('/focus', {
       method: 'POST',
