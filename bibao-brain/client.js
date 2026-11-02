@@ -3749,12 +3749,51 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async importFiles(event) {
+        const files = Array.from(event.target.files ?? []).slice(0, 10)
+        event.target.value = ''
+        if (!files.length) return
+        this.setState({ busy: true, note: `导入 0/${files.length}…` })
+        let done = 0
+        let failed = 0
+        for (const file of files) {
+          try {
+            const dataUrl = await shrinkImage(file, 320)
+            const res = await request('/stickers/import', { method: 'POST', body: JSON.stringify({ dataUrl, name: file.name }) })
+            if (res?.item) done += 1
+            else failed += 1
+          } catch {
+            failed += 1
+          }
+          this.setState({ note: `导入 ${done + failed}/${files.length}…` })
+        }
+        this.setState({ busy: false, note: `导入完成：成功 ${done} 张${failed ? `，失败 ${failed} 张` : ''}` })
+        await this.load()
+      }
+
       render() {
         const { items, stats, note, busy } = this.state
         return h(
           Card,
           { title: '表情包收藏', hint: `共 ${stats.count} 张 · 用过 ${stats.used} 张` },
           note ? h('div', { className: 'bb-chip good' }, note) : null,
+          h(
+            'div',
+            { className: 'bb-actions' },
+            h(
+              'label',
+              { className: 'bb-btn primary bb-btn--tiny', style: { cursor: 'pointer' } },
+              '导入表情包',
+              h('input', {
+                type: 'file',
+                accept: 'image/*',
+                multiple: true,
+                style: { display: 'none' },
+                onChange: (event) => this.importFiles(event),
+              }),
+            ),
+            h('span', { className: 'bb-muted' }, '一次最多 10 张，自动让视觉模型写梗概和情绪'),
+          ),
           items.length
             ? h(
                 'div',

@@ -1445,6 +1445,48 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/stickers/import',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!stickers || !vision) return fail('视觉或收藏夹不可用', 400)
+        const body = await readBody(request)
+        const dataUrl = String(body.dataUrl ?? '')
+        if (!/^data:image\/(png|jpeg|jpg|gif|webp);base64,/i.test(dataUrl)) return fail('需要图片的 dataURL', 400)
+        if (dataUrl.length > 4 * 1024 * 1024) return fail('图片太大（>3MB）', 413)
+        try {
+          let probe = null
+          try {
+            probe = await vision.describe(dataUrl, {
+              prompt:
+                '只输出 JSON：{"kind":"sticker 或 photo","gist":"这张图在表达什么，20 字内","mood":"笑|无语|安慰|生气|可爱|日常","text":"图上的字，最多10字"}',
+              maxTokens: 400,
+            })
+          } catch {
+            probe = await vision.describe(dataUrl)
+          }
+          let info = null
+          try {
+            const raw = String(probe.text ?? '')
+            info = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+          } catch {
+            info = null
+          }
+          const gist = info?.gist ? String(info.gist).slice(0, 30) : String(probe?.text ?? '').slice(0, 30)
+          const saved = await stickers.add({
+            buffer: probe.buffer,
+            type: probe.type,
+            gist,
+            mood: String(info?.mood ?? '日常').slice(0, 4),
+            text: String(info?.text ?? ''),
+          })
+          return json({ ok: true, item: saved, gist, mood: info?.mood ?? '日常' })
+        } catch (error) {
+          return fail(`导入失败：${String(error?.message ?? error).slice(0, 80)}`, 500)
+        }
+      },
+    },
+    {
       path: '/stickers/file',
       methods: ['GET'],
       handler: async (request) => {
