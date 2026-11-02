@@ -196,19 +196,25 @@ export class SnowlumaBridge {
     }
   }
 
-  async sendPrivate(userId, text) {
+  async sendPrivate(userId, text, imageFile = '') {
+    const message = []
+    if (text) message.push({ type: 'text', data: { text } })
+    if (imageFile) message.push({ type: 'image', data: { file: imageFile } })
     const data = await this.call('send_private_msg', {
       user_id: Number(userId) || userId,
-      message: [{ type: 'text', data: { text } }],
+      message,
     })
     this.stats.sent += 1
     return data?.data?.message_id ?? data?.message_id ?? null
   }
 
-  async sendGroup(groupId, text) {
+  async sendGroup(groupId, text, imageFile = '') {
+    const message = []
+    if (text) message.push({ type: 'text', data: { text } })
+    if (imageFile) message.push({ type: 'image', data: { file: imageFile } })
     const data = await this.call('send_group_msg', {
       group_id: Number(groupId) || groupId,
-      message: [{ type: 'text', data: { text } }],
+      message,
     })
     this.stats.sent += 1
     return data?.data?.message_id ?? data?.message_id ?? null

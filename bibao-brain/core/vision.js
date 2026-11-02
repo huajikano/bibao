@@ -16,14 +16,17 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
   const endpoint = () => `${String(baseURL ?? '').replace(/\/+$/, '')}/chat/completions`
 
   async function fetchImage(url) {
-    if (String(url).startsWith('data:')) return String(url)
+    if (String(url).startsWith('data:')) {
+      const [head, body] = String(url).split(',')
+      return { dataUrl: String(url), buffer: Buffer.from(body, 'base64'), type: (head.match(/data:([^;]+)/) ?? [])[1] ?? 'image/png' }
+    }
     const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
     if (!res.ok) throw new Error(`图片下载失败 ${res.status}`)
     const type = res.headers.get('content-type') ?? 'image/jpeg'
     const buffer = Buffer.from(await res.arrayBuffer())
     if (buffer.length > MAX_BYTES) throw new Error('图片太大')
     if (!/^image\//.test(type)) throw new Error(`不是图片：${type}`)
-    return `data:${type};base64,${buffer.toString('base64')}`
+    return { dataUrl: `data:${type};base64,${buffer.toString('base64')}`, buffer, type }
   }
 
   return {
@@ -33,11 +36,12 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
     },
     async describe(url, { prompt = '用第一人称记下你看到的画面：谁、在哪、在做什么、有什么显眼的东西。60 字以内，只描述看到的，不要评价。', maxTokens = 200 } = {}) {
       if (!this.enabled) throw new Error('视觉模型没配置')
-      const dataUrl = await fetchImage(url)
+      const fetched = await fetchImage(url)
+      const dataUrl = fetched.dataUrl
       const hash = createHash('sha1').update(dataUrl).digest('hex').slice(0, 16)
       if (cache.has(hash)) {
         stats.cached += 1
-        return { text: cache.get(hash), cached: true }
+        return { text: cache.get(hash), cached: true, buffer: fetched.buffer, type: fetched.type }
       }
       stats.calls += 1
       try {
@@ -66,7 +70,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
         cache.set(hash, clean)
         if (cache.size > 200) cache.delete(cache.keys().next().value)
         stats.last = { text: clean, at: Date.now(), hash }
-        return { text: clean, cached: false }
+        return { text: clean, cached: false, buffer: fetched.buffer, type: fetched.type }
       } catch (error) {
         stats.failed += 1
         throw error

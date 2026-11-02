@@ -23,6 +23,7 @@ import { SnowlumaBridge } from './core/snowluma.js'
 import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
+import { StickerBook } from './core/stickers.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
 
@@ -92,6 +93,7 @@ export function apply(ctx, config = {}) {
   let personaDraft = null
   let personaDraftId = ''
   let vision = null
+  let stickers = null
   let visionHour = { hour: -1, count: 0 }
   let funnel = null
   let gate = null
@@ -326,6 +328,7 @@ export function apply(ctx, config = {}) {
       }
       brain.llms = llms
       brain.applyTuning(settings.tuning)
+      stickers = stickers || new StickerBook(path.join(dataDir, 'stickers'))
       vision = createVision({
         baseURL: settings.llm.baseURL,
         apiKey: settings.llm.apiKey,
@@ -515,6 +518,20 @@ export function apply(ctx, config = {}) {
     })
 
     const transfer = result.dual?.action_route === 'TRANSFER_PRIVATE_GOSSIP'
+    // 发完文字后，有一定概率补一张表情包（按当下情绪挑一张收藏的）
+    const maybeSticker = async (to) => {
+      if (!stickers || settings.snowluma.stickers === false) return
+      if (Math.random() > 0.22) return
+      try {
+        const item = await stickers.pick(stickerMood())
+        if (!item) return
+        const id = groupId ? await snow.bridge.sendGroup(groupId, '', item.file) : await snow.bridge.sendPrivate(to, '', item.file)
+        await appendSnowLog({ at: Date.now(), kind: 'sticker-out', groupId: groupId ?? '', target: to ?? '', gist: item.gist, messageId: id })
+      } catch (error) {
+        await appendSnowLog({ at: Date.now(), kind: 'sticker-error', message: String(error?.message ?? error).slice(0, 120) })
+      }
+    }
+
     if (transfer) {
       funnel.stats.transfers += 1
       funnel.record({
@@ -779,6 +796,10 @@ export function apply(ctx, config = {}) {
       const id = await send(step.text, targetId)
       if (firstId === null) firstId = id
     }
+    if ((result.motor ?? []).length) {
+      await wait(900)
+      await maybeSticker(targetId)
+    }
     if (result.dual?.trigger_regret_recall && firstId && settings.snowluma.recallEnabled === true) {
       await wait(3800)
       try {
@@ -870,6 +891,14 @@ export function apply(ctx, config = {}) {
     void appendSnowLog({ at: Date.now(), kind: 'flush-scheduled', key, delay })
   }
 
+  function stickerMood() {
+    if (!brain) return '日常'
+    if (brain.state.cortisol > 0.62) return '生气'
+    if (brain.state.moodValence > 0.35) return '笑'
+    if (brain.state.energy < 30) return '无语'
+    return '日常'
+  }
+
   /** 让"她"看一眼这张图：只写进感知，不产生回复。 */
   async function perceiveImage(message) {
     if (!settings.vision.enabled || !message.images?.length) return
@@ -880,11 +909,37 @@ export function apply(ctx, config = {}) {
     const url = message.images[0]
     try {
       visionHour.count += 1
-      const result = await vision.describe(url)
-      const line = `${message.senderName ?? '群里有人'}发来一张图：${result.text}`
+      let probe = null
+      try {
+        probe = await vision.describe(url, {
+          prompt:
+            '只输出 JSON：{"kind":"sticker 或 photo","gist":"这张图在表达什么，20 字内","mood":"笑|无语|安慰|生气|可爱|日常","text":"图上的字，最多10字"}',
+          maxTokens: 400,
+        })
+      } catch {
+        // 模型没给 JSON 也不要紧：退回纯描述，当作普通图片
+        probe = await vision.describe(url)
+      }
+      let info = null
+      try {
+        const raw = String(probe.text ?? '')
+        info = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
+      } catch {
+        info = null
+      }
+      const gist = info?.gist ? String(info.gist).slice(0, 30) : String(probe?.text ?? '看不清').slice(0, 40)
+      if (info?.kind === 'sticker' && probe.buffer) {
+        const saved = await stickers
+          .add({ buffer: probe.buffer, type: probe.type, gist, mood: String(info.mood ?? '日常').slice(0, 4), text: String(info.text ?? '') })
+          .catch(() => null)
+        if (saved && !saved.dup) {
+          funnel.record({ kind: 'sticker', group: funnel.get(message.groupId)?.name ?? '', text: gist })
+        }
+      }
+      const line = `${message.senderName ?? '群里有人'}发来一张图：${gist}`
       brain.perceiveSense({ channel: 'vision', text: line, intensity: 0.6 })
       funnel.record({ kind: 'vision', group: funnel.get(message.groupId)?.name ?? '', text: line.slice(0, 60) })
-      await appendSnowLog({ kind: 'vision', at: Date.now(), cached: result.cached, text: result.text.slice(0, 120) })
+      await appendSnowLog({ kind: 'vision', at: Date.now(), cached: probe.cached, text: gist.slice(0, 120) })
     } catch (error) {
       await appendSnowLog({ kind: 'vision-error', at: Date.now(), message: String(error?.message ?? error).slice(0, 120) })
     }
@@ -1362,6 +1417,23 @@ export function apply(ctx, config = {}) {
       },
     },
 
+    {
+      path: '/stickers',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (!stickers) return json({ items: [], stats: { count: 0, used: 0 } })
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          if (body.remove) await stickers.remove(String(body.remove))
+          else if (body.use) {
+            const item = await stickers.pick(String(body.mood ?? stickerMood()))
+            return json({ picked: item })
+          }
+        }
+        return json({ items: await stickers.load(), stats: await stickers.stats() })
+      },
+    },
     {
       path: '/friends',
       methods: ['GET', 'POST'],
