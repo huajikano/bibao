@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
 import { anchorsFor, anchorsFromWindows } from './core/layout.js'
 import { planPlacements, planPickups } from './core/board.js'
+import { pickItemFor } from './core/items.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
@@ -1787,6 +1788,67 @@ export function apply(ctx, config = {}) {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
         })
+      },
+    },
+    {
+      path: '/game/equip',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!settings.game.control) return fail('手还没解锁', 403)
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动', 503)
+        const body = await readBody(request)
+        const layout = settings.game.layout ?? {}
+        const itemSlots = Array.isArray(body.items) ? body.items : []
+        const recommended = Array.isArray(body.recommended) ? body.recommended : []
+        const pick = pickItemFor({ items: itemSlots.map((item) => ({ name: item?.name ?? '' })), recommended })
+        if (!pick) return json({ ok: false, reason: '没有装备' })
+        const from = layout.items?.[pick.slot]
+        const to = layout.board?.[Number(body.row ?? 1)]?.[Number(body.col ?? 3)]
+        if (!from || !to) return fail('还没校准装备栏或棋盘', 400)
+        await inputAgent.focus(settings.game.window ?? 'TFT').catch(() => null)
+        await wait(150)
+        await inputAgent.drag(from[0], from[1], to[0], to[1], 220)
+        await appendSnowLog({ at: Date.now(), kind: 'auto-equip', item: pick.name, row: body.row, col: body.col, reason: pick.reason }).catch(() => {})
+        return json({ ok: true, equipped: pick.name, reason: pick.reason })
+      },
+    },
+    {
+      path: '/game/recommend',
+      methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        if (!vision) return fail('视觉模型没配置', 400)
+        if (!inputAgent) inputAgent = new InputAgent()
+        if (!(await inputAgent.ping())) return fail('手还没启动', 503)
+        const body = await readBody(request)
+        const row = Math.max(0, Math.min(3, Number(body.row ?? 1)))
+        const col = Math.max(0, Math.min(6, Number(body.col ?? 3)))
+        const cell = settings.game.layout?.board?.[row]?.[col]
+        if (!cell) return fail('还没校准棋盘（调用 /game/calibrate）', 400)
+        await inputAgent.focus(settings.game.window ?? 'TFT').catch(() => null)
+        await wait(200)
+        // 右键：弹推荐装备
+        await inputAgent.click(cell[0], cell[1], 'r')
+        await wait(700)
+        const file = path.join(dataDir, 'screens', `rec-${Date.now()}.jpg`)
+        await mkdir(path.dirname(file), { recursive: true })
+        await inputAgent.shot(file, { maxWidth: 1024, format: 'jpeg' })
+        const base64 = (await readFile(file)).toString('base64')
+        const seen = await vision.describe(`data:image/jpeg;base64,${base64}`, {
+          prompt: '这个弹窗里推荐的装备是哪几个？只输出装备名字，用逗号分隔，最多三个，不要解释，没有就说 无。',
+          maxTokens: 120,
+        })
+        // 关掉弹窗
+        await inputAgent.key('{ESC}')
+        await wait(200)
+        const names = String(seen.text ?? '')
+          .split(/[，,\n、]/)
+          .map((item) => item.replace(/[。.!！?？\s]/g, '').trim())
+          .filter((item) => item && item !== '无')
+          .slice(0, 3)
+        return json({ ok: true, row, col, recommended: names, file })
       },
     },
     {
