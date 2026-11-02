@@ -253,7 +253,7 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
         gatePhase2: true    # false = 忽略验脑闸门（不建议）
         snowluma:
           enabled: false    # 默认不连、不发
-          configDir: ''     # 留空自动找；也可用 SNOWLUMA_CONFIG_DIR
+          configDir: ''     # 留空自动找；也可填安装根目录或 config 目录，或用 SNOWLUMA_CONFIG_DIR
           allowGroups: []   # 默认谁都不理；装好后填自己的群
 ```
 

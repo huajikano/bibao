@@ -583,6 +583,7 @@ export function apply(ctx, config = {}) {
         selfName: snow.selfName,
         httpBase: settings.snowluma.httpBase || snow.cfg?.httpBase || '',
         wsUrl: snow.cfg?.mode === 'reverse' ? snow.cfg.wsUrl : settings.snowluma.wsUrl || snow.cfg?.wsUrl || '',
+        configDir: settings.snowluma.configDir || '',
         mode: snow.cfg?.mode ?? 'client',
         hasHttpToken: Boolean(settings.snowluma.httpToken || snow.cfg?.httpToken),
         hasWsToken: Boolean(settings.snowluma.wsToken || snow.cfg?.wsToken),
@@ -775,31 +776,75 @@ export function apply(ctx, config = {}) {
   }
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-  /** 不把作者本机路径写死：环境变量 → 显式配置 → 常见相对位置。 */
+  /**
+   * 不把作者本机路径写死。
+   * 显式配置可以是 snowluma 安装根目录，也可以直接是 config 目录；
+   * 其余候选覆盖插件 cwd、cwd 的父级、家目录、DSH 家目录，以及常见的大小写目录名。
+   */
   function snowConfigCandidates() {
     const home = os.homedir()
     const cwd = process.cwd()
-    return [
-      settings.snowluma.configDir,
-      process.env.SNOWLUMA_CONFIG_DIR,
-      path.join(cwd, 'snowluma', 'config'),
-      path.join(path.dirname(cwd), 'snowluma', 'config'),
-      path.join(home, 'snowluma', 'config'),
-      path.join(home, '.snowluma', 'config'),
-      path.join(process.env.DSH_HOME || path.join(home, '.dsh'), 'snowluma', 'config'),
-    ]
-      .filter(Boolean)
-      .map((item) => path.resolve(String(item)))
-      .filter((item, index, list) => list.indexOf(item) === index)
+    const dshHome = process.env.DSH_HOME || path.join(home, '.dsh')
+    const seeds = []
+    const add = (value) => {
+      if (value) seeds.push(String(value))
+    }
+    add(settings.snowluma.configDir)
+    add(process.env.SNOWLUMA_CONFIG_DIR)
+    for (const base of [cwd, path.dirname(cwd), path.dirname(path.dirname(cwd)), home, path.dirname(home), dshHome, path.dirname(dshHome)]) {
+      for (const name of ['snowluma', 'SnowLuma', 'snowLuma']) {
+        add(path.join(base, name))
+        add(path.join(base, name, 'config'))
+      }
+    }
+    add(path.join(home, '.snowluma'))
+    add(path.join(home, '.snowluma', 'config'))
+
+    const expanded = []
+    for (const seed of seeds) {
+      const resolved = path.resolve(seed)
+      expanded.push(resolved, path.join(resolved, 'config'), path.join(resolved, 'snowluma', 'config'))
+    }
+    return expanded.filter((item, index, list) => list.indexOf(item) === index).slice(0, 80)
+  }
+
+  let snowConfigDirCache = ''
+
+  async function hasOneBot(dir) {
+    try {
+      const files = await readdir(dir)
+      return files.some((name) => /^onebot_.*\.json$/.test(name))
+    } catch {
+      return false
+    }
   }
 
   async function resolveSnowConfigDir() {
+    if (snowConfigDirCache && (await hasOneBot(snowConfigDirCache))) return snowConfigDirCache
     for (const dir of snowConfigCandidates()) {
+      if (await hasOneBot(dir)) {
+        snowConfigDirCache = dir
+        return dir
+      }
+    }
+    // 最后再浅扫一层盘符：D:\XiangMu\snowluma、C:\Tools\SnowLuma 这类任意安装位置
+    const roots = [...new Set([path.parse(process.cwd()).root, path.parse(os.homedir()).root, 'C:\\', 'D:\\', 'E:\\'])]
+    for (const root of roots) {
+      let entries = []
       try {
-        const files = await readdir(dir)
-        if (files.some((name) => /^onebot_.*\.json$/.test(name))) return dir
+        entries = await readdir(root, { withFileTypes: true })
       } catch {
-        /* 换下一个候选 */
+        continue
+      }
+      for (const entry of entries.slice(0, 300)) {
+        if (!entry.isDirectory()) continue
+        for (const name of ['snowluma', 'SnowLuma', 'snowLuma']) {
+          const dir = path.join(root, entry.name, name, 'config')
+          if (await hasOneBot(dir)) {
+            snowConfigDirCache = dir
+            return dir
+          }
+        }
       }
     }
     return ''
@@ -2878,9 +2923,10 @@ export function apply(ctx, config = {}) {
           for (const key of ['allowPrivate', 'pokeReact', 'pokeReply', 'pokeAnyGroup', 'pokeBack', 'recallEnabled', 'stickers']) {
             if (typeof body.snowluma[key] === 'boolean') settings.snowluma[key] = body.snowluma[key]
           }
-          for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId']) {
+          for (const key of ['httpBase', 'httpToken', 'wsUrl', 'wsToken', 'selfId', 'configDir']) {
             if (typeof body.snowluma[key] === 'string') settings.snowluma[key] = body.snowluma[key].trim()
           }
+          if (typeof body.snowluma.configDir === 'string') snowConfigDirCache = ''
           if (Number.isFinite(Number(body.snowluma.maxReplyChars))) {
             settings.snowluma.maxReplyChars = Math.max(10, Math.min(200, Number(body.snowluma.maxReplyChars)))
           }

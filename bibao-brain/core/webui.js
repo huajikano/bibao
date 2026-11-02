@@ -161,6 +161,7 @@ input[type=range] { width:100%; accent-color:var(--brand); }
     <div class="card">
       <h2>snowluma</h2>
       <div class="grid">
+        <label class="field">snowluma 目录<input type="text" id="configDir" placeholder="留空自动探测；也可填安装根目录/config" /></label>
         <label class="field">HTTP<input type="text" id="httpBase" /></label>
         <label class="field">HTTP token<input type="password" id="httpToken" placeholder="留空不变" /></label>
         <label class="field">WS<input type="text" id="wsUrl" /></label>
@@ -301,6 +302,7 @@ function fillSettings(state) {
     visionModel: (state.vision && state.vision.model) || '',
     visionMax: (state.vision && state.vision.maxPerHour) || 20,
     httpBase: (state.snow && state.snow.httpBase) || '',
+    configDir: (state.snow && state.snow.configDir) || '',
     wsUrl: (state.snow && state.snow.wsUrl) || '',
     allowGroups: ((state.snow && state.snow.allowGroups) || []).join(','),
   };
@@ -339,7 +341,7 @@ function labels() {
 }
 el('memoryStrength').oninput = () => { el('memoryStrength').dataset.dirty = '1'; labels(); };
 el('talkativeness').oninput = () => { el('talkativeness').dataset.dirty = '1'; labels(); };
-['baseURL', 'model', 'visionModel', 'visionMax', 'httpBase', 'wsUrl', 'allowGroups', 'apiKey', 'httpToken', 'wsToken'].forEach((id) => {
+['baseURL', 'model', 'visionModel', 'visionMax', 'httpBase', 'configDir', 'wsUrl', 'allowGroups', 'apiKey', 'httpToken', 'wsToken'].forEach((id) => {
   el(id).addEventListener('input', () => { el(id).dataset.dirty = '1'; });
 });
 
@@ -351,6 +353,7 @@ el('save').onclick = async () => {
       vision: { model: el('visionModel').value, maxPerHour: Number(el('visionMax').value), enabled: el('visionEnabled').checked },
       snowluma: {
         httpBase: el('httpBase').value,
+        configDir: el('configDir').value,
         wsUrl: el('wsUrl').value,
         allowGroups: el('allowGroups').value.split(/[\\s,，]+/).filter(Boolean),
         sendEnabled: el('sendEnabled').checked,

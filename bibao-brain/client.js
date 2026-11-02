@@ -2279,6 +2279,7 @@ window.__ModuleLoader__.load({
             apiKey: '',
             profiles: {},
             httpBase: '',
+            configDir: '',
             httpToken: '',
             wsUrl: '',
             wsToken: '',
@@ -2333,6 +2334,7 @@ window.__ModuleLoader__.load({
             model: cfg.model ?? '',
             profiles,
             httpBase: snow.httpBase || prev.form.httpBase,
+            configDir: snow.configDir || prev.form.configDir || '',
             wsUrl: snow.wsUrl || prev.form.wsUrl,
             allowGroups: (snow.allowGroups ?? []).join(','),
             allowPrivate: Boolean(snow.allowPrivate),
@@ -2409,6 +2411,7 @@ window.__ModuleLoader__.load({
           recallEnabled: form.recallEnabled === true,
           stickers: form.stickers !== false,
           httpBase: form.httpBase,
+          configDir: form.configDir,
           wsUrl: form.wsUrl,
         }
         if (form.httpToken) snowluma.httpToken = form.httpToken
@@ -2571,7 +2574,8 @@ window.__ModuleLoader__.load({
                 'section',
                 { className: 'bb-card' },
                 h('div', { className: 'bb-cardTitle' }, 'snowluma OneBot 连接'),
-                h(Field, { label: 'HTTP' }, h('input', { className: 'bb-input', value: form.httpBase, placeholder: 'http://127.0.0.1:3000', onChange: (e) => this.set({ httpBase: e.target.value }) })),
+                h(Field, { label: 'snowluma 目录' }, h('input', { className: 'bb-input', value: form.configDir, placeholder: '留空 = 自动探测；也可填安装根目录/config', onChange: (e) => this.set({ configDir: e.target.value }) })),
+            h(Field, { label: 'HTTP' }, h('input', { className: 'bb-input', value: form.httpBase, placeholder: 'http://127.0.0.1:3000', onChange: (e) => this.set({ httpBase: e.target.value }) })),
                 h(Field, { label: 'HTTP token' }, h('input', { className: 'bb-input', type: 'password', value: form.httpToken, placeholder: snow.hasHttpToken ? '已有 token（留空不变）' : 'HTTP accessToken', onChange: (e) => this.set({ httpToken: e.target.value }) })),
                 h(Field, { label: 'WS' }, h('input', { className: 'bb-input', value: form.wsUrl, placeholder: 'ws://127.0.0.1:3001/', onChange: (e) => this.set({ wsUrl: e.target.value }) })),
                 h(Field, { label: 'WS token' }, h('input', { className: 'bb-input', type: 'password', value: form.wsToken, placeholder: snow.hasWsToken ? '已有 token（留空不变）' : 'WS accessToken', onChange: (e) => this.set({ wsToken: e.target.value }) })),
@@ -2832,6 +2836,7 @@ window.__ModuleLoader__.load({
             apiKey: '',
             profiles,
             httpBase: snow.httpBase || '',
+            configDir: snow.configDir || '',
             httpToken: '',
             wsUrl: snow.wsUrl || '',
             wsToken: '',
@@ -3145,6 +3150,7 @@ window.__ModuleLoader__.load({
           recallEnabled: form.recallEnabled === true,
           stickers: form.stickers !== false,
           httpBase: form.httpBase,
+          configDir: form.configDir,
           wsUrl: form.wsUrl,
         }
         if (form.httpToken) snowluma.httpToken = form.httpToken
@@ -3654,6 +3660,7 @@ window.__ModuleLoader__.load({
           h(
             Card,
             { title: 'snowluma', hint: 'OneBot HTTP 发送 + WS 收事件' },
+            h(Field, { label: 'snowluma 目录' }, h('input', { className: 'bb-input', value: form.configDir, placeholder: '留空 = 自动探测；也可填安装根目录/config', onChange: (e) => this.setField({ configDir: e.target.value }) })),
             h(Field, { label: 'HTTP' }, h('input', { className: 'bb-input', value: form.httpBase, placeholder: 'http://127.0.0.1:3000', onChange: (e) => this.setField({ httpBase: e.target.value }) })),
             h(Field, { label: 'HTTP token' }, h('input', { className: 'bb-input', type: 'password', value: form.httpToken, placeholder: '留空 = 沿用已保存的', onChange: (e) => this.setField({ httpToken: e.target.value }) })),
             h(Field, { label: 'WS' }, h('input', { className: 'bb-input', value: form.wsUrl, placeholder: 'ws://127.0.0.1:3001/', onChange: (e) => this.setField({ wsUrl: e.target.value }) })),

@@ -61,6 +61,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.4` | snowluma 目录不再要求固定路径：环境变量/设置字段/常见目录/盘符浅扫自动找；找不到时给出可操作提示 |
 | [`v0.8.3`](https://github.com/huajikano/bibao/releases/tag/v0.8.3) | 清理补丁/测试里的本机路径、QQ 号、群号；snowluma 配置目录改为自动探测 |
 | [`v0.8.2`](https://github.com/huajikano/bibao/releases/tag/v0.8.2) | 戳一戳回戳（只一下）、好友面板改为互动 10 条自动进入并由她管理、显示 QQ 账号小字 |
 | [`v0.8.1`](https://github.com/huajikano/bibao/releases/tag/v0.8.1) | 反向 WS 服务端（snowluma wsClient 直连 8080/ws）、任意群戳一戳回复、表情包描述可编辑 |
