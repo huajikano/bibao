@@ -229,9 +229,20 @@ export function apply(ctx, config = {}) {
 
   /** 用一份传记重新出生：/reset 与 /biography 共用同一条路径。 */
   function friendList() {
-    return brain.social
-      .snapshot()
-      .filter((row) => (row.interactions ?? 0) >= 10)
+    const rows = brain.social.snapshot().filter((row) => (row.interactions ?? 0) >= 10)
+    // 旧存档里可能聊够了但 friend 标记还是 false；面板读取时补上，让她自己"记住"这个人
+    for (const row of rows) {
+      const relation = brain.social.get(row.id)
+      if (relation && !relation.friend) {
+        relation.friend = true
+        relation.friendSource = relation.friendSource ?? 'self'
+        relation.friendAt = relation.friendAt ?? Date.now()
+        row.friend = true
+        row.friendSource = relation.friendSource
+        row.friendAt = relation.friendAt
+      }
+    }
+    return rows
       .sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0) || b.intimacy - a.intimacy)
       .map((row) => ({
         id: row.id,
@@ -2704,7 +2715,9 @@ export function apply(ctx, config = {}) {
           schedulePersist(200)
           return json({ ok: true, friends: friendList() })
         }
-        return json({ friends: friendList() })
+        const friends = friendList()
+        schedulePersist(500)
+        return json({ friends })
       },
     },
     {
