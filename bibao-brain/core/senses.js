@@ -12,6 +12,7 @@ export const SENSE_CHANNELS = [
   { key: 'smell', label: '嗅觉', glyph: '鼻', modality: '闻', hint: '气味传感器 → 气味标签（硬件尚未接入）' },
   { key: 'system', label: '本体感觉', glyph: '机', modality: '用电脑', hint: '进程 / 窗口 / 电量 / 网络 → 体感描述' },
   { key: 'browser', label: '数字视觉', glyph: '网', modality: '用浏览器', hint: '标签页 / 页面正文 → 阅读摘要' },
+  { key: 'touch', label: '触觉', glyph: '戳', modality: '被戳', hint: 'QQ 戳一戳：有人隔着屏幕碰了她一下' },
   { key: 'interoception', label: '内感受', glyph: '心', modality: '内感受', hint: '精力 / 皮质醇 / 心跳 → 内部体感' },
 ]
 
@@ -72,4 +73,5 @@ export const SENSE_REACTIONS = {
   system: ['电脑又开始风扇狂转', '开了一堆窗口，脑子也跟着乱', '电量不多了，得省着点用'],
   browser: ['页面上的字一眼扫过去没进脑子', '又点开了一个不该点的标签', '这东西看多了会烦'],
   interoception: ['心口有点闷', '身体比嘴先承认累了', '能感觉到自己绷着'],
+  touch: ['突然被戳了一下，肩膀下意识缩了缩', '这一下戳得有点突然', '又来？我还没准备好被碰'],
 }

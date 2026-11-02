@@ -1664,6 +1664,8 @@ window.__ModuleLoader__.load({
           snowluma: {
             sendEnabled: form.sendEnabled,
           recallEnabled: form.recallEnabled === true,
+          pokeReact: form.pokeReact !== false,
+          pokeBack: form.pokeBack === true,
             allowGroups: form.allowGroups
               .split(/[\s,，]+/)
               .map((item) => item.trim())
@@ -2245,6 +2247,8 @@ window.__ModuleLoader__.load({
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
+            pokeReact: snow.pokeReact !== false,
+            pokeBack: snow.pokeBack === true,
             tuning: { ...(snap.tuning ?? { memoryStrength: 1, talkativeness: 1 }) },
           },
         }))
@@ -2469,6 +2473,8 @@ window.__ModuleLoader__.load({
                 h(Field, { label: 'WS' }, h('input', { className: 'bb-input', value: form.wsUrl, placeholder: 'ws://127.0.0.1:3001/', onChange: (e) => this.set({ wsUrl: e.target.value }) })),
                 h(Field, { label: 'WS token' }, h('input', { className: 'bb-input', type: 'password', value: form.wsToken, placeholder: snow.hasWsToken ? '已有 token（留空不变）' : 'WS accessToken', onChange: (e) => this.set({ wsToken: e.target.value }) })),
                 h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.recallEnabled === true, onChange: (event) => this.setField({ recallEnabled: event.target.checked }) }), '允许冲动撤回（她偶尔会撤回刚发的那句）'),
+            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReact !== false, onChange: (event) => this.setField({ pokeReact: event.target.checked }) }), '被戳一戳时会有感觉（触觉通道）'),
+            h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '允许她偶尔戳回去（默认关，避免无限互戳）'),
             h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '576268399', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
                 h('div', { className: 'bb-inline bb-inline--wrap' },
                   h('label', { className: 'bb-check' },
@@ -2728,6 +2734,8 @@ window.__ModuleLoader__.load({
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
+            pokeReact: snow.pokeReact !== false,
+            pokeBack: snow.pokeBack === true,
             tuning: {
               memoryStrength: Number(snap.tuning?.memoryStrength ?? 1),
               talkativeness: Number(snap.tuning?.talkativeness ?? 1),

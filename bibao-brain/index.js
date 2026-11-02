@@ -63,6 +63,9 @@ const DEFAULTS = {
     // 只在这个群测试；白名单为空 = 谁也不理
     allowGroups: ['576268399'],
     allowPrivate: false,
+    // 戳一戳：会有感觉，但不自动戳回去
+    pokeReact: true,
+    pokeBack: false,
   },
 }
 
@@ -95,6 +98,8 @@ export function apply(ctx, config = {}) {
   let vision = null
   let stickers = null
   let visionHour = { hour: -1, count: 0 }
+  const pokeSeen = new Set()
+  const pokeCooldown = new Map()
   let funnel = null
   let gate = null
   let loading = null
@@ -452,6 +457,10 @@ export function apply(ctx, config = {}) {
       snow: {
         enabled: settings.snowluma.enabled,
         sendEnabled: settings.snowluma.sendEnabled,
+        recallEnabled: Boolean(settings.snowluma.recallEnabled),
+        stickers: settings.snowluma.stickers !== false,
+        pokeReact: settings.snowluma.pokeReact !== false,
+        pokeBack: settings.snowluma.pokeBack === true,
         connected: snow.connected,
         reason: snow.reason,
         selfId: snow.cfg?.selfId ?? '',
@@ -921,6 +930,51 @@ export function apply(ctx, config = {}) {
     return '日常'
   }
 
+  /** 戳一戳：把"有人碰了她一下"变成一次触觉感知。 */
+  async function perceivePoke(event) {
+    if (!settings.snowluma.pokeReact) return
+    const selfId = String(snow.cfg?.selfId ?? '')
+    const userId = String(event.user_id ?? '')
+    const targetId = String(event.target_id ?? '')
+    if (!userId || userId === selfId) return
+    const groupId = String(event.group_id ?? '')
+    if (groupId && !(settings.snowluma.allowGroups ?? []).map(String).includes(groupId)) return
+
+    const key = `poke:${event.time ?? 0}:${userId}:${targetId}`
+    if (pokeSeen.has(key)) return
+    pokeSeen.add(key)
+    if (pokeSeen.size > 300) pokeSeen.delete(pokeSeen.values().next().value)
+
+    const cooldownKey = groupId || 'private'
+    const now = Date.now()
+    if ((pokeCooldown.get(cooldownKey) ?? 0) > now) return
+    pokeCooldown.set(cooldownKey, now + 5000)
+
+    const relation = brain.social.ensure(userId, String(event.sender_name ?? userId))
+    const targetsSelf = targetId === selfId
+    if (targetsSelf) {
+      brain.social.adjust(userId, { intimacy: 0.6 })
+      const line = `${relation.name}戳了你一下`
+      brain.perceiveSense({ channel: 'touch', text: line, intensity: 0.55 })
+      funnel.record({ kind: 'poke', group: funnel.get(groupId)?.name ?? '', text: line })
+      await appendSnowLog({ at: now, kind: 'poke-in', groupId, userId, target: targetId })
+      // 极少数情况下回戳一下（默认关闭）
+      if (settings.snowluma.pokeBack && snow.bridge && Math.random() < 0.15) {
+        try {
+          await snow.bridge.call('send_poke', { group_id: Number(groupId) || undefined, user_id: Number(userId) })
+          await appendSnowLog({ at: Date.now(), kind: 'poke-out', groupId, userId })
+        } catch (error) {
+          await appendSnowLog({ at: Date.now(), kind: 'poke-error', message: String(error?.message ?? error).slice(0, 120) })
+        }
+      }
+      return
+    }
+    // 别人互戳：只有焦点群才当背景感知
+    if ((funnel.get(groupId)?.layer ?? 'muted') === 'foveal') {
+      brain.perceiveSense({ channel: 'touch', text: `群里有人戳了${targetId}一下`, intensity: 0.25 })
+    }
+  }
+
   /** 让"她"看一眼这张图：只写进感知，不产生回复。 */
   async function perceiveImage(message) {
     if (!settings.vision.enabled || !message.images?.length) return
@@ -969,6 +1023,13 @@ export function apply(ctx, config = {}) {
 
   async function handleSnowEvent(event) {
     if (!snow.cfg) return
+    // 戳一戳是 notice，不是 message，先在这里接住
+    if (event?.post_type === 'notice' && event?.notice_type === 'notify' && event?.sub_type === 'poke') {
+      if (snow.bridge) snow.bridge.stats.messages += 1
+      await appendSnowLog({ kind: 'poke', at: Date.now(), userId: event.user_id, target: event.target_id, groupId: event.group_id })
+      await perceivePoke(event)
+      return
+    }
     const message = SnowlumaBridge.normalize(event, snow.cfg.selfId)
     if (!message) return
     if (snow.bridge) snow.bridge.stats.messages += 1
@@ -1291,6 +1352,8 @@ export function apply(ctx, config = {}) {
                 sendEnabled: settings.snowluma.sendEnabled,
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
+                pokeReact: settings.snowluma.pokeReact,
+                pokeBack: settings.snowluma.pokeBack,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
@@ -1748,6 +1811,8 @@ export function apply(ctx, config = {}) {
                 sendEnabled: settings.snowluma.sendEnabled,
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
+                pokeReact: settings.snowluma.pokeReact,
+                pokeBack: settings.snowluma.pokeBack,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
@@ -1807,6 +1872,19 @@ export function apply(ctx, config = {}) {
         if (message.images.length && (message.atMe || funnel.get(groupId)?.layer === 'foveal')) {
           void perceiveImage(message)
         }
+        if (body.poke) {
+          await handleSnowEvent({
+            post_type: 'notice',
+            notice_type: 'notify',
+            sub_type: 'poke',
+            time: Math.floor(Date.now() / 1000),
+            self_id: Number(snow.cfg?.selfId ?? 0),
+            group_id: Number(groupId),
+            user_id: Number(body.senderId ?? 10003),
+            target_id: Number(snow.cfg?.selfId ?? 0),
+          })
+          return json({ ok: true, poke: true, phase2: funnel.snapshot() })
+        }
         const decision = funnel.ingest(message, { now: Date.now(), energy: brain.state.energy })
         const outcome = await snowFlush(`${groupId}:${message.senderId}`, { dry: !wantSend })
         return json({ decision, outcome, send: wantSend, receivedBody: body, phase2: funnel.snapshot() })
@@ -1861,6 +1939,8 @@ export function apply(ctx, config = {}) {
                 sendEnabled: settings.snowluma.sendEnabled,
                 allowGroups: settings.snowluma.allowGroups,
                 allowPrivate: settings.snowluma.allowPrivate,
+                pokeReact: settings.snowluma.pokeReact,
+                pokeBack: settings.snowluma.pokeBack,
                 httpBase: settings.snowluma.httpBase,
                 httpToken: settings.snowluma.httpToken,
                 wsUrl: settings.snowluma.wsUrl,
