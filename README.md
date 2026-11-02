@@ -61,7 +61,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.8.1` | 反向 WS 服务端（snowluma wsClient 直连 8080/ws）、任意群戳一戳回复、表情包描述可编辑 |
+| [`v0.8.1`](https://github.com/huajikano/bibao/releases/tag/v0.8.1) | 反向 WS 服务端（snowluma wsClient 直连 8080/ws）、任意群戳一戳回复、表情包描述可编辑 |
 | [`v0.8.0`](https://github.com/huajikano/bibao/releases/tag/v0.8.0) | 对话线程、默认关闭的主动分享、QQ 盲评样本；修表情包导入、戳一戳回复、WS 配置保存与重连 |
 | [`v0.7.0`](https://github.com/huajikano/bibao/releases/tag/v0.7.0) | 人格一致提示词、自我复盘/元认知、她自己的生活流、模糊记忆、多脑机接口适配层；修 QQ 表情包发送崩溃 |
 | [`v0.0.3`](https://github.com/huajikano/bibao/releases/tag/v0.0.3) | SQLite 持久层、夜间事实归纳、词法向量检索、时间校准（附 `bibao.tgz`） |
