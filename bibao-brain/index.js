@@ -24,6 +24,7 @@ import { createDirectLlm } from './core/openai.js'
 import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
+import { TftAdapter, MotorModel } from './core/bci.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
 
@@ -97,6 +98,8 @@ export function apply(ctx, config = {}) {
   let personaDraftId = ''
   let vision = null
   let stickers = null
+  const tft = new TftAdapter()
+  const motor = new MotorModel()
   let visionHour = { hour: -1, count: 0 }
   const pokeSeen = new Set()
   const pokeCooldown = new Map()
@@ -602,6 +605,10 @@ export function apply(ctx, config = {}) {
     const focusGroup = funnel.get(message.groupId)
     if (message.images?.length && (message.atMe || focusGroup?.layer === 'foveal')) {
       void perceiveImage(message)
+    }
+    if (brain.attention.distracted && !message.atMe) {
+      funnel.record({ kind: 'skip', group: funnel.get(message.groupId)?.name ?? '', text: message.text, reason: '在打游戏，没看手机' })
+      return
     }
     const decision = funnel.ingest(message, { now: Date.now(), energy: brain.state.energy })
     funnel.tick(Date.now())
@@ -1624,6 +1631,32 @@ export function apply(ctx, config = {}) {
         return new Response(bytes, {
           status: 200,
           headers: { 'content-type': item.ext === 'gif' ? 'image/gif' : item.ext === 'jpg' ? 'image/jpeg' : 'image/png', 'cache-control': 'max-age=86400' },
+        })
+      },
+    },
+    {
+      path: '/bci/game',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          const state = tft.ingest(body)
+          const load = Number(body.load ?? (state.phase === 'combat' ? 0.25 : 0.75))
+          brain.attention.set(load)
+          if (body.event) {
+            // 游戏里发生的事，作为一条体感进来（不产生回复）
+            brain.perceiveSense({ channel: 'system', text: `打游戏：${String(body.event).slice(0, 40)}`, intensity: 0.5 })
+          }
+          return json({ ok: true, game: state, attention: brain.attention.snapshot() })
+        }
+        return json({
+          game: tft.snapshot(),
+          attention: brain.attention.snapshot(),
+          motor: {
+            reactionMs: Math.round(motor.reactionMs({ energy: brain.state.energy })),
+            mistake: Number(motor.mistakeChance({ cortisol: brain.state.cortisol }).toFixed(2)),
+          },
         })
       },
     },

@@ -52,6 +52,7 @@ import { generateDualTrack, extractJson } from './prefrontal.js'
 import { bootstrapLife } from './life.js'
 import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
 import { HabitMemory } from './learn.js'
+import { AttentionPool } from './bci.js'
 import { decideHesitation } from './hesitate.js'
 import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
@@ -122,6 +123,7 @@ export class BibaoBrain {
     this.lastFactError = ''
     this.lastFactCount = 0
     this.habits = new HabitMemory()
+    this.attention = new AttentionPool()
     // 被戳醒之后的一段时间里不再算「睡着」
     this.awakeUntil = 0
     this.senses = new SensoryCortex()
@@ -1447,6 +1449,7 @@ export class BibaoBrain {
       senses: this.senses.snapshot(),
       factsDebug: { error: this.lastFactError, count: this.lastFactCount },
       tuning: { ...this.tuning },
+      attention: this.attention.snapshot(),
       stats: { ...this.stats },
       timeline: this.timeline.map((item) => ({
         index: item.index,
