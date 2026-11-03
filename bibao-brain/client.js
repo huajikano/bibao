@@ -4334,9 +4334,9 @@ class FriendsPanel extends React.Component {
         if (this.timer) clearInterval(this.timer)
       }
 
-      async load() {
-        // 手动编辑期间不要被 5 秒轮询覆盖
-        if (this.dirty) return
+      async load(force = false) {
+        // 手动编辑/保存期间不要被 5 秒轮询覆盖
+        if (!force && (this.dirty || this.state.busy)) return
         try {
           const data = await request('/friends')
           if (!this.alive) return
@@ -4377,7 +4377,7 @@ class FriendsPanel extends React.Component {
             }),
           })
           this.setState({ busy: false, note: `已更新 ${row.name}` })
-          await this.load()
+          await this.load(true)
         } catch (error) {
           this.dirty = true
           this.setState({ busy: false, error: error.message })
