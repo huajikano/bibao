@@ -62,7 +62,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.8.8` | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |
+| [`v0.8.8`](https://github.com/huajikano/bibao/releases/tag/v0.8.8) | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |
 | [`v0.8.7`](https://github.com/huajikano/bibao/releases/tag/v0.8.7) | 用量面板参考 CC Switch：本次会话、缓存读/写、命中率、平均延迟、按模块/模型/最近调用 |
 | [`v0.8.6`](https://github.com/huajikano/bibao/releases/tag/v0.8.6) | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |
 | [`v0.8.5`](https://github.com/huajikano/bibao/releases/tag/v0.8.5) | 戳一戳二选一：回戳一下或发一张表情包，不再发文字；表情包按情绪/上下文选并加冷却 |
