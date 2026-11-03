@@ -38,12 +38,16 @@ export function estimateMessages({ system = '', messages = [] } = {}) {
   return estimateTokens(parts.join('\n'))
 }
 
+function zeroBucket() {
+  return { calls: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, estimatedCalls: 0, latencyMs: 0 }
+}
+
 function emptyState() {
   return {
-    version: 1,
+    version: 2,
     createdAt: Date.now(),
-    total: { calls: 0, input: 0, output: 0, estimatedCalls: 0 },
-    today: { day: dayKey(Date.now()), calls: 0, input: 0, output: 0 },
+    total: zeroBucket(),
+    today: { day: dayKey(Date.now()), ...zeroBucket() },
     byLogic: {},
     byModel: {},
     days: [],
@@ -51,16 +55,21 @@ function emptyState() {
   }
 }
 
-function addInto(bucket, input, output) {
+function addInto(bucket, input, output, cacheRead, cacheCreation, latencyMs) {
   bucket.calls = (bucket.calls ?? 0) + 1
   bucket.input = (bucket.input ?? 0) + input
   bucket.output = (bucket.output ?? 0) + output
+  bucket.cacheRead = (bucket.cacheRead ?? 0) + cacheRead
+  bucket.cacheCreation = (bucket.cacheCreation ?? 0) + cacheCreation
+  bucket.latencyMs = (bucket.latencyMs ?? 0) + latencyMs
 }
 
 export class TokenMeter {
   constructor({ file = null, state = null } = {}) {
     this.file = file
     this.data = state ? this._normalize(state) : emptyState()
+    // 本次进程会话：不持久化，重启即重新开始
+    this.session = { startedAt: Date.now(), ...zeroBucket() }
     this.loaded = false
     this.saveTimer = null
     this.saving = null
@@ -96,7 +105,7 @@ export class TokenMeter {
     if (!this.data.today || this.data.today.day !== key) {
       if (this.data.today?.calls) this.data.days.push({ ...this.data.today })
       this.data.days = this.data.days.slice(-MAX_DAYS)
-      this.data.today = { day: key, calls: 0, input: 0, output: 0 }
+      this.data.today = { day: key, ...zeroBucket() }
     }
   }
 
@@ -108,11 +117,17 @@ export class TokenMeter {
     source = '',
     input = 0,
     output = 0,
+    cacheRead = 0,
+    cacheCreation = 0,
+    latencyMs = 0,
     estimated = false,
   } = {}) {
     this._ensureDay(at)
     const inTokens = Math.max(0, Math.round(Number(input) || 0))
     const outTokens = Math.max(0, Math.round(Number(output) || 0))
+    const readTokens = Math.max(0, Math.round(Number(cacheRead) || 0))
+    const createdTokens = Math.max(0, Math.round(Number(cacheCreation) || 0))
+    const latency = Math.max(0, Math.round(Number(latencyMs) || 0))
     const row = {
       at,
       logic: String(logic || 'unknown'),
@@ -121,22 +136,29 @@ export class TokenMeter {
       source: String(source || ''),
       input: inTokens,
       output: outTokens,
-      total: inTokens + outTokens,
+      cacheRead: readTokens,
+      cacheCreation: createdTokens,
+      latencyMs: latency,
+      total: inTokens + outTokens + readTokens + createdTokens,
       estimated: Boolean(estimated),
     }
     this.data.total.calls += 1
     this.data.total.input += inTokens
     this.data.total.output += outTokens
+    this.data.total.cacheRead += readTokens
+    this.data.total.cacheCreation += createdTokens
+    this.data.total.latencyMs += latency
     if (row.estimated) this.data.total.estimatedCalls += 1
-    addInto(this.data.today, inTokens, outTokens)
+    addInto(this.data.today, inTokens, outTokens, readTokens, createdTokens, latency)
     const logicKey = row.logic
-    if (!this.data.byLogic[logicKey]) this.data.byLogic[logicKey] = { calls: 0, input: 0, output: 0, estimatedCalls: 0 }
-    addInto(this.data.byLogic[logicKey], inTokens, outTokens)
+    if (!this.data.byLogic[logicKey]) this.data.byLogic[logicKey] = zeroBucket()
+    addInto(this.data.byLogic[logicKey], inTokens, outTokens, readTokens, createdTokens, latency)
     if (row.estimated) this.data.byLogic[logicKey].estimatedCalls += 1
     const modelKey = `${row.provider || 'unknown'}/${row.model || 'unknown'}`
-    if (!this.data.byModel[modelKey]) this.data.byModel[modelKey] = { calls: 0, input: 0, output: 0, estimatedCalls: 0 }
-    addInto(this.data.byModel[modelKey], inTokens, outTokens)
+    if (!this.data.byModel[modelKey]) this.data.byModel[modelKey] = zeroBucket()
+    addInto(this.data.byModel[modelKey], inTokens, outTokens, readTokens, createdTokens, latency)
     if (row.estimated) this.data.byModel[modelKey].estimatedCalls += 1
+    addInto(this.session, inTokens, outTokens, readTokens, createdTokens, latency)
     this.data.recent.push(row)
     this.data.recent = this.data.recent.slice(-MAX_RECENT)
     this.data.updatedAt = at
@@ -149,18 +171,25 @@ export class TokenMeter {
     const total = { ...this.data.total }
     const days = [...this.data.days]
     if (this.data.today.calls) days.push({ ...this.data.today })
+    const tokensOf = (row) =>
+      (row?.input ?? 0) + (row?.output ?? 0) + (row?.cacheRead ?? 0) + (row?.cacheCreation ?? 0)
+    const totalTokens = tokensOf(total)
+    const cacheBase = (total.input ?? 0) + (total.cacheRead ?? 0)
     return {
-      total,
-      today: { ...this.data.today },
+      total: { ...total, tokens: totalTokens },
+      today: { ...this.data.today, tokens: tokensOf(this.data.today) },
+      session: { ...this.session, tokens: tokensOf(this.session), uptimeSec: Math.max(0, Math.round((at - this.session.startedAt) / 1000)) },
       byLogic: Object.fromEntries(
-        Object.entries(this.data.byLogic).map(([key, row]) => [key, { ...row }]),
+        Object.entries(this.data.byLogic).map(([key, row]) => [key, { ...row, tokens: tokensOf(row) }]),
       ),
       byModel: Object.fromEntries(
-        Object.entries(this.data.byModel).map(([key, row]) => [key, { ...row }]),
+        Object.entries(this.data.byModel).map(([key, row]) => [key, { ...row, tokens: tokensOf(row) }]),
       ),
       days: days.slice(-14),
       recent: this.data.recent.slice(-20).reverse(),
       estimated: total.estimatedCalls > 0,
+      cacheHitRate: cacheBase ? Number(((total.cacheRead ?? 0) / cacheBase).toFixed(3)) : 0,
+      avgLatencyMs: total.calls ? Math.round((total.latencyMs ?? 0) / total.calls) : 0,
       updatedAt: this.data.updatedAt ?? null,
       range: { days: days.length, since: days[0]?.day ?? null },
     }
@@ -168,6 +197,7 @@ export class TokenMeter {
 
   reset() {
     this.data = emptyState()
+    this.session = { startedAt: Date.now(), ...zeroBucket() }
     this.scheduleSave()
     return this.snapshot()
   }
@@ -219,6 +249,7 @@ export function meterLlm(llm, { meter, logic, provider, model, source = 'dsh' } 
     ...llm,
     stream(options = {}) {
       const inputEstimate = estimateMessages(options)
+      const startedAt = Date.now()
       return (async function* measured() {
         let text = ''
         let usage = null
@@ -231,7 +262,18 @@ export function meterLlm(llm, { meter, logic, provider, model, source = 'dsh' } 
             yield chunk
           }
         } finally {
-          const input = Number(usage?.prompt_tokens ?? usage?.input_tokens ?? inputEstimate) || 0
+          const usageInput = usage?.prompt_tokens ?? usage?.input_tokens
+          const cacheRead =
+            Number(
+              usage?.cache_read_input_tokens ??
+                usage?.cache_read_tokens ??
+                usage?.prompt_tokens_details?.cached_tokens ??
+                usage?.input_tokens_details?.cached_tokens,
+            ) || 0
+          const cacheCreation = Number(usage?.cache_creation_input_tokens ?? usage?.cache_creation_tokens) || 0
+          let input = Number(usageInput ?? inputEstimate) || 0
+          // OpenAI 的 prompt_tokens 含缓存命中；Anthropic 的 input_tokens 不含
+          if (usage?.prompt_tokens != null && cacheRead) input = Math.max(0, input - cacheRead)
           const output = Number(usage?.completion_tokens ?? usage?.output_tokens ?? estimateTokens(text)) || 0
           meter.record({
             logic,
@@ -240,6 +282,9 @@ export function meterLlm(llm, { meter, logic, provider, model, source = 'dsh' } 
             source,
             input,
             output,
+            cacheRead,
+            cacheCreation,
+            latencyMs: Date.now() - startedAt,
             estimated: !usage,
           })
         }

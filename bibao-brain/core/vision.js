@@ -46,6 +46,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
         return { text: cache.get(hash), cached: true, buffer: fetched.buffer, type: fetched.type }
       }
       stats.calls += 1
+      const startedAt = Date.now()
       try {
         const res = await fetch(endpoint(), {
           method: 'POST',
@@ -71,11 +72,24 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
         if (!text) throw new Error(data?.error?.message ?? '模型没有返回内容')
         const clean = text.replace(/\s+/g, ' ').slice(0, 1600)
         const usage = data?.usage ?? null
+        const cacheRead =
+          Number(
+            usage?.cache_read_input_tokens ??
+              usage?.cache_read_tokens ??
+              usage?.prompt_tokens_details?.cached_tokens ??
+              usage?.input_tokens_details?.cached_tokens,
+          ) || 0
+        const cacheCreation = Number(usage?.cache_creation_input_tokens ?? usage?.cache_creation_tokens) || 0
+        let input = Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(prompt)
+        if (usage?.prompt_tokens != null && cacheRead) input = Math.max(0, input - cacheRead)
         try {
           onUsage?.({
             model,
-            input: Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(prompt),
+            input,
             output: Number(usage?.completion_tokens ?? usage?.output_tokens) || estimateTokens(clean),
+            cacheRead,
+            cacheCreation,
+            latencyMs: Date.now() - startedAt,
             estimated: !usage,
             raw: usage,
           })

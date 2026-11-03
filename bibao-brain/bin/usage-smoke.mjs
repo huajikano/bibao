@@ -52,6 +52,19 @@ for await (const _ of guessed.stream({ system: 'system', messages: [{ role: 'use
 snap = restored.snapshot()
 check('无 usage 时标记估算', snap.byLogic.memory?.estimatedCalls === 1 && snap.byLogic.memory?.input > 0, JSON.stringify(snap.byLogic.memory))
 
+const cacheMeter = new TokenMeter({})
+cacheMeter.record({ logic: 'vision', provider: 'p', model: 'm4', input: 10, output: 2, cacheRead: 50, cacheCreation: 5, latencyMs: 120 })
+const cacheSnap = cacheMeter.snapshot()
+check(
+  '缓存 / 会话 / 延迟',
+  cacheSnap.total.cacheRead === 50 &&
+    cacheSnap.total.cacheCreation === 5 &&
+    cacheSnap.session.tokens === 67 &&
+    cacheSnap.avgLatencyMs === 120 &&
+    cacheSnap.cacheHitRate > 0.8,
+  JSON.stringify({ total: cacheSnap.total, session: cacheSnap.session, avg: cacheSnap.avgLatencyMs }),
+)
+
 const cleared = restored.reset()
 check('清零', cleared.total.calls === 0 && Object.keys(cleared.byLogic).length === 0, JSON.stringify(cleared.total))
 

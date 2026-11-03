@@ -21,6 +21,7 @@ export async function chatCompletion({
   onUsage = null,
 }) {
   if (!baseURL || !apiKey || !model) throw new Error('缺少 baseURL / apiKey / model')
+  const startedAt = Date.now()
   const url = `${String(baseURL).replace(/\/+$/, '')}/chat/completions`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -63,10 +64,29 @@ export async function chatCompletion({
     if (!reply.trim()) reply = String(message.reasoning_content ?? message.reasoning ?? '')
     if (!reply.trim()) throw new Error('LLM 返回里既没有 content 也没有 reasoning')
     const usage = data?.usage ?? data?.choices?.[0]?.usage ?? null
-    const input = Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(`${system ?? ''}\n${user ?? ''}`)
+    const cacheRead =
+      Number(
+        usage?.cache_read_input_tokens ??
+          usage?.cache_read_tokens ??
+          usage?.prompt_tokens_details?.cached_tokens ??
+          usage?.input_tokens_details?.cached_tokens,
+      ) || 0
+    const cacheCreation = Number(usage?.cache_creation_input_tokens ?? usage?.cache_creation_tokens) || 0
+    let input = Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(`${system ?? ''}\n${user ?? ''}`)
+    if (usage?.prompt_tokens != null && cacheRead) input = Math.max(0, input - cacheRead)
     const output = Number(usage?.completion_tokens ?? usage?.output_tokens) || estimateTokens(reply)
     try {
-      onUsage?.({ model, input, output, total: input + output, estimated: !usage, raw: usage })
+      onUsage?.({
+        model,
+        input,
+        output,
+        cacheRead,
+        cacheCreation,
+        latencyMs: Date.now() - startedAt,
+        total: input + output + cacheRead + cacheCreation,
+        estimated: !usage,
+        raw: usage,
+      })
     } catch {
       /* 统计失败不影响回复 */
     }

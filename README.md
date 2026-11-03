@@ -34,7 +34,7 @@ node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享，41 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / LLM 钳制，33 项
-node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/持久化，8 项
+node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/缓存/会话/持久化，9 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
@@ -62,6 +62,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.7` | 用量面板参考 CC Switch：本次会话、缓存读/写、命中率、平均延迟、按模块/模型/最近调用 |
 | [`v0.8.6`](https://github.com/huajikano/bibao/releases/tag/v0.8.6) | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |
 | [`v0.8.5`](https://github.com/huajikano/bibao/releases/tag/v0.8.5) | 戳一戳二选一：回戳一下或发一张表情包，不再发文字；表情包按情绪/上下文选并加冷却 |
 | [`v0.8.4`](https://github.com/huajikano/bibao/releases/tag/v0.8.4) | snowluma 目录不再要求固定路径：环境变量/设置字段/常见目录/盘符浅扫自动找；找不到时给出可操作提示 |

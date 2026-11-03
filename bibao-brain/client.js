@@ -4526,30 +4526,69 @@ class FriendsPanel extends React.Component {
         }
         const total = data.total ?? {}
         const today = data.today ?? {}
+        const session = data.session ?? {}
         const byLogic = Object.entries(data.byLogic ?? {}).sort((a, b) => (b[1].calls ?? 0) - (a[1].calls ?? 0))
         const byModel = Object.entries(data.byModel ?? {}).sort((a, b) => (b[1].calls ?? 0) - (a[1].calls ?? 0))
         const days = data.days ?? []
-        const maxDay = Math.max(1, ...days.map((row) => (row.input ?? 0) + (row.output ?? 0)))
+        const tokensOf = (row) =>
+          (row?.input ?? 0) + (row?.output ?? 0) + (row?.cacheRead ?? 0) + (row?.cacheCreation ?? 0)
+        const fmt = (value) => Number(value || 0).toLocaleString('zh-CN')
+        const uptime = (seconds) => {
+          const totalSeconds = Math.max(0, Number(seconds) || 0)
+          const hours = Math.floor(totalSeconds / 3600)
+          const minutes = Math.floor((totalSeconds % 3600) / 60)
+          return hours ? `${hours}h ${minutes}m` : `${minutes}m`
+        }
+        const maxDay = Math.max(1, ...days.map(tokensOf))
         const recent = data.recent ?? []
         return h(
           'div',
           { className: 'bb-stack' },
           h(
             Card,
-            { title: 'Token 用量', hint: `${total.calls ?? 0} 次调用 · ${data.estimated ? '含估算' : '精确'}` },
+            { title: '本次会话', hint: `从 ${clockOf(session.startedAt)} 开始 · ${uptime(session.uptimeSec)}` },
             h(
               'div',
               { className: 'bb-grid' },
-              h(Stat, { label: '输入', value: String(total.input ?? 0) }),
-              h(Stat, { label: '输出', value: String(total.output ?? 0) }),
-              h(Stat, { label: '合计', value: String((total.input ?? 0) + (total.output ?? 0)), tone: 'good' }),
+              h(Stat, { label: '调用', value: fmt(session.calls) }),
+              h(Stat, { label: 'Tokens', value: fmt(session.tokens), tone: 'good' }),
+              h(Stat, { label: '平均延迟', value: session.calls ? `${Math.round((session.latencyMs ?? 0) / session.calls)}ms` : '—' }),
+              h(Stat, { label: '缓存读取', value: fmt(session.cacheRead) }),
             ),
             h(
               'div',
               { className: 'bb-inline bb-inline--wrap' },
-              h(Chip, { children: `今天 ${today.calls ?? 0} 次 · ${((today.input ?? 0) + (today.output ?? 0))} tokens` }),
+              h(Chip, { children: `输入 ${fmt(session.input)}` }),
+              h(Chip, { children: `输出 ${fmt(session.output)}` }),
+              h(Chip, { children: `缓存写 ${fmt(session.cacheCreation)}` }),
+              h(Chip, {
+                children: `缓存命中 ${Math.round(
+                  ((session.input ?? 0) + (session.cacheRead ?? 0)
+                    ? (session.cacheRead ?? 0) / ((session.input ?? 0) + (session.cacheRead ?? 0))
+                    : 0) * 100,
+                )}%`,
+              }),
+            ),
+          ),
+          h(
+            Card,
+            { title: '累计', hint: `${fmt(total.calls)} 次调用 · ${data.estimated ? '含估算' : '精确'}` },
+            h(
+              'div',
+              { className: 'bb-grid' },
+              h(Stat, { label: '输入', value: fmt(total.input) }),
+              h(Stat, { label: '输出', value: fmt(total.output) }),
+              h(Stat, { label: '缓存读', value: fmt(total.cacheRead) }),
+              h(Stat, { label: '合计', value: fmt(total.tokens ?? tokensOf(total)), tone: 'good' }),
+            ),
+            h(
+              'div',
+              { className: 'bb-inline bb-inline--wrap' },
+              h(Chip, { children: `今天 ${fmt(today.calls)} 次 · ${fmt(today.tokens ?? tokensOf(today))} tokens` }),
               h(Chip, { children: `${days.length} 天有记录` }),
-              data.estimated ? h(Chip, { children: `估算 ${total.estimatedCalls ?? 0} 次` }) : h(Chip, { children: '全部精确' }),
+              h(Chip, { children: `缓存命中 ${Math.round((data.cacheHitRate ?? 0) * 100)}%` }),
+              h(Chip, { children: `平均 ${data.avgLatencyMs ?? 0}ms` }),
+              data.estimated ? h(Chip, { children: `估算 ${fmt(total.estimatedCalls)} 次` }) : h(Chip, { children: '全部精确' }),
               h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: this.reset }, '清零'),
             ),
             error ? h('div', { className: 'bb-error' }, error) : null,
@@ -4566,9 +4605,9 @@ class FriendsPanel extends React.Component {
                       'div',
                       { className: 'bb-innerMeta' },
                       h('span', {}, LOGIC_LABEL[key] ?? key),
-                      h('span', {}, `${row.calls ?? 0} 次 · ${(row.input ?? 0) + (row.output ?? 0)} tokens`),
+                      h('span', {}, `${fmt(row.calls)} 次 · ${fmt(row.tokens ?? tokensOf(row))} tokens`),
                     ),
-                    h(Bar, { value: (row.input ?? 0) + (row.output ?? 0), max: Math.max(1, (total.input ?? 0) + (total.output ?? 0)) }),
+                    h(Bar, { value: row.tokens ?? tokensOf(row), max: Math.max(1, total.tokens ?? tokensOf(total)) }),
                   ),
                 )
               : h('div', { className: 'bb-muted' }, '还没有调用'),
@@ -4585,7 +4624,7 @@ class FriendsPanel extends React.Component {
                       'div',
                       { className: 'bb-innerMeta' },
                       h('span', {}, key),
-                      h('span', {}, `${row.calls ?? 0} 次 · ${(row.input ?? 0) + (row.output ?? 0)} tokens`),
+                      h('span', {}, `${fmt(row.calls)} 次 · ${fmt(row.tokens ?? tokensOf(row))} tokens`),
                     ),
                   ),
                 )
@@ -4603,9 +4642,9 @@ class FriendsPanel extends React.Component {
                       'div',
                       { className: 'bb-innerMeta' },
                       h('span', {}, row.day),
-                      h('span', {}, `${(row.input ?? 0) + (row.output ?? 0)} tokens · ${row.calls ?? 0} 次`),
+                      h('span', {}, `${fmt(tokensOf(row))} tokens · ${fmt(row.calls)} 次`),
                     ),
-                    h(Bar, { value: (row.input ?? 0) + (row.output ?? 0), max: maxDay }),
+                    h(Bar, { value: tokensOf(row), max: maxDay }),
                   ),
                 )
               : h('div', { className: 'bb-muted' }, '还没有记录'),
@@ -4621,8 +4660,12 @@ class FriendsPanel extends React.Component {
                     h(
                       'div',
                       { className: 'bb-innerMeta' },
-                      h('span', {}, `${clockOf(row.at)} · ${LOGIC_LABEL[row.logic] ?? row.logic}`),
-                      h('span', {}, `${row.input ?? 0} in / ${row.output ?? 0} out${row.estimated ? ' · 估算' : ''}`),
+                      h('span', {}, `${clockOf(row.at)} · ${LOGIC_LABEL[row.logic] ?? row.logic} · ${row.model || 'local'}`),
+                      h(
+                        'span',
+                        {},
+                        `${fmt(row.input)} in / ${fmt(row.output)} out${row.cacheRead ? ` / ${fmt(row.cacheRead)} cache` : ''}${row.latencyMs ? ` · ${row.latencyMs}ms` : ''}${row.estimated ? ' · 估算' : ''}`,
+                      ),
                     ),
                   ),
                 )

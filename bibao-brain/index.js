@@ -130,6 +130,9 @@ export function apply(ctx, config = {}) {
       source: 'vision',
       input: row.input,
       output: row.output,
+      cacheRead: row.cacheRead,
+      cacheCreation: row.cacheCreation,
+      latencyMs: row.latencyMs,
       estimated: row.estimated,
     })
 
@@ -327,6 +330,9 @@ export function apply(ctx, config = {}) {
           source: 'direct',
           input: row.input,
           output: row.output,
+          cacheRead: row.cacheRead,
+          cacheCreation: row.cacheCreation,
+          latencyMs: row.latencyMs,
           estimated: row.estimated,
         })
       return { llm: createDirectLlm({ ...cfg, onUsage }), provider: 'direct', model: cfg.model, source: 'direct' }
