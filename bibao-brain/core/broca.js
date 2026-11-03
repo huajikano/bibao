@@ -84,6 +84,50 @@ const INNER = {
   flat: ['没什么想说的', '回个嗯就够了', '今天真的累'],
 }
 
+const BUBBLE_ODDS = {
+  flat: [0.58, 0.32, 0.10],
+  question: [0.55, 0.33, 0.12],
+  care: [0.48, 0.36, 0.16],
+  gossip: [0.42, 0.38, 0.20],
+  hostile: [0.40, 0.36, 0.24],
+  preach: [0.48, 0.35, 0.17],
+}
+
+/**
+ * 气泡条数不是模板长度，而是「这一下她想说多少」。
+ * 默认是灵动的小女孩：平时一到两句，玩心高会连发，累了就收成一句。
+ */
+export function sampleBubbleCount({ category = 'flat', state = {}, playfulness = null, cap = 3, roll = Math.random } = {}) {
+  const base = BUBBLE_ODDS[category] ?? BUBBLE_ODDS.flat
+  let odds = [...base]
+  const energy = Number(state.energy ?? 100)
+  const cortisol = Number(state.cortisol ?? 0)
+  const serotonin = Number(state.serotonin ?? 0.5)
+  const play = Number.isFinite(Number(playfulness))
+    ? Number(playfulness)
+    : clamp(Number(state.dopamine ?? 0) * (1 - cortisol) * (energy / 100) * 1.6, 0, 1)
+
+  if (cortisol > 0.55) {
+    // 被激怒时话会变多，但仍然很少真的刷三连
+    odds = [0.36, 0.38, 0.26]
+  } else if (state.exhausted || energy < 30) {
+    odds = [0.88, 0.11, 0.01]
+  } else if (serotonin < 0.3) {
+    odds = [0.78, 0.20, 0.02]
+  } else if (play >= 0.58) {
+    odds = [Math.max(0.2, base[0] - 0.16), base[1] + 0.07, base[2] + 0.09]
+  } else if (play >= 0.38) {
+    odds = [Math.max(0.3, base[0] - 0.06), base[1] + 0.03, base[2] + 0.03]
+  } else if (play < 0.18) {
+    odds = [Math.min(0.85, base[0] + 0.15), Math.max(0.05, base[1] - 0.08), Math.max(0.01, base[2] - 0.07)]
+  }
+
+  const sum = odds[0] + odds[1] + odds[2]
+  const r = clamp(Number(roll()) || 0, 0, 0.999999) * sum
+  const n = r < odds[0] ? 1 : r < odds[0] + odds[1] ? 2 : 3
+  return Math.max(1, Math.min(n, Math.max(1, Number(cap) || 1)))
+}
+
 export function decideBudget({ state, salience, style, selfModel = null }) {
   let maxChars
   // 只有没劲、或对纯背景噪音才压到一句话；有人点名叫我时不该被这个门槛卡住
@@ -121,6 +165,7 @@ export function composeReply(ctx) {
     forgot = null,
     tip = null,
     selfModel = null,
+    playfulness = null,
   } = ctx
 
   const category = pickCategory(analysis)
@@ -151,7 +196,7 @@ export function composeReply(ctx) {
   if (route === 'SILENT_READ') parts.push('不回 就是我的回答')
   if (route === 'POKE_ONLY') parts.push('懒得打字 戳一下算了')
 
-  let bubbles = buildBubbles({ style, category, analysis, route, rng })
+  let bubbles = buildBubbles({ style, category, analysis, route, rng, state, playfulness, budget })
   // 自我模型只微调"说多少、要不要逗"，不改关系与情绪本身
   const learned = selfModel?.style
   if (learned && route === 'REPLY_CURRENT') {
@@ -290,31 +335,44 @@ function moodBucket(state) {
   return 'flat'
 }
 
-function buildBubbles({ style, category, analysis, route, rng }) {
+function buildBubbles({ style, category, analysis, route, rng, state = {}, playfulness = null, budget = {} }) {
   const table = BUBBLES[style] ?? BUBBLES.warm
   const pool = table[category] ?? table.flat
   if (route === 'POKE_ONLY') {
     return style === 'polite' ? ['嗯嗯'] : style === 'cold' ? [] : ['戳你一下']
   }
-  return rng.pick(pool).slice()
+  const picked = rng.pick(pool).slice()
+  if (!picked.length) return picked
+  const target = sampleBubbleCount({
+    category,
+    state,
+    playfulness,
+    cap: budget.maxBubbles ?? 3,
+    roll: () => rng.next(),
+  })
+  if (target >= picked.length) return picked
+  if (target <= 1) return picked.slice(0, 1)
+  // 两条时偶尔保留首句 + 补刀尾句，比机械截前两条更像人
+  if (target === 2 && picked.length >= 3 && rng.chance(0.35)) {
+    return [picked[0], picked[picked.length - 1]]
+  }
+  return picked.slice(0, target)
 }
 
-/** 去标点 + 切分 + 预算截断：永远不输出带句号的长段落。 */
+/**
+ * 去标点 + 预算截断：一个 bubble 就是一个气泡，不再按句号切成多条。
+ * 条数由 sampleBubbleCount 决定；这里只负责不超字数、不超条数。
+ */
 export function enforceBudget(bubbles, maxChars, maxBubbles) {
-  const flat = []
-  for (const raw of bubbles) {
-    const pieces = String(raw)
-      .split(/[。！？!?；;]/)
-      .map((piece) => piece.replace(/[，,、…~～\s]+$/g, '').trim())
-    for (const piece of pieces) {
-      if (piece) flat.push(piece)
-    }
-  }
   const out = []
   let used = 0
-  for (const piece of flat) {
+  for (const raw of bubbles) {
     if (out.length >= maxBubbles) break
-    const clean = piece.replace(/[。！？!?]/g, '')
+    const clean = String(raw)
+      .replace(/[。！？!?；;]/g, ' ')
+      .replace(/[，,、…~～\s]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
     if (!clean) continue
     const room = maxChars - used
     if (room <= 0) break

@@ -118,12 +118,12 @@ export function normalizeDualTrack(raw, ctx) {
   const rawBubbles = Array.isArray(parsed.bubbles)
     ? parsed.bubbles
     : typeof parsed.bubbles === 'string'
-      ? parsed.bubbles.split(/[\n。！？!?；;]+/)
+      ? parsed.bubbles.split(/\n+|\s*\|\|\s*/)
       : []
   let bubbles = rawBubbles
     .filter((item) => typeof item === 'string' && item.trim())
     .map((item) => item.trim())
-    .slice(0, 3)
+    .slice(0, Math.max(1, Number(budget.maxBubbles) || 3))
   bubbles = enforceBudget(bubbles, budget.maxChars, budget.maxBubbles)
   if (routeOut === 'SILENT_READ' || routeOut === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
 
@@ -202,7 +202,12 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
   if (!llm || !provider || !model) return { ...local, meta: { ...local.meta, source: 'local' } }
 
   // 系统提示词必须从当前这份传记长出来，不能是上一版人设的化石
-  const system = buildSystemPrompt({ biography: ctx.biography, selfModel: ctx.selfModel })
+  const system = buildSystemPrompt({
+    biography: ctx.biography,
+    selfModel: ctx.selfModel,
+    maxBubbles: ctx.budget?.maxBubbles ?? 3,
+    playfulness: ctx.playfulness ?? 0.5,
+  })
   const frame = buildPerceptionFrame(ctx)
   let text = ''
   try {

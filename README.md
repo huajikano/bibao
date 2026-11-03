@@ -34,6 +34,7 @@ node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享，41 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 群层只看不回，35 项
+node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 最终条数，13 项
 node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/缓存/会话/持久化，9 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
@@ -62,6 +63,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.9.0` | 默认灵动小女孩节奏：长尾气泡、玩心/疲惫/生气耦合、提示词默认一句、最终条数不被标点切碎 |
 | [`v0.8.8`](https://github.com/huajikano/bibao/releases/tag/v0.8.8) | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |
 | [`v0.8.7`](https://github.com/huajikano/bibao/releases/tag/v0.8.7) | 用量面板参考 CC Switch：本次会话、缓存读/写、命中率、平均延迟、按模块/模型/最近调用 |
 | [`v0.8.6`](https://github.com/huajikano/bibao/releases/tag/v0.8.6) | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |

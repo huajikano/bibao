@@ -321,6 +321,7 @@ bibao-brain/
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
 | `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
 | `node bin/host-smoke.mjs` | 35/35 通过（路由、持久化、好友 10 条门槛、Token 用量、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/bubble-smoke.mjs` | 13/13 通过（长尾采样、情绪耦合、提示词默认一句、最终条数不被标点切碎） |
 | `node bin/usage-smoke.mjs` | 9/9 通过（精确 usage / 估算 / 按逻辑 / 缓存 / 会话 / 持久化 / 清零） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |
