@@ -1,6 +1,6 @@
 {
   "name": "bibao-brain",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "type": "module",
   "description": "比宝：一个按四大计算神经科学定律运行的拟人认知内核，带自我复盘、生活流、模糊记忆与多脑机接口适配层。",

@@ -306,7 +306,7 @@ bibao-brain/
 - 不把用户原话原样丢给 LLM（先重编码为内部感知帧）。
 - 不让 LLM 改激素、改核心信念、改预算（只接受被限幅的 `neuro_delta`）。
 - 不在白天改 `CoreSchema`（唯一入口是 `sleep()`）。
-- 不加所有群消息逢问必答（余光群只做本地锚点扫描）。
+- 不做所有群消息逢问必答：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话。
 - 不输出带句号的长段落（气泡去标点 + `max_expression_chars` 物理截断）。
 
 ---
@@ -320,7 +320,7 @@ bibao-brain/
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
 | `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
-| `node bin/host-smoke.mjs` | 33/33 通过（路由、持久化、好友 10 条门槛、Token 用量、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/host-smoke.mjs` | 35/35 通过（路由、持久化、好友 10 条门槛、Token 用量、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
 | `node bin/usage-smoke.mjs` | 9/9 通过（精确 usage / 估算 / 按逻辑 / 缓存 / 会话 / 持久化 / 清零） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |

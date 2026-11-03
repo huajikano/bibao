@@ -33,7 +33,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享，41 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / LLM 钳制，33 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 群层只看不回，35 项
 node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/缓存/会话/持久化，9 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
@@ -62,6 +62,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.8.8` | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |
 | [`v0.8.7`](https://github.com/huajikano/bibao/releases/tag/v0.8.7) | 用量面板参考 CC Switch：本次会话、缓存读/写、命中率、平均延迟、按模块/模型/最近调用 |
 | [`v0.8.6`](https://github.com/huajikano/bibao/releases/tag/v0.8.6) | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |
 | [`v0.8.5`](https://github.com/huajikano/bibao/releases/tag/v0.8.5) | 戳一戳二选一：回戳一下或发一张表情包，不再发文字；表情包按情绪/上下文选并加冷却 |
@@ -86,7 +87,8 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 - 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；当前只读通道已接
 - QQ 修复：表情包导入与描述编辑；被戳后按情绪/上下文二选一（回戳一下或表情包，不发文字）；反向 WS 连接、WS 配置重启不丢
 - 隐私：补丁/测试只含占位符，不写本机 snowluma 路径、QQ 号或群号；真实配置只留在本机
-- 界面：设置页七标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 感官 / 设置）+ 独立控制台
+- 群聊层级：只有「焦点」群会回复；「余光」和「免打扰」只看不回，被 @ 或被戳一戳也不会回
+- 界面：设置页十标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 人物 / 感官 / 好友 / 设置 / 用量）+ 独立控制台
 
 路线图见 [docs/ROADMAP.md](docs/ROADMAP.md)，多接口说明见 [docs/BCI.md](docs/BCI.md)。
 

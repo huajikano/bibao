@@ -6,7 +6,6 @@
  * 真机挂载时，协议层只需把 GroupMessage 喂进 ingest()。
  */
 
-import { clamp } from './constants.js'
 
 export const LAYER_LABEL = { foveal: '焦点注视', peripheral: '余光监听', muted: '折叠免打扰' }
 
@@ -193,61 +192,29 @@ export class GroupAttentionFunnel {
     }
 
     if (layer === 'peripheral') {
-      if (!anchors.length) {
-        this.stats.mutedIgnored += 1
-        return {
-          decision: 'peripheral-scan',
-          layer,
-          anchors,
-          toThalamus: false,
-          reason: '余光群无唤醒锚点，本地规则扫过即丢弃（不调用 LLM）',
-        }
-      }
-      this.focus(group.id, now)
-      const staged = this.stage(message, now)
+      // 余光群只看不回：即使被 @ 也不提拔、不调 LLM
+      this.stats.mutedIgnored += 1
       return {
-        decision: 'escalate-foveal',
-        layer: 'foveal',
-        previousLayer: layer,
+        decision: 'peripheral-read-only',
+        layer,
         anchors,
-        debounce: staged,
-        toThalamus: true,
-        reason: `命中 ${anchors.map((a) => a.label).join('、')}，提拔为焦点群并拉取最近 ${group.buffer.length} 条背景帧`,
-        context: group.buffer.slice(-8),
+        toThalamus: false,
+        readOnly: true,
+        reason: anchors.length
+          ? `余光群命中 ${anchors.map((a) => a.label).join('、')}，但余光只看不回`
+          : '余光群只看不回，本地规则扫过即丢弃（不调用 LLM）',
       }
     }
 
-    // 免打扰群：只有被 @ 且还活着才延迟查看
-    const onlyMention = anchors.some((a) => a.key === 'at-me')
-    if (!onlyMention) {
-      this.stats.mutedIgnored += 1
-      return {
-        decision: 'muted-ignore',
-        layer,
-        anchors,
-        toThalamus: false,
-        reason: '折叠免打扰群，普通消息直接忽略',
-      }
-    }
-    if (energy <= 50) {
-      this.stats.mutedIgnored += 1
-      return {
-        decision: 'muted-tired',
-        layer,
-        anchors,
-        toThalamus: false,
-        reason: `被 @ 了但精力只有 ${Math.round(energy)}%，装作没看见`,
-      }
-    }
-    const delaySec = 30 + Math.round((1 - clamp(energy / 100)) * 150)
-    this.stage(message, now)
+    // 免打扰群只看不回：@ 也不延迟回复、不调 LLM
+    this.stats.mutedIgnored += 1
     return {
-      decision: 'muted-delayed',
+      decision: 'muted-read-only',
       layer,
       anchors,
       toThalamus: false,
-      delayedSec: delaySec,
-      reason: `被 @ 且精力尚可，${delaySec}s 后才懒洋洋地点开`,
+      readOnly: true,
+      reason: '折叠免打扰群只看不回，@ 也不打断',
     }
   }
 

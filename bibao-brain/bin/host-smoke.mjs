@@ -122,6 +122,34 @@ check(
   scan.data.decision?.reason,
 )
 
+const peripheralAt = await call('POST', '/group/feed', {
+  groupId: 'g_cat',
+  senderId: '100000005',
+  text: '@比宝 出来',
+  atMe: true,
+})
+check(
+  '余光群被 @ 也不回',
+  peripheralAt.data.decision?.readOnly === true &&
+    peripheralAt.data.decision?.toThalamus === false &&
+    !peripheralAt.data.settled,
+  peripheralAt.data.decision?.reason,
+)
+
+const mutedAt = await call('POST', '/group/feed', {
+  groupId: 'g_family',
+  senderId: '100000002',
+  text: '@比宝 在吗',
+  atMe: true,
+})
+check(
+  '免打扰群被 @ 也不回',
+  mutedAt.data.decision?.readOnly === true &&
+    mutedAt.data.decision?.toThalamus === false &&
+    !mutedAt.data.settled,
+  mutedAt.data.decision?.reason,
+)
+
 await call('POST', '/group/feed', {
   groupId: 'g_class',
   senderId: '100000002',

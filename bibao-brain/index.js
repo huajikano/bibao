@@ -685,6 +685,16 @@ export function apply(ctx, config = {}) {
     if (!frame) return null
     const message = frame.message
     const group = funnel.get(message.groupId)
+    if (group && group.layer !== 'foveal') {
+      funnel.record({
+        kind: 'read-only',
+        group: group.name,
+        text: message.text,
+        layer: group.layer,
+        reason: '余光/免打扰只看不回',
+      })
+      return { stage: 'read-only', layer: group.layer, group }
+    }
     const anchors = funnel.anchorsOf(message)
     funnel.record({
       kind: 'flush',
@@ -745,7 +755,7 @@ export function apply(ctx, config = {}) {
     }
     brain.sync()
     const focusGroup = funnel.get(message.groupId)
-    if (message.images?.length && (message.atMe || focusGroup?.layer === 'foveal')) {
+    if (message.images?.length && focusGroup?.layer === 'foveal') {
       void perceiveImage(message)
     }
     if (brain.attention.distracted && !message.atMe) {
@@ -1322,6 +1332,17 @@ export function apply(ctx, config = {}) {
     }
     const message = frame.message
     const group = funnel.get(message.groupId)
+    if (group && group.layer !== 'foveal') {
+      const skipped = {
+        stage: 'read-only',
+        reason: `${group.layer === 'peripheral' ? '余光' : '免打扰'}群只看不回`,
+        layer: group.layer,
+        groupId: group.id,
+      }
+      funnel.record({ kind: 'read-only', group: group.name, text: message.text, layer: group.layer, reason: skipped.reason })
+      await appendSnowLog({ at: Date.now(), kind: 'read-only', groupId: group.id, layer: group.layer, text: message.text })
+      return skipped
+    }
     brain.sync()
     const result = await brain.perceive({
       entityId: message.senderId,
@@ -1398,6 +1419,21 @@ export function apply(ctx, config = {}) {
     const groupId = String(event.group_id ?? '')
     if (groupId && settings.snowluma.pokeAnyGroup === false && !(settings.snowluma.allowGroups ?? []).map(String).includes(groupId)) return
 
+    // 余光/免打扰群只看不回：戳一戳也不回戳、不发图
+    const group = groupId ? funnel?.get(groupId) : null
+    if (groupId && targetId === selfId && group?.layer !== 'foveal') {
+      const name = brain.social.ensure(userId, String(event.sender_name ?? userId)).name
+      const layer = group?.layer ?? 'muted'
+      brain.perceiveSense({
+        channel: 'touch',
+        text: `${name} 在${layer === 'peripheral' ? '余光' : '免打扰'}群里戳了你一下`,
+        intensity: 0.25,
+      })
+      funnel?.record({ kind: 'poke-read-only', group: group?.name ?? groupId, userId, layer })
+      await appendSnowLog({ at: Date.now(), kind: 'poke-read-only', groupId, userId, layer })
+      return
+    }
+
     const key = `poke:${event.time ?? 0}:${userId}:${targetId}`
     if (pokeSeen.has(key)) return
     pokeSeen.add(key)
@@ -1442,6 +1478,7 @@ export function apply(ctx, config = {}) {
     if (!settings.snowluma.sendEnabled) return
     if (!groupId && !settings.snowluma.allowPrivate) return
     if (groupId && settings.snowluma.pokeAnyGroup === false && !(settings.snowluma.allowGroups ?? []).map(String).includes(String(groupId))) return
+    if (groupId && funnel?.get(groupId)?.layer !== 'foveal') return
 
     const cooldownKey = `${groupId || 'private'}:${userId}`
     const now = Date.now()
@@ -3148,7 +3185,7 @@ export function apply(ctx, config = {}) {
           messageId: 0,
           at: Date.now(),
         }
-        if (message.images.length && (message.atMe || funnel.get(groupId)?.layer === 'foveal')) {
+        if (message.images.length && funnel.get(groupId)?.layer === 'foveal') {
           void perceiveImage(message)
         }
         if (body.poke) {
