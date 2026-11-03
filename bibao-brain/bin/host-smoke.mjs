@@ -153,6 +153,15 @@ check(
 const memory = await call('GET', '/memory?tier=subconscious&limit=5')
 check('GET /memory', memory.status === 200 && Array.isArray(memory.data.items), `${memory.data.items?.length} 条潜意识`)
 
+const usage = await call('GET', '/usage')
+check(
+  'GET /usage',
+  usage.status === 200 && typeof usage.data.total?.calls === 'number' && Array.isArray(usage.data.days),
+  `calls=${usage.data.total?.calls ?? 0} · days=${usage.data.days?.length ?? 0}`,
+)
+const usageReset = await call('POST', '/usage/reset')
+check('POST /usage/reset', usageReset.status === 200 && usageReset.data.usage?.total?.calls === 0, JSON.stringify(usageReset.data.usage?.total ?? null))
+
 const settings = await call('POST', '/settings', { useLlm: true })
 check('POST /settings', settings.status === 200 && settings.data.snapshot?.settings?.useLlm === true, '语言区可切换')
 await call('POST', '/settings', { useLlm: false })

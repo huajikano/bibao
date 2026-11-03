@@ -22,6 +22,7 @@ import { runSandbox } from './core/sandbox.js'
 import { SnowlumaBridge, wsUrlWithToken } from './core/snowluma.js'
 import { OneBotWsServer } from './core/onebot-ws-server.js'
 import { createDirectLlm } from './core/openai.js'
+import { TokenMeter, meterLlm } from './core/usage.js'
 import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
@@ -120,6 +121,17 @@ export function apply(ctx, config = {}) {
   )
   const stateFile = settings.stateFile || path.join(dataDir, 'brain-state.json')
   const settingsFile = path.join(dataDir, 'settings.json')
+  const usage = new TokenMeter({ file: path.join(dataDir, 'usage.json') })
+  const visionUsage = (row = {}) =>
+    usage.record({
+      logic: 'vision',
+      provider: 'direct',
+      model: settings.vision.model,
+      source: 'vision',
+      input: row.input,
+      output: row.output,
+      estimated: row.estimated,
+    })
 
   let biography = null
   let brain = null
@@ -307,14 +319,29 @@ export function apply(ctx, config = {}) {
       model: override.model || base.model,
     }
     if (override.enabled !== false && cfg.apiKey && cfg.baseURL && cfg.model) {
-      return { llm: createDirectLlm(cfg), provider: 'direct', model: cfg.model, source: 'direct' }
+      const onUsage = (row = {}) =>
+        usage.record({
+          logic: name,
+          provider: 'direct',
+          model: cfg.model,
+          source: 'direct',
+          input: row.input,
+          output: row.output,
+          estimated: row.estimated,
+        })
+      return { llm: createDirectLlm({ ...cfg, onUsage }), provider: 'direct', model: cfg.model, source: 'direct' }
     }
     const dsh = ctx.get('llm')
     const selection = ctx.get('agentDefaultModel')?.currentSelection?.() ?? null
     const provider = settings.provider || selection?.provider || ''
     const model = settings.model || selection?.model || ''
     if (settings.useLlm && dsh && provider && model) {
-      return { llm: dsh, provider, model, source: 'dsh' }
+      return {
+        llm: meterLlm(dsh, { meter: usage, logic: name, provider, model, source: 'dsh' }),
+        provider,
+        model,
+        source: 'dsh',
+      }
     }
     return { llm: null, provider: '', model: '', source: 'local' }
   }
@@ -358,6 +385,7 @@ export function apply(ctx, config = {}) {
     if (brain) return brain
     if (loading) return loading
     loading = (async () => {
+      await usage.load()
       const bio = await loadBiography()
       store = openBrainStore(path.join(dataDir, 'bibao.sqlite'))
       // 面板里切换过的语言区开关，重启后仍然有效
@@ -464,6 +492,7 @@ export function apply(ctx, config = {}) {
         baseURL: settings.llm.baseURL,
         apiKey: settings.llm.apiKey,
         model: settings.vision.model,
+        onUsage: visionUsage,
       })
       {
         const owner = brain.social.get(settings.userId)
@@ -625,6 +654,7 @@ export function apply(ctx, config = {}) {
         port: consoleState.port,
       },
       outreach: { ...settings.outreach, state: brain.outreach },
+      usage: usage.snapshot(),
       settings: { useLlm: settings.useLlm, provider: settings.provider, model: settings.model, stateFile },
     }
   }
@@ -1841,6 +1871,22 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/usage',
+      methods: ['GET'],
+      handler: async () => {
+        await boot()
+        return json(usage.snapshot())
+      },
+    },
+    {
+      path: '/usage/reset',
+      methods: ['POST'],
+      handler: async () => {
+        await boot()
+        return json({ ok: true, usage: usage.reset() })
+      },
+    },
+    {
       path: '/talk',
       methods: ['POST'],
       handler: async (request) => {
@@ -2116,7 +2162,7 @@ export function apply(ctx, config = {}) {
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model })
+          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model, onUsage: visionUsage })
         }
         if (body.tuning && typeof body.tuning === 'object') {
             if (Number.isFinite(Number(body.tuning.memoryStrength))) {
@@ -2987,7 +3033,7 @@ export function apply(ctx, config = {}) {
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model })
+          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model, onUsage: visionUsage })
         }        if (body.llm && typeof body.llm === 'object') {
           if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/')) {
             return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
@@ -3434,6 +3480,7 @@ export function apply(ctx, config = {}) {
     return () => {
       stopSnow()
       store?.close()
+      void usage.save()
       consoleState.server?.close()
       for (const timer of timers) clearTimeout(timer)
       timers.clear()

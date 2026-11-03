@@ -5,6 +5,8 @@
  * 这一层只负责"把 prompt 变成文本"，所有钳制仍在 prefrontal.normalizeDualTrack。
  */
 
+import { estimateTokens } from './usage.js'
+
 export async function chatCompletion({
   baseURL,
   apiKey,
@@ -16,6 +18,7 @@ export async function chatCompletion({
   reasoningEffort = '',
   signal,
   timeoutMs = 90_000,
+  onUsage = null,
 }) {
   if (!baseURL || !apiKey || !model) throw new Error('缺少 baseURL / apiKey / model')
   const url = `${String(baseURL).replace(/\/+$/, '')}/chat/completions`
@@ -58,8 +61,16 @@ export async function chatCompletion({
     let reply = typeof content === 'string' ? content : Array.isArray(content) ? content.map((part) => part?.text ?? '').join('') : ''
     // 推理型模型有时把正文放在 reasoning_content 里，content 为 null
     if (!reply.trim()) reply = String(message.reasoning_content ?? message.reasoning ?? '')
-    if (reply.trim()) return reply
-    throw new Error('LLM 返回里既没有 content 也没有 reasoning')
+    if (!reply.trim()) throw new Error('LLM 返回里既没有 content 也没有 reasoning')
+    const usage = data?.usage ?? data?.choices?.[0]?.usage ?? null
+    const input = Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(`${system ?? ''}\n${user ?? ''}`)
+    const output = Number(usage?.completion_tokens ?? usage?.output_tokens) || estimateTokens(reply)
+    try {
+      onUsage?.({ model, input, output, total: input + output, estimated: !usage, raw: usage })
+    } catch {
+      /* 统计失败不影响回复 */
+    }
+    return reply
   } finally {
     clearTimeout(timer)
   }
@@ -87,6 +98,7 @@ export function createDirectLlm(config) {
         reasoningEffort: options.reasoningEffort,
         temperature: options.temperature ?? 0.9,
         signal: options.signal,
+        onUsage: config.onUsage,
       })
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'finish', reason: { kind: 'stop' } }

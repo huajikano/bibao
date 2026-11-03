@@ -233,6 +233,8 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
 | GET | `/api/bibao/group/state` | 漏斗状态 / 群列表 / 裁决日志 |
 | POST | `/api/bibao/group/feed` | `{groupId, senderId, text, atMe}` |
 | POST | `/api/bibao/group/focus` | 手动改焦点群 |
+| GET | `/api/bibao/usage` | Token 用量：总量、今天、按逻辑、按模型、最近 14 天、最近调用 |
+| POST | `/api/bibao/usage/reset` | 清空 Token 统计 |
 | POST | `/api/bibao/settings` | `{useLlm, tuning, growth}` 切换语言区 / 行为滑杆 / 成长层并持久化 |
 | POST | `/api/bibao/self/review` | 立刻做一次自我复盘（`force:false` 时只在有新证据时跑） |
 | POST | `/api/bibao/outreach/preview` | 看"现在该不该主动找谁说一句"，不发送 |
@@ -318,7 +320,8 @@ bibao-brain/
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
 | `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
-| `node bin/host-smoke.mjs` | 31/31 通过（路由、持久化、好友 10 条门槛、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/host-smoke.mjs` | 33/33 通过（路由、持久化、好友 10 条门槛、Token 用量、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/usage-smoke.mjs` | 8/8 通过（精确 usage / 估算 / 按逻辑 / 持久化 / 清零） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |
 | 客户端槽位 | `sidebar.panellist` 出现 `bibao`（order 6），`main` 出现 `bibao` 面板注册 |

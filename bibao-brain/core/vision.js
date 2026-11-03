@@ -6,10 +6,11 @@
  */
 
 import { createHash } from 'node:crypto'
+import { estimateTokens } from './usage.js'
 
 const MAX_BYTES = 8 * 1024 * 1024
 
-export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {}) {
+export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsage = null } = {}) {
   const cache = new Map()
   const stats = { calls: 0, cached: 0, failed: 0, last: null }
 
@@ -69,6 +70,18 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000 } = {})
         const text = String(data?.choices?.[0]?.message?.content ?? '').trim()
         if (!text) throw new Error(data?.error?.message ?? '模型没有返回内容')
         const clean = text.replace(/\s+/g, ' ').slice(0, 1600)
+        const usage = data?.usage ?? null
+        try {
+          onUsage?.({
+            model,
+            input: Number(usage?.prompt_tokens ?? usage?.input_tokens) || estimateTokens(prompt),
+            output: Number(usage?.completion_tokens ?? usage?.output_tokens) || estimateTokens(clean),
+            estimated: !usage,
+            raw: usage,
+          })
+        } catch {
+          /* 统计失败不影响视觉 */
+        }
         cache.set(hash, clean)
         if (cache.size > 200) cache.delete(cache.keys().next().value)
         stats.last = { text: clean, at: Date.now(), hash }

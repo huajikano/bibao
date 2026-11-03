@@ -2185,6 +2185,7 @@ window.__ModuleLoader__.load({
         ['groups', t('tabGroups')],
         ['gate', t('tabGate')],
         ['settings', t('tabSettings')],
+        ['usage', '用量'],
       ]
 
       return h(
@@ -2246,6 +2247,7 @@ window.__ModuleLoader__.load({
             tab === 'groups' ? h(GroupsTab, { snap, t, onGoGate: () => setTab('gate') }) : null,
             tab === 'gate' ? h(GateTab, { snap, t, onRefresh: refresh }) : null,
             tab === 'settings' ? h(SettingsTab, { snap, t, act, busy }) : null,
+            tab === 'usage' ? h(UsagePanel, { t }) : null,
           ),
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
         ),
@@ -3758,6 +3760,7 @@ window.__ModuleLoader__.load({
           ['senses', '感官'],
           ['friends', '好友'],
           ['settings', t('tabSettings')],
+          ['usage', '用量'],
         ]
         return h(
           'div',
@@ -3817,6 +3820,7 @@ window.__ModuleLoader__.load({
           tab === 'groups' ? this.renderGroups(t, snap) : null,
           tab === 'gate' ? this.renderGate(t, snap) : null,
           tab === 'settings' ? this.renderSettings(t, snap) : null,
+          tab === 'usage' ? h(UsagePanel, { t }) : null,
           tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
           tab === 'persona' ? h(PersonaPanel, { t, snap }) : null,
           tab === 'friends' ? h(FriendsPanel, { t, snap }) : null,
@@ -4453,6 +4457,176 @@ class FriendsPanel extends React.Component {
                   )
                 })
               : h('div', { className: 'bb-muted' }, '还没有她自己记住的人。等和谁聊过 10 条以上，就会自动出现在这里。'),
+          ),
+        )
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Token 用量                                                          */
+    /* ------------------------------------------------------------------ */
+
+    const LOGIC_LABEL = {
+      funnel: '注意力漏斗',
+      ignition: '点火',
+      appraisal: '情感评估',
+      memory: '记忆 / 造梦',
+      broca: '语言区',
+      feedback: '预期悬置',
+      vision: '视觉',
+      unknown: '未分类',
+    }
+
+    class UsagePanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { data: null, error: '', loading: true }
+        this.load = this.load.bind(this)
+        this.reset = this.reset.bind(this)
+      }
+
+      componentDidMount() {
+        this.alive = true
+        this.load()
+        this.timer = setInterval(this.load, 5000)
+        if (typeof this.timer.unref === 'function') this.timer.unref()
+      }
+
+      componentWillUnmount() {
+        this.alive = false
+        if (this.timer) clearInterval(this.timer)
+      }
+
+      async load() {
+        try {
+          const data = await request('/usage')
+          if (this.alive) this.setState({ data, error: '', loading: false })
+        } catch (error) {
+          if (this.alive) this.setState({ error: error.message, loading: false })
+        }
+      }
+
+      async reset() {
+        try {
+          await request('/usage/reset', { method: 'POST', body: '{}' })
+          await this.load()
+        } catch (error) {
+          this.setState({ error: error.message })
+        }
+      }
+
+      render() {
+        const { data, error, loading } = this.state
+        if (!data) {
+          return h(
+            Card,
+            { title: 'Token 用量', hint: '统计中' },
+            error ? h('div', { className: 'bb-error' }, error) : h('div', { className: 'bb-muted' }, loading ? '正在读取…' : '暂无数据'),
+          )
+        }
+        const total = data.total ?? {}
+        const today = data.today ?? {}
+        const byLogic = Object.entries(data.byLogic ?? {}).sort((a, b) => (b[1].calls ?? 0) - (a[1].calls ?? 0))
+        const byModel = Object.entries(data.byModel ?? {}).sort((a, b) => (b[1].calls ?? 0) - (a[1].calls ?? 0))
+        const days = data.days ?? []
+        const maxDay = Math.max(1, ...days.map((row) => (row.input ?? 0) + (row.output ?? 0)))
+        const recent = data.recent ?? []
+        return h(
+          'div',
+          { className: 'bb-stack' },
+          h(
+            Card,
+            { title: 'Token 用量', hint: `${total.calls ?? 0} 次调用 · ${data.estimated ? '含估算' : '精确'}` },
+            h(
+              'div',
+              { className: 'bb-grid' },
+              h(Stat, { label: '输入', value: String(total.input ?? 0) }),
+              h(Stat, { label: '输出', value: String(total.output ?? 0) }),
+              h(Stat, { label: '合计', value: String((total.input ?? 0) + (total.output ?? 0)), tone: 'good' }),
+            ),
+            h(
+              'div',
+              { className: 'bb-inline bb-inline--wrap' },
+              h(Chip, { children: `今天 ${today.calls ?? 0} 次 · ${((today.input ?? 0) + (today.output ?? 0))} tokens` }),
+              h(Chip, { children: `${days.length} 天有记录` }),
+              data.estimated ? h(Chip, { children: `估算 ${total.estimatedCalls ?? 0} 次` }) : h(Chip, { children: '全部精确' }),
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: this.reset }, '清零'),
+            ),
+            error ? h('div', { className: 'bb-error' }, error) : null,
+          ),
+          h(
+            Card,
+            { title: '按认知模块', hint: '每条逻辑单独计数' },
+            byLogic.length
+              ? byLogic.map(([key, row]) =>
+                  h(
+                    'div',
+                    { key, className: 'bb-innerItem' },
+                    h(
+                      'div',
+                      { className: 'bb-innerMeta' },
+                      h('span', {}, LOGIC_LABEL[key] ?? key),
+                      h('span', {}, `${row.calls ?? 0} 次 · ${(row.input ?? 0) + (row.output ?? 0)} tokens`),
+                    ),
+                    h(Bar, { value: (row.input ?? 0) + (row.output ?? 0), max: Math.max(1, (total.input ?? 0) + (total.output ?? 0)) }),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有调用'),
+          ),
+          h(
+            Card,
+            { title: '按模型', hint: 'provider / model' },
+            byModel.length
+              ? byModel.map(([key, row]) =>
+                  h(
+                    'div',
+                    { key, className: 'bb-innerItem' },
+                    h(
+                      'div',
+                      { className: 'bb-innerMeta' },
+                      h('span', {}, key),
+                      h('span', {}, `${row.calls ?? 0} 次 · ${(row.input ?? 0) + (row.output ?? 0)} tokens`),
+                    ),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有模型调用'),
+          ),
+          h(
+            Card,
+            { title: '最近 14 天', hint: '输入 + 输出' },
+            days.length
+              ? days.map((row) =>
+                  h(
+                    'div',
+                    { key: row.day, className: 'bb-innerItem' },
+                    h(
+                      'div',
+                      { className: 'bb-innerMeta' },
+                      h('span', {}, row.day),
+                      h('span', {}, `${(row.input ?? 0) + (row.output ?? 0)} tokens · ${row.calls ?? 0} 次`),
+                    ),
+                    h(Bar, { value: (row.input ?? 0) + (row.output ?? 0), max: maxDay }),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有记录'),
+          ),
+          h(
+            Card,
+            { title: '最近调用', hint: '最近 20 条' },
+            recent.length
+              ? recent.map((row, index) =>
+                  h(
+                    'div',
+                    { key: `${row.at}-${index}`, className: 'bb-innerItem' },
+                    h(
+                      'div',
+                      { className: 'bb-innerMeta' },
+                      h('span', {}, `${clockOf(row.at)} · ${LOGIC_LABEL[row.logic] ?? row.logic}`),
+                      h('span', {}, `${row.input ?? 0} in / ${row.output ?? 0} out${row.estimated ? ' · 估算' : ''}`),
+                    ),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有调用'),
           ),
         )
       }
