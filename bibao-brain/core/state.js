@@ -7,6 +7,25 @@
 
 import { HORMONES, HORMONE_KEYS, PARAMS, clamp, decayTo } from './constants.js'
 
+/** 昼夜节律：同样的刺激，早上和深夜的底噪不一样。 */
+function circadianTarget(key, hour) {
+  const phase = ((Number(hour) - 6) / 24) * Math.PI * 2
+  const offset = {
+    cortisol: 0.08 * Math.cos(((Number(hour) - 8) / 24) * Math.PI * 2),
+    dopamine: 0.04 * Math.sin(((Number(hour) - 10) / 24) * Math.PI * 2),
+    oxytocin: 0.02 * Math.cos(((Number(hour) - 20) / 24) * Math.PI * 2),
+    serotonin: 0.05 * Math.sin(phase),
+  }[key] ?? 0
+  return HORMONES[key].baseline + offset
+}
+
+/** 90 分钟 ultradian 小波动：让静息态也不是一条死线。 */
+function ultradianTarget(key, awakeMin) {
+  const phase = ((Number(awakeMin) || 0) / 90) * Math.PI * 2
+  const offset = { cortisol: 0.006, dopamine: 0.008, oxytocin: 0.004, serotonin: 0.006 }[key] ?? 0
+  return offset * Math.sin(phase + key.length)
+}
+
 export class NeuroState {
   constructor(init = {}) {
     this.hormones = {}
@@ -21,6 +40,7 @@ export class NeuroState {
     this.stimulusAt = init.stimulusAt ?? null
     this.sleepDebtMin = init.sleepDebtMin ?? 0
     this.totalAwakeMin = init.totalAwakeMin ?? 0
+    this.currentHour = init.currentHour ?? new Date().getHours()
   }
 
   get cortisol() {
@@ -105,9 +125,11 @@ export class NeuroState {
   /** 每分钟的生理积分：激素回落 + 精力代谢 + 心境回归基线。 */
   decay(dtMin, { hour = 12, sleeping = false } = {}) {
     if (!(dtMin > 0)) return
+    this.currentHour = hour
     for (const key of HORMONE_KEYS) {
       const spec = HORMONES[key]
-      this.hormones[key] = clamp(decayTo(this.hormones[key], spec.baseline, spec.halfLifeMin, dtMin))
+      const target = clamp(circadianTarget(key, hour) + ultradianTarget(key, this.totalAwakeMin), 0, 1)
+      this.hormones[key] = clamp(decayTo(this.hormones[key], target, spec.halfLifeMin, dtMin))
     }
 
     // 精力：清醒时按皮质醇消耗，睡眠窗口快速回充
@@ -133,14 +155,22 @@ export class NeuroState {
   /** 供 UI 直接绘制的快照。 */
   snapshot(labels = {}) {
     return {
-      hormones: HORMONE_KEYS.map((key) => ({
-        key,
-        value: Number(this.hormones[key].toFixed(3)),
-        baseline: HORMONES[key].baseline,
-        halfLifeMin: HORMONES[key].halfLifeMin,
-        label: HORMONES[key].label,
-        hint: HORMONES[key].hint,
-      })),
+      hormones: HORMONE_KEYS.map((key) => {
+        const value = this.hormones[key]
+        const phase = key.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+        // 显示层的瞬时振荡：反映递质的 phasic 活动，不参与决策
+        const momentary = clamp(value + 0.004 * Math.sin(Date.now() / 2200 + phase), 0, 1)
+        return {
+          key,
+          value: Number(value.toFixed(3)),
+          momentary: Number(momentary.toFixed(3)),
+          target: Number(clamp(circadianTarget(key, this.currentHour) + ultradianTarget(key, this.totalAwakeMin), 0, 1).toFixed(3)),
+          baseline: HORMONES[key].baseline,
+          halfLifeMin: HORMONES[key].halfLifeMin,
+          label: HORMONES[key].label,
+          hint: HORMONES[key].hint,
+        }
+      }),
       energy: Number(this.energy.toFixed(1)),
       arousal: Number(this.arousal.toFixed(3)),
       mood: Number(this.moodValence.toFixed(3)),

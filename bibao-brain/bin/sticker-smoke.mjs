@@ -27,6 +27,18 @@ check('不合适就不硬发', mismatched === null, mismatched?.gist ?? 'null')
 const moodMatch = await book.pick('笑', '', { minScore: 1.0 })
 check('情绪对得上才发', moodMatch?.mood === '笑', moodMatch?.gist ?? 'null')
 
+await book.touch(laugh.id)
+const autoCommon = (await book.load()).find((item) => item.id === laugh.id)
+check('用够次数自动进常用', autoCommon?.category === 'common', autoCommon?.category ?? 'null')
+
+const moved = await book.update(laugh.id, { category: 'dusty' })
+check('可以手动移到吃灰', moved?.category === 'dusty' && moved?.categoryManual === true, moved?.category ?? 'null')
+await book.touch(laugh.id)
+const stillDusty = (await book.load()).find((item) => item.id === laugh.id)
+check('手动分类不会被自动改回', stillDusty?.category === 'dusty', stillDusty?.category ?? 'null')
+const categoryStats = await book.stats()
+check('分类计数正确', categoryStats.byCategory.dusty === 1 && categoryStats.byCategory.default === 2, JSON.stringify(categoryStats.byCategory))
+
 const same = await book.add({ buffer: Buffer.concat([png, Buffer.from('a')]), gist: '重复', mood: '无语' })
 check('同图不重复入库', same?.dup === true && (await book.stats()).count === 3, `count=${(await book.stats()).count}`)
 

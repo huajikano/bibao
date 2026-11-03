@@ -64,7 +64,7 @@ growth:
 ```bash
 node bin/growth-smoke.mjs     # 47 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感
 node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
-node bin/sticker-import-smoke.mjs # 5 项：表情包导入 + 描述编辑（假视觉端点）
+node bin/sticker-import-smoke.mjs # 7 项：表情包导入 + 描述编辑 + 分类（假视觉端点）
 node bin/ws-reverse-smoke.mjs # 6 项：反向 WS 握手 / 事件 / 动作 / 群列表
 node bin/eval-qq.mjs          # 20 个 QQ 场景的盲评样本
 ```
@@ -319,7 +319,9 @@ bibao-brain/
 | `node bin/growth-smoke.mjs` | 47/47 通过（人格、复盘、生活流、模糊记忆、线程、主动分享、越界降好感、WS token） |
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
-| `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
+| `node bin/sticker-import-smoke.mjs` | 7/7 通过（表情包导入 + 描述编辑 + 分类） |
+| `node bin/sticker-smoke.mjs` | 12/12 通过（情绪选择、常用/默认/吃灰、自动归档、手动锁定） |
+| `node bin/neuro-smoke.mjs` | 4/4 通过（昼夜节律、目标值、静息态漂移） |
 | `node bin/host-smoke.mjs` | 35/35 通过（路由、持久化、好友 10 条门槛、Token 用量、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
 | `node bin/bubble-smoke.mjs` | 13/13 通过（长尾采样、情绪耦合、提示词默认一句、最终条数不被标点切碎） |
 | `node bin/usage-smoke.mjs` | 9/9 通过（精确 usage / 估算 / 按逻辑 / 缓存 / 会话 / 持久化 / 清零） |

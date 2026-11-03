@@ -85,7 +85,7 @@ const call = async (method, suffix, body) => {
   return { status: response.status, data: await response.json() }
 }
 
-const jpg = await readFile(new URL('../../c0adccca200a726f4e2171ee7ccf7dcb.jpg', import.meta.url))
+const jpg = await readFile(new URL('../icon.jpg', import.meta.url))
 const dataUrl = `data:image/jpeg;base64,${jpg.toString('base64')}`
 
 const bad = await call('POST', '/stickers/import', { dataUrl: 'not-an-image' })
@@ -107,6 +107,20 @@ check(
   '描述可以自定义',
   updated.status === 200 && updated.data?.item?.gist === '我自己的描述' && updated.data?.item?.mood === '无语',
   `${updated.data?.item?.gist ?? updated.data?.error} · ${updated.data?.item?.mood ?? ''}`,
+)
+const categorized = await call('POST', '/stickers', {
+  update: { id: imported.data?.item?.id, category: 'common' },
+})
+check(
+  '可以把表情包归到常用',
+  categorized.status === 200 && categorized.data?.item?.category === 'common',
+  `${categorized.data?.item?.category ?? categorized.data?.error}`,
+)
+const stickerStats = (await call('GET', '/stickers')).data?.stats
+check(
+  '分类计数可读回',
+  stickerStats?.byCategory?.common === 1 && stickerStats?.byCategory?.default === 0,
+  JSON.stringify(stickerStats?.byCategory ?? null),
 )
 const fileRoute = [...routes.values()].find((item) => item.path === '/api/bibao/stickers/file' && item.methods.includes('GET'))
 const fileResponse = await fileRoute.fetch(

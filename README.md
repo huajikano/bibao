@@ -37,7 +37,9 @@ node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 /
 node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 最终条数，13 项
 node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/缓存/会话/持久化，9 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
-node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 描述编辑，5 项
+node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 分类，7 项
+node bibao-brain/bin/sticker-smoke.mjs # 表情包分类/自动归档，12 项
+node bibao-brain/bin/neuro-smoke.mjs # 神经递质昼夜节律，4 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
@@ -63,6 +65,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.10.0` | 表情包分「常用/默认/吃灰」并可手动归类；好感/神经递质加入昼夜节律与实时趋势；认知环路图静息态也会流动 |
 | [`v0.9.1`](https://github.com/huajikano/bibao/releases/tag/v0.9.1) | 新插件图标；越界问题会降好感并累积、正常关心仍能回升；好友/对话列表好感实时刷新并显示一位小数 |
 | [`v0.9.0`](https://github.com/huajikano/bibao/releases/tag/v0.9.0) | 默认灵动小女孩节奏：长尾气泡、玩心/疲惫/生气耦合、提示词默认一句、最终条数不被标点切碎 |
 | [`v0.8.8`](https://github.com/huajikano/bibao/releases/tag/v0.8.8) | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |

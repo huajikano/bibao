@@ -556,54 +556,82 @@ window.__ModuleLoader__.load({
       ]
     }
 
-    function LoopMap({ stages, t }) {
+    function LoopMap({ stages, t, snap }) {
       const map = {}
       for (const stage of stages ?? []) map[stage.key] = stage
-      const nodes = RING.map((node) => ({
+      const [phase, setPhase] = useState(0)
+      const anyActive = RING.some((node) => ACTIVE_STATUS.has(map[node.key]?.status))
+      useEffect(() => {
+        if (anyActive) return undefined
+        // 静息态也保持一条缓慢的默认网络扫描，不是一张死图
+        const timer = setInterval(() => setPhase((value) => (value + 1) % RING.length), 1400)
+        if (typeof timer.unref === 'function') timer.unref()
+        return () => clearInterval(timer)
+      }, [anyActive])
+      const nodes = RING.map((node, index) => ({
         ...node,
+        index,
         stage: map[node.key] ?? null,
         active: ACTIVE_STATUS.has(map[node.key]?.status),
+        scanning: !anyActive && index === phase,
       }))
+      const path = nodes.map((node, index) => `${index ? 'L' : 'M'} ${node.x} ${node.y}`).join(' ') + ' Z'
+      const speed = Math.max(2.8, 5.8 - Number(snap?.neuro?.arousal ?? 0.2) * 3)
       return h(
-        'svg',
-        {
-          viewBox: '0 0 340 260',
-          className: 'bb-loop',
-          role: 'img',
-          'aria-label': t('inner'),
-        },
-        nodes.map((node, index) => {
-          const next = nodes[(index + 1) % nodes.length]
-          return h('line', {
-            key: `edge-${node.key}`,
-            x1: node.x,
-            y1: node.y,
-            x2: next.x,
-            y2: next.y,
-            className: `bb-edge${node.active || next.active ? ' is-active' : ''}`,
-          })
-        }),
-        nodes.map((node) =>
+        'div',
+        { className: 'bb-loopWrap' },
+        h(
+          'svg',
+          {
+            viewBox: '0 0 340 260',
+            className: 'bb-loop',
+            role: 'img',
+            'aria-label': '认知环路',
+          },
+          h('path', { id: 'bb-loop-path', d: path, fill: 'none', stroke: 'none' }),
           h(
-            'g',
-            { key: node.key, className: `bb-node${node.active ? ' is-active' : ''}` },
-            h('rect', {
-              x: node.x - 46,
-              y: node.y - 19,
-              width: 92,
-              height: 38,
-              rx: 12,
-              className: 'bb-nodeShape',
-            }),
-            h(
-              'text',
-              { x: node.x, y: node.y + 4, className: 'bb-nodeText', textAnchor: 'middle' },
-              t(node.labelKey),
-            ),
-            node.stage?.status === 'blocked' || node.stage?.status === 'skip'
-              ? h('circle', { cx: node.x + 34, cy: node.y - 10, r: 2.6, className: 'bb-nodeDot is-off' })
-              : null,
+            'circle',
+            { r: 2.8, className: 'bb-loopPulse' },
+            h('animateMotion', { dur: `${speed.toFixed(1)}s`, repeatCount: 'indefinite' }, h('mpath', { href: '#bb-loop-path' })),
           ),
+          nodes.map((node, index) => {
+            const next = nodes[(index + 1) % nodes.length]
+            return h('line', {
+              key: `edge-${node.key}`,
+              x1: node.x,
+              y1: node.y,
+              x2: next.x,
+              y2: next.y,
+              className: `bb-edge${node.active || next.active ? ' is-active' : ''}${node.scanning || next.scanning ? ' is-scanning' : ''}`,
+            })
+          }),
+          nodes.map((node) =>
+            h(
+              'g',
+              { key: node.key, className: `bb-node${node.active ? ' is-active' : ''}${node.scanning ? ' is-scanning' : ''}` },
+              h('rect', {
+                x: node.x - 46,
+                y: node.y - 19,
+                width: 92,
+                height: 38,
+                rx: 12,
+                className: 'bb-nodeShape',
+              }),
+              h(
+                'text',
+                { x: node.x, y: node.y + 4, className: 'bb-nodeText', textAnchor: 'middle' },
+                t(node.labelKey),
+              ),
+              node.stage?.status === 'blocked' || node.stage?.status === 'skip'
+                ? h('circle', { cx: node.x + 34, cy: node.y - 10, r: 2.6, className: 'bb-nodeDot is-off' })
+                : null,
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'bb-muted' },
+          anyActive ? `当前环路：${stages.filter((stage) => ACTIVE_STATUS.has(stage.status)).map((stage) => t(`stage${RING.findIndex((node) => node.key === stage.key) + 1}`)).filter(Boolean).join(' → ') || '运行中'}` : '静息态：默认网络扫描（未点火）',
         ),
       )
     }
@@ -624,20 +652,25 @@ window.__ModuleLoader__.load({
           h('strong', { className: 'bb-moodValue' }, neuro.moodLabel),
           h('span', { className: 'bb-muted' }, `${signed(neuro.mood)} · ${t('arousal')} ${fixed(neuro.arousal)}`),
         ),
-        neuro.hormones.map((item) =>
-          h(
+        neuro.hormones.map((item) => {
+          const target = Number(item.target ?? item.baseline ?? item.value)
+          const drift = target - Number(item.value)
+          const arrow = Math.abs(drift) < 0.0005 ? '·' : drift > 0 ? '↑' : '↓'
+          const shown = Number(item.momentary ?? item.value)
+          return h(
             'div',
             { key: item.key, className: 'bb-hormone' },
             h(
               'div',
               { className: 'bb-hormoneHead' },
               h('span', { className: 'bb-hormoneName' }, item.label),
-              h('span', { className: 'bb-hormoneValue' }, pct(item.value)),
-              h('span', { className: 'bb-muted' }, `t½ ${item.halfLifeMin}m`),
+              h('span', { className: 'bb-hormoneValue' }, `${fixed(shown * 100, 1)}%`),
+              h('span', { className: `bb-hormoneTrend${drift > 0 ? ' is-up' : drift < 0 ? ' is-down' : ''}` }, arrow),
+              h('span', { className: 'bb-muted' }, `t½ ${item.halfLifeMin}m · 实时`),
             ),
-            h(Bar, { value: item.value, tone: item.key }),
-          ),
-        ),
+            h(Bar, { value: shown, tone: item.key }),
+          )
+        }),
         h(
           'div',
           { className: 'bb-hormone' },
@@ -1081,7 +1114,7 @@ window.__ModuleLoader__.load({
             : null,
         ),
         h(LifeSelfCard, { snap, t, act, busy }),
-        h('div', { className: 'bb-grid' }, h(LoopMap, { stages: stagesFor(snap), t })),
+        h('div', { className: 'bb-grid' }, h(LoopMap, { stages: stagesFor(snap), t, snap })),
         h('div', { className: 'bb-grid' }, h(NeuroCard, { snap, t }), h(ThresholdCard, { snap, t })),
         h('div', { className: 'bb-grid' }, h(WorkspaceCard, { snap, t }), h(InnerCard, { snap, t })),
         h('div', { className: 'bb-grid' }, h(SchemaCard, { snap, t }), h(SocialCard, { snap, t })),
@@ -3840,13 +3873,24 @@ window.__ModuleLoader__.load({
     /* 表情包收藏夹                                                        */
     /* ------------------------------------------------------------------ */
 
+    const STICKER_CATEGORY_LABELS = { common: '常用', default: '默认', dusty: '吃灰' }
+
     class StickersPanel extends React.Component {
       constructor(props) {
         super(props)
-        this.state = { items: [], stats: { count: 0, used: 0 }, note: '', busy: false, editingId: '', draftGist: '' }
+        this.state = {
+          items: [],
+          stats: { count: 0, used: 0, byCategory: { common: 0, default: 0, dusty: 0 } },
+          filter: 'all',
+          note: '',
+          busy: false,
+          editingId: '',
+          draftGist: '',
+        }
         this.load = this.load.bind(this)
         this.remove = this.remove.bind(this)
         this.send = this.send.bind(this)
+        this.setCategory = this.setCategory.bind(this)
       }
 
       startEdit(item) {
@@ -3870,18 +3914,39 @@ window.__ModuleLoader__.load({
       componentDidMount() {
         this.alive = true
         this.load()
+        this.timer = setInterval(this.load, 10000)
       }
 
       componentWillUnmount() {
         this.alive = false
+        if (this.timer) clearInterval(this.timer)
       }
 
       async load() {
         try {
           const data = await request('/stickers')
-          if (this.alive) this.setState({ items: data.items ?? [], stats: data.stats ?? { count: 0, used: 0 } })
+          if (this.alive) {
+            this.setState({
+              items: data.items ?? [],
+              stats: data.stats ?? { count: 0, used: 0, byCategory: { common: 0, default: 0, dusty: 0 } },
+            })
+          }
         } catch (error) {
           if (this.alive) this.setState({ note: '读取失败：' + error.message })
+        }
+      }
+
+      async setCategory(item, category) {
+        this.setState({ busy: true })
+        try {
+          await request('/stickers', {
+            method: 'POST',
+            body: JSON.stringify({ update: { id: item.id, category } }),
+          })
+          this.setState({ busy: false, note: `已移到「${STICKER_CATEGORY_LABELS[category]}」` })
+          await this.load()
+        } catch (error) {
+          this.setState({ busy: false, note: '分类失败：' + error.message })
         }
       }
 
@@ -3938,11 +4003,33 @@ window.__ModuleLoader__.load({
       }
 
       render() {
-        const { items, stats, note, busy, editingId, draftGist } = this.state
+        const { items, stats, filter, note, busy, editingId, draftGist } = this.state
+        const counts = stats.byCategory ?? { common: 0, default: 0, dusty: 0 }
+        const visible = filter === 'all' ? items : items.filter((item) => (item.category ?? 'default') === filter)
         return h(
           Card,
-          { title: '表情包收藏', hint: `共 ${stats.count} 张 · 用过 ${stats.used} 张` },
+          {
+            title: '表情包收藏',
+            hint: `共 ${stats.count} 张 · 常用 ${counts.common ?? 0} · 默认 ${counts.default ?? 0} · 吃灰 ${counts.dusty ?? 0}`,
+          },
           note ? h('div', { className: 'bb-chip good' }, note) : null,
+          h(
+            'div',
+            { className: 'bb-inline bb-inline--wrap' },
+            ['all', 'common', 'default', 'dusty'].map((key) =>
+              h(
+                'button',
+                {
+                  key,
+                  type: 'button',
+                  className: `bb-btn bb-btn--tiny${filter === key ? ' primary' : ''}`,
+                  onClick: () => this.setState({ filter: key }),
+                },
+                key === 'all' ? `全部 ${stats.count}` : `${STICKER_CATEGORY_LABELS[key]} ${counts[key] ?? 0}`,
+              ),
+            ),
+            h('span', { className: 'bb-muted' }, '常用/吃灰会随使用自动调整；手动移动后不再自动改'),
+          ),
           h(
             'div',
             { className: 'bb-actions' },
@@ -3960,11 +4047,11 @@ window.__ModuleLoader__.load({
             ),
             h('span', { className: 'bb-muted' }, '一次最多 10 张，自动让视觉模型写梗概和情绪'),
           ),
-          items.length
+          visible.length
             ? h(
                 'div',
                 { className: 'bb-stickers' },
-                items
+                visible
                   .slice()
                   .reverse()
                   .map((item) =>
@@ -3988,7 +4075,29 @@ window.__ModuleLoader__.load({
                         'div',
                         { className: 'bb-inline' },
                         h(Chip, { children: item.mood || '日常' }),
+                        h(Chip, {
+                          children: STICKER_CATEGORY_LABELS[item.category ?? 'default'],
+                          tone: item.category === 'common' ? 'good' : item.category === 'dusty' ? 'idle' : '',
+                        }),
                         h('span', { className: 'bb-muted' }, `用 ${item.uses ?? 0} 次`),
+                      ),
+                      h(
+                        'div',
+                        { className: 'bb-inline' },
+                        h('span', { className: 'bb-muted' }, '归类'),
+                        ['common', 'default', 'dusty'].map((category) =>
+                          h(
+                            'button',
+                            {
+                              key: category,
+                              type: 'button',
+                              className: `bb-btn bb-btn--tiny${(item.category ?? 'default') === category ? ' primary' : ''}`,
+                              disabled: busy,
+                              onClick: () => this.setCategory(item, category),
+                            },
+                            STICKER_CATEGORY_LABELS[category],
+                          ),
+                        ),
                       ),
                       h(
                         'div',
@@ -4005,7 +4114,7 @@ window.__ModuleLoader__.load({
                     ),
                   ),
               )
-            : h('div', { className: 'bb-muted' }, '还没有收藏。等群里有人发有趣的表情包，她会自己收起来。'),
+            : h('div', { className: 'bb-muted' }, items.length ? '这个分类下还没有表情包。' : '还没有收藏。等群里有人发有趣的表情包，她会自己收起来。'),
         )
       }
     }
@@ -5165,6 +5274,9 @@ class FriendsPanel extends React.Component {
 .bb-hormoneHead { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .bb-hormoneName { inline-size: 54px; flex: 0 0 auto; }
 .bb-hormoneValue { font-variant-numeric: tabular-nums; }
+.bb-hormoneTrend { font-size: 11px; color: var(--dsw-alias-label-tertiary); inline-size: 12px; text-align: center; }
+.bb-hormoneTrend.is-up { color: var(--dsw-alias-state-success-primary); }
+.bb-hormoneTrend.is-down { color: var(--dsw-alias-state-warn-primary); }
 .bb-schema { margin-block-end: 9px; }
 .bb-theta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-block-end: 10px; }
 .bb-thetaValue { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -5251,9 +5363,17 @@ class FriendsPanel extends React.Component {
 .bb-memNarrative { font-size: 12px; margin-block: 3px; color: var(--dsw-alias-label-primary); }
 .bb-memMeta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 10.5px; color: var(--dsw-alias-label-secondary); }
 .bb-a9 { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 3px 0; flex-wrap: wrap; }
+.bb-loopWrap { display: flex; flex-direction: column; gap: 4px; }
 .bb-loop { inline-size: 100%; block-size: auto; max-block-size: 300px; display: block; }
 .bb-edge { stroke: var(--dsw-alias-border-l2); stroke-width: 1.2; stroke-dasharray: 3 4; }
-.bb-edge.is-active { stroke: var(--dsw-alias-brand-primary); stroke-dasharray: 0; opacity: .85; }
+.bb-edge.is-active { stroke: var(--dsw-alias-brand-primary); stroke-dasharray: 5 5; opacity: .85; animation: bb-loop-flow 1.1s linear infinite; }
+.bb-edge.is-scanning { stroke: var(--dsw-alias-brand-secondary); stroke-dasharray: 2 7; opacity: .5; animation: bb-loop-flow 1.8s linear infinite; }
+.bb-loopPulse { fill: var(--dsw-alias-brand-primary); filter: drop-shadow(0 0 4px color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent)); }
+.bb-node.is-scanning .bb-nodeShape { stroke: var(--dsw-alias-brand-secondary); stroke-width: 1.5; }
+@keyframes bb-loop-flow { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) {
+  .bb-edge.is-active, .bb-edge.is-scanning { animation: none; }
+}
 .bb-nodeShape { fill: var(--dsw-alias-bg-layer-2); stroke: var(--dsw-alias-border-l1); stroke-width: 1; }
 .bb-node.is-active .bb-nodeShape {
   fill: color-mix(in oklab, var(--dsw-alias-brand-primary) 16%, var(--dsw-alias-bg-layer-1));

@@ -10,6 +10,15 @@ import { createHash } from 'node:crypto'
 
 const MAX = 120
 
+export const STICKER_CATEGORIES = ['common', 'default', 'dusty']
+export const STICKER_CATEGORY_LABELS = { common: '常用', default: '默认', dusty: '吃灰' }
+const CATEGORY_BIAS = { common: 0.45, default: 0, dusty: -0.6 }
+
+function normalizeCategory(value) {
+  const raw = String(value ?? '')
+  return STICKER_CATEGORIES.includes(raw) ? raw : 'default'
+}
+
 function bigrams(text) {
   const clean = String(text ?? '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '')
   const set = new Set()
@@ -44,6 +53,16 @@ export class StickerBook {
     } catch {
       this.items = []
     }
+    // 老存档没有分类：默认归"默认"；超过 30 天没用过自动进"吃灰"
+    const now = Date.now()
+    for (const item of this.items) {
+      item.category = normalizeCategory(item.category)
+      item.categoryManual = Boolean(item.categoryManual)
+      if (!item.categoryManual) {
+        if ((item.uses ?? 0) >= 3) item.category = 'common'
+        else if ((item.uses ?? 0) === 0 && item.addedAt && now - item.addedAt > 30 * 24 * 60 * 60 * 1000) item.category = 'dusty'
+      }
+    }
     this.loaded = true
     return this.items
   }
@@ -61,7 +80,18 @@ export class StickerBook {
     const ext = type.includes('gif') ? 'gif' : type.includes('jpeg') ? 'jpg' : 'png'
     const file = path.join(this.dir, `${hash}.${ext}`)
     await writeFile(file, buffer)
-    const item = { id: hash, file, ext, gist: String(gist).slice(0, 30), mood, text: String(text).slice(0, 20), addedAt: Date.now(), uses: 0 }
+    const item = {
+      id: hash,
+      file,
+      ext,
+      gist: String(gist).slice(0, 30),
+      mood,
+      text: String(text).slice(0, 20),
+      addedAt: Date.now(),
+      uses: 0,
+      category: 'default',
+      categoryManual: false,
+    }
     this.items.push(item)
     if (this.items.length > MAX) {
       const victims = [...this.items].sort((a, b) => a.uses - b.uses).slice(0, this.items.length - MAX)
@@ -82,12 +112,16 @@ export class StickerBook {
     await this.load()
     if (!this.items.length) return null
     const contextGrams = bigrams(context)
-    const scored = this.items.map((item) => {
+    // 吃灰图默认不参与自动挑图；只有所有图都吃灰时才兜底
+    const active = this.items.filter((item) => (item.category ?? 'default') !== 'dusty')
+    const pool = active.length ? active : this.items
+    const scored = pool.map((item) => {
       const grams = bigrams(`${item.gist} ${item.text}`)
       const contextScore = jaccard(contextGrams, grams)
       const moodMatch = item.mood === mood
       let score = contextScore * 3.2
       if (moodMatch) score += 1.1
+      score += CATEGORY_BIAS[item.category] ?? 0
       score -= Math.min(0.9, (item.uses ?? 0) * 0.09)
       // 只留极小的平局扰动；表情包合不合适由 mood + 上下文决定，不靠抽签
       score += Math.random() * 0.04
@@ -103,10 +137,22 @@ export class StickerBook {
   async pick(mood, context = '', { minScore = 0 } = {}) {
     const choice = await this.choose(mood, context)
     if (!choice || choice.score < minScore) return null
-    const chosen = choice.item
-    chosen.uses = (chosen.uses ?? 0) + 1
+    return this.touch(choice.item.id)
+  }
+
+  /** 记一次使用；非手动分类的图会随使用自动升到"常用"。 */
+  async touch(id) {
+    await this.load()
+    const item = this.items.find((row) => row.id === String(id))
+    if (!item) return null
+    item.uses = (item.uses ?? 0) + 1
+    item.lastUsedAt = Date.now()
+    if (!item.categoryManual) {
+      if (item.uses >= 3) item.category = 'common'
+      else if (item.category === 'dusty') item.category = 'default'
+    }
     await this._flush()
-    return chosen
+    return { ...item }
   }
 
   /** 手动改描述/情绪/图上的字：自动识别只是草稿，最终解释权归用户。 */
@@ -117,6 +163,10 @@ export class StickerBook {
     if (typeof patch.gist === 'string') item.gist = patch.gist.trim().slice(0, 30)
     if (typeof patch.mood === 'string' && patch.mood.trim()) item.mood = patch.mood.trim().slice(0, 4)
     if (typeof patch.text === 'string') item.text = patch.text.trim().slice(0, 20)
+    if (STICKER_CATEGORIES.includes(String(patch.category ?? ''))) {
+      item.category = String(patch.category)
+      item.categoryManual = true
+    }
     item.updatedAt = Date.now()
     await this._flush()
     return { ...item }
@@ -134,6 +184,12 @@ export class StickerBook {
 
   async stats() {
     await this.load()
-    return { count: this.items.length, used: this.items.filter((item) => item.uses > 0).length }
+    const byCategory = { common: 0, default: 0, dusty: 0 }
+    for (const item of this.items) byCategory[normalizeCategory(item.category)] += 1
+    return {
+      count: this.items.length,
+      used: this.items.filter((item) => item.uses > 0).length,
+      byCategory,
+    }
   }
 }

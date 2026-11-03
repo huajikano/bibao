@@ -2404,7 +2404,7 @@ export function apply(ctx, config = {}) {
       methods: ['GET', 'POST'],
       handler: async (request) => {
         await boot()
-        if (!stickers) return json({ items: [], stats: { count: 0, used: 0 } })
+        if (!stickers) return json({ items: [], stats: { count: 0, used: 0, byCategory: { common: 0, default: 0, dusty: 0 } } })
         if (request.method === 'POST') {
           const body = await readBody(request)
           const update = body.update && typeof body.update === 'object' ? body.update : body.id ? body : null
@@ -2421,8 +2421,8 @@ export function apply(ctx, config = {}) {
             if (!to || !snow.bridge) return fail('没有可发送的群或连接', 400)
             const id = await snow.bridge.sendGroup(to, '', item.file)
             await appendSnowLog({ at: Date.now(), kind: 'sticker-out', groupId: to, gist: item.gist, messageId: id })
-            item.uses = (item.uses ?? 0) + 1
-            return json({ ok: true, sent: id })
+            await stickers.touch(item.id)
+            return json({ ok: true, sent: id, stats: await stickers.stats() })
           } else if (body.use) {
             const item = await stickers.pick(String(body.mood ?? stickerMood()), String(body.context ?? ''))
             return json({ picked: item })
