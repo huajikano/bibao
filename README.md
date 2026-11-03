@@ -62,7 +62,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.8.6` | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |
+| [`v0.8.6`](https://github.com/huajikano/bibao/releases/tag/v0.8.6) | 设置页后面新增「用量」：按输入/输出、认知模块、模型、最近 14 天统计 Token |
 | [`v0.8.5`](https://github.com/huajikano/bibao/releases/tag/v0.8.5) | 戳一戳二选一：回戳一下或发一张表情包，不再发文字；表情包按情绪/上下文选并加冷却 |
 | [`v0.8.4`](https://github.com/huajikano/bibao/releases/tag/v0.8.4) | snowluma 目录不再要求固定路径：环境变量/设置字段/常见目录/盘符浅扫自动找；找不到时给出可操作提示 |
 | [`v0.8.3`](https://github.com/huajikano/bibao/releases/tag/v0.8.3) | 清理补丁/测试里的本机路径、QQ 号、群号；snowluma 配置目录改为自动探测 |
