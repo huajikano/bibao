@@ -815,7 +815,7 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { key: item.id, className: 'bb-innerItem' },
-                  h('div', { className: 'bb-innerMeta' }, h('span', {}, item.name), h(Chip, { children: `亲 ${Math.round(item.intimacy)}` })),
+                  h('div', { className: 'bb-innerMeta' }, h('span', {}, item.name), h(Chip, { children: `亲 ${Number(item.intimacy ?? 0).toFixed(1)}` })),
                   item.recent
                     .slice(-3)
                     .map((line, index) =>
@@ -1105,7 +1105,7 @@ window.__ModuleLoader__.load({
       const options = [{ id: 'owner', name: '我自己', hint: '亲密度 42' }].concat(
         (snap?.social ?? [])
           .filter((item) => item.id !== 'owner')
-          .map((item) => ({ id: item.id, name: item.name, hint: `亲 ${Math.round(item.intimacy)} / 惧 ${fixed(item.powerFear)}` })),
+          .map((item) => ({ id: item.id, name: item.name, hint: `亲 ${Number(item.intimacy ?? 0).toFixed(1)} / 惧 ${fixed(item.powerFear)}` })),
       )
       const [asId, setAsId] = useState('owner')
       const target = options.find((item) => item.id === asId) ?? options[0]
@@ -4326,13 +4326,17 @@ class FriendsPanel extends React.Component {
       componentDidMount() {
         this.alive = true
         this.load()
+        this.timer = setInterval(this.load, 5000)
       }
 
       componentWillUnmount() {
         this.alive = false
+        if (this.timer) clearInterval(this.timer)
       }
 
       async load() {
+        // 手动编辑期间不要被 5 秒轮询覆盖
+        if (this.dirty) return
         try {
           const data = await request('/friends')
           if (!this.alive) return
@@ -4353,11 +4357,13 @@ class FriendsPanel extends React.Component {
       }
 
       edit(id, patch) {
+        this.dirty = true
         this.setState((prev) => ({ draft: { ...prev.draft, [id]: { ...(prev.draft[id] ?? {}), ...patch } } }))
       }
 
       async save(row) {
         const draft = this.state.draft[row.id] ?? {}
+        this.dirty = false
         this.setState({ busy: true, note: '' })
         try {
           await request('/friends', {
@@ -4373,6 +4379,7 @@ class FriendsPanel extends React.Component {
           this.setState({ busy: false, note: `已更新 ${row.name}` })
           await this.load()
         } catch (error) {
+          this.dirty = true
           this.setState({ busy: false, error: error.message })
         }
       }
@@ -4400,12 +4407,13 @@ class FriendsPanel extends React.Component {
                       h('span', { className: 'bb-friendId' }, row.account ?? row.id),
                       h('span', { className: 'bb-muted' }, `聊过 ${row.interactions} 次`),
                       row.friendSource === 'self' ? h(Chip, { children: '她自己记的' }) : null,
+                      row.boundaryHits > 0 ? h(Chip, { children: `越界 ${row.boundaryHits} 次`, tone: 'bad' }) : null,
                       row.tags?.length ? h(Chip, { children: row.tags[0] }) : null,
                     ),
                     h(
                       'label',
                       { className: 'bb-friendRow' },
-                      h('span', { className: 'bb-muted' }, `好感 ${Math.round(value.intimacy ?? 0)}`),
+                      h('span', { className: 'bb-muted' }, `好感 ${Number(value.intimacy ?? 0).toFixed(1)}`),
                       h('input', {
                         type: 'range',
                         className: 'bb-slider',

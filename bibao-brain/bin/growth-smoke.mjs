@@ -244,6 +244,33 @@ function fresh({ biography = bio16, startMs = Date.UTC(2026, 10, 2, 14, 0, 0), s
   check('合成感知不会被当成聊天线程', brain.threads.threads.length === before, `threads=${brain.threads.threads.length}`)
 }
 
+/* I2. 越界问题会降好感，正常关心仍然能升 */
+{
+  const brain = fresh({ seed: 99 })
+  const relationId = 'u_boundary'
+  await brain.perceive({ entityId: relationId, entityName: '小林', text: '在吗', channel: 'private' })
+  const before = brain.social.get(relationId)?.intimacy ?? 0
+  const offend = await brain.perceive({
+    entityId: relationId,
+    entityName: '小林',
+    text: '你一个月工资多少',
+    channel: 'private',
+  })
+  const after = brain.social.get(relationId)?.intimacy ?? 0
+  check('越界问题会降好感', after < before, `before=${before.toFixed(1)} after=${after.toFixed(1)}`)
+  check('越界问题是真实进入大脑的', offend.ignited === true, `${offend.ignited} · ${offend.reason ?? ''}`)
+  check('越界会被记住一笔', (brain.social.get(relationId)?.boundaryHits ?? 0) >= 1, String(brain.social.get(relationId)?.boundaryHits ?? 0))
+
+  await brain.perceive({ entityId: relationId, entityName: '小林', text: '你谈过几个', channel: 'private' })
+  const repeated = brain.social.get(relationId)?.intimacy ?? 0
+  check('重复越界会继续扣分', repeated < after, `after=${after.toFixed(1)} repeated=${repeated.toFixed(1)}`)
+  check('越界次数会累积', (brain.social.get(relationId)?.boundaryHits ?? 0) >= 2, String(brain.social.get(relationId)?.boundaryHits ?? 0))
+
+  await brain.perceive({ entityId: relationId, entityName: '小林', text: '今天好累 想你了', channel: 'private' })
+  const warmed = brain.social.get(relationId)?.intimacy ?? 0
+  check('正常关心仍然能升好感', warmed > repeated, `repeated=${repeated.toFixed(1)} warmed=${warmed.toFixed(1)}`)
+}
+
 /* J. WS 鉴权 URL：token 不能只放在被忽略的 header 里 */
 {
   const url = wsUrlWithToken('ws://127.0.0.1:3001/', 'abc xyz')

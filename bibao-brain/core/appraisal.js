@@ -16,6 +16,22 @@ const LEXICON = {
   desire: ['想见', '想抱', '想你了', '喜欢', '陪陪我', '别走'],
 }
 
+/**
+ * 越界问题：不是在骂人，而是在问"你不该问的"。
+ * 命中后仍会被关系与重复次数调节，不是一票否决。
+ */
+const PRIVACY_CUES = [
+  /你(?:今年)?(?:多大|几岁|年龄)/,
+  /(?:体重|多重|三围|胸围|罩杯)/,
+  /你.{0,6}(?:工资|收入|存款|月薪|年薪)/,
+  /谈过几个|(?:前任|恋爱史|初吻|男朋友|女朋友).{0,8}(?:谁|几个|几次|多久|怎么)/,
+  /(?:是不是|是)(?:AI|ai|机器人|真人|人吗)|真人吗/,
+  /你.{0,6}(?:住哪|地址|电话|身份证|家庭住址)/,
+  /(?:整容|素颜|发张照片|照片看看|长什么样)/,
+  /(?:约吗|包养|一夜情)/,
+  /你(?:爸妈|父母).{0,8}(?:干嘛|做什么|离婚|工资)/,
+]
+
 export const DEFAULT_INTERESTS = ['猫', 'livehouse', '乐队', '番剧', '摄影', '通宵', '游戏', '奶茶']
 
 export function analyzeText(text = '') {
@@ -29,6 +45,8 @@ export function analyzeText(text = '') {
   const desire = count(LEXICON.desire)
   const question = /[?？]|吗|呢|怎么|为什么|啥|什么/.test(raw) ? 1 : 0
   const exclaim = /[!！]/.test(raw) ? 1 : 0
+  const privacyHits = PRIVACY_CUES.reduce((sum, rule) => sum + (rule.test(raw) ? 1 : 0), 0)
+  const intrusion = clamp(privacyHits * 0.48 + (privacyHits && question ? 0.12 : 0))
   return {
     text: raw,
     length: raw.length,
@@ -39,6 +57,8 @@ export function analyzeText(text = '') {
     desire,
     question,
     exclaim,
+    privacyHits,
+    intrusion,
     hostility: clamp(hostile * 0.55 + exclaim * 0.1),
     preaching: clamp(preach * 0.5),
     warmth: clamp(care * 0.5 + desire * 0.35),
@@ -66,6 +86,7 @@ export function estimatePE({ analysis, relation, schemaHits = [], expectation = 
     0.16 +
     0.34 * analysis.hostility +
     0.3 * analysis.preaching +
+    0.2 * (analysis.intrusion ?? 0) +
     0.2 * Math.min(1, schemaHits.length) +
     0.16 * clamp(topicNovelty) +
     0.08 * (relation ? 0 : 1) -
@@ -91,6 +112,7 @@ export function salienceOf({
     0.18 +
     0.16 * analysis.question +
     0.3 * analysis.hostility +
+    0.12 * (analysis.intrusion ?? 0) +
     0.12 * analysis.warmth +
     0.1 * analysis.gossipy +
     0.14 * (nameMention ? 1 : 0) +
@@ -187,6 +209,8 @@ export function maskStyle(relation, state) {
 export function stimulusDelta({ analysis, relation, schemaHits = [], channel = 'private' }) {
   const delta = { cortisol: 0, dopamine: 0, oxytocin: 0, serotonin: 0 }
   let valenceTarget = 0
+  const intrusion = clamp(Number(analysis.intrusion) || 0)
+  const repeat = Math.max(0, Math.min(3, Number(relation?.boundaryHits) || 0))
 
   if (analysis.hostility > 0) {
     delta.cortisol += 0.5 * analysis.hostility
@@ -220,9 +244,15 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
     delta.serotonin -= 0.05
     valenceTarget -= 0.2 * Math.min(1, schemaHits.length)
   }
+  if (intrusion > 0) {
+    // 被问到不该问的：不是暴怒，但会收紧、记住、下次少给一点
+    delta.cortisol += 0.28 * intrusion
+    delta.serotonin -= 0.06 * intrusion
+    valenceTarget -= 0.5 * intrusion
+  }
 
   const closeness = clamp(((relation?.intimacy ?? 0) + 40) / 140)
-  const intimacyDelta =
+  const normalIntimacy =
     analysis.hostility > 0
       ? -3 - 4 * closeness
       : analysis.warmth > 0
@@ -230,12 +260,20 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
         : analysis.gossipy > 0
           ? 0.9
           : 0.9
+  // 越界问句的扣分独立于"语气好不好"：问得客气也不代表可以问
+  const boundaryDelta =
+    intrusion > 0.12 ? -(1.8 + 2 * closeness + 0.8 * repeat) * (0.55 + intrusion) : 0
+  const intimacyDelta = intrusion > 0.12 ? Math.min(normalIntimacy, boundaryDelta) : normalIntimacy
+  const normalTrust = analysis.hostility > 0 ? -2.5 * analysis.hostility : analysis.warmth > 0 ? 0.6 : 0
+  const boundaryTrust = intrusion > 0.12 ? -(1.2 + 1.6 * intrusion + 0.5 * repeat) : 0
 
   return {
     delta,
     valenceTarget: clamp(valenceTarget, -1, 1),
+    intrusion,
+    boundaryHit: intrusion > 0.12,
     intimacyDelta,
-    trustDelta: analysis.hostility > 0 ? -2.5 * analysis.hostility : analysis.warmth > 0 ? 0.6 : 0,
+    trustDelta: Math.min(normalTrust, boundaryTrust),
   }
 }
 

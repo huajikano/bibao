@@ -62,7 +62,7 @@ growth:
 ### 一次验成长
 
 ```bash
-node bin/growth-smoke.mjs     # 41 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享
+node bin/growth-smoke.mjs     # 47 项：人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感
 node bin/bci-hub-smoke.mjs    # 12 项：四种适配器 / 默认拦截 / 确认 / 限频 / 审计
 node bin/sticker-import-smoke.mjs # 5 项：表情包导入 + 描述编辑（假视觉端点）
 node bin/ws-reverse-smoke.mjs # 6 项：反向 WS 握手 / 事件 / 动作 / 群列表
@@ -166,7 +166,7 @@ LLM 只能返回双轨 JSON，且 `neuro_delta` 被限幅、`bubbles` 被预算�
 ```bash
 node bin/sandbox.mjs          # 全部 6 项
 node bin/sandbox.mjs T3 T4    # 只跑指定项
-node bin/growth-smoke.mjs     # 成长层 41 项
+node bin/growth-smoke.mjs     # 成长层 47 项
 node bin/bci-hub-smoke.mjs    # 多脑机接口 12 项
 ```
 
@@ -316,7 +316,7 @@ bibao-brain/
 | 项目 | 结果 |
 | --- | --- |
 | `node bin/sandbox.mjs` | 6/6 通过，约 40ms |
-| `node bin/growth-smoke.mjs` | 41/41 通过（人格、复盘、生活流、模糊记忆、线程、主动分享、WS token） |
+| `node bin/growth-smoke.mjs` | 47/47 通过（人格、复盘、生活流、模糊记忆、线程、主动分享、越界降好感、WS token） |
 | `node bin/bci-hub-smoke.mjs` | 12/12 通过（四类适配器、默认拦截、确认、限频、审计） |
 | `node bin/ws-reverse-smoke.mjs` | 6/6 通过（反向 WS 握手、事件、动作、群列表） |
 | `node bin/sticker-import-smoke.mjs` | 5/5 通过（表情包导入 + 描述编辑） |
@@ -330,4 +330,5 @@ bibao-brain/
 
 已确认的运行时行为是 Host 层的；面板的渲染只经过语法与槽位注册检查。
 如果打开面板发现样式问题，先看 `client.js` 里的 `CSS` 常量，再对照 `--dsw-alias-*` 令牌。
+
 

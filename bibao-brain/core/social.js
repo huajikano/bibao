@@ -31,6 +31,8 @@ export class SocialMemory {
       interactions: Number(input.interactions ?? current?.interactions ?? 0),
       lastAt: current?.lastAt ?? null,
       defiances: current?.defiances ?? 0,
+      boundaryHits: Number(input.boundaryHits ?? current?.boundaryHits ?? 0),
+      lastBoundaryAt: input.lastBoundaryAt ?? current?.lastBoundaryAt ?? null,
       recent: Array.isArray(input.recent) ? input.recent.slice(-6) : current?.recent ?? [],
     }
     this.relations.set(id, next)
@@ -54,12 +56,23 @@ export class SocialMemory {
     return found
   }
 
-  adjust(id, delta = {}, { count = true } = {}) {
+  adjust(id, delta = {}, { count = true, boundaryHit = false } = {}) {
     const relation = this.ensure(id)
     if (Number.isFinite(delta.intimacy)) relation.intimacy = clamp(relation.intimacy + delta.intimacy, -100, 100)
     if (Number.isFinite(delta.trust)) relation.trust = clamp(relation.trust + delta.trust, 0, 100)
     if (Number.isFinite(delta.powerFear)) relation.powerFear = clamp(relation.powerFear + delta.powerFear)
     if (delta.impression) relation.impression = delta.impression
+    // 越界会累积；隔一天没再犯，才慢慢消掉一笔
+    if (boundaryHit) {
+      relation.boundaryHits = (relation.boundaryHits ?? 0) + 1
+      relation.lastBoundaryAt = Date.now()
+    } else if (count && relation.boundaryHits > 0) {
+      const last = Number(relation.lastBoundaryAt ?? 0)
+      if (!last || Date.now() - last > 24 * 60 * 60 * 1000) {
+        relation.boundaryHits = Math.max(0, relation.boundaryHits - 1)
+        relation.lastBoundaryAt = Date.now()
+      }
+    }
     // 一轮对话只该算一条互动：同轮内的 LLM 微调、初始印象、防御扣分不重复计数
     if (count) relation.interactions += 1
     // 不用手动加好友：聊够 10 条，她自己把这个人记进好友面板。

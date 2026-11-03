@@ -31,7 +31,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 
 ```bash
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
-node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享，41 项
+node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感，47 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 群层只看不回，35 项
 node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 最终条数，13 项
@@ -63,6 +63,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.9.1` | 新插件图标；越界问题会降好感并累积、正常关心仍能回升；好友/对话列表好感实时刷新并显示一位小数 |
 | [`v0.9.0`](https://github.com/huajikano/bibao/releases/tag/v0.9.0) | 默认灵动小女孩节奏：长尾气泡、玩心/疲惫/生气耦合、提示词默认一句、最终条数不被标点切碎 |
 | [`v0.8.8`](https://github.com/huajikano/bibao/releases/tag/v0.8.8) | 群聊层级修正：余光/免打扰只看不回，被 @ 或被戳一戳也不回；只有焦点群会说话 |
 | [`v0.8.7`](https://github.com/huajikano/bibao/releases/tag/v0.8.7) | 用量面板参考 CC Switch：本次会话、缓存读/写、命中率、平均延迟、按模块/模型/最近调用 |
@@ -97,3 +98,4 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 ## 许可
 
 代码仅供学习与个人使用。snowluma 是第三方运行时，不随本仓库分发。
+

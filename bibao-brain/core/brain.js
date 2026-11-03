@@ -1191,7 +1191,7 @@ export class BibaoBrain {
     this.state.applyStimulus(stim.delta, {
       valenceTarget: stim.valenceTarget,
       stressor:
-        analysis.hostility > 0.25 || analysis.preaching > 0.25
+        analysis.hostility > 0.25 || analysis.preaching > 0.25 || analysis.intrusion > 0.3
           ? { name: relation.name, text, at: now }
           : undefined,
       at: now,
@@ -1206,11 +1206,21 @@ export class BibaoBrain {
       at: now,
     })
     this.social.remember(entityId, { at: now, role: 'user', text })
-    this.social.adjust(entityId, {
-      intimacy: stim.intimacyDelta,
-      trust: stim.trustDelta,
-      impression: analysis.hostility > 0.3 ? '说话冲，记着' : analysis.warmth > 0.3 ? '会照顾人' : relation.impression,
-    })
+    this.social.adjust(
+      entityId,
+      {
+        intimacy: stim.intimacyDelta,
+        trust: stim.trustDelta,
+        impression: analysis.hostility > 0.3
+          ? '说话冲，记着'
+          : analysis.intrusion > 0.3
+            ? '问得越界，记一笔'
+            : analysis.warmth > 0.3
+              ? '会照顾人'
+              : relation.impression,
+      },
+      { count: true, boundaryHit: stim.boundaryHit },
+    )
     if (this.state.hijacked) {
       const extra = this.workspace.enforceCapacity(this.state, now)
       this.stats.evictions += extra.length
@@ -1426,6 +1436,10 @@ export class BibaoBrain {
     if (dual.meta?.source === 'llm') this.stats.llmCalls += 1
     if (dual.meta?.llmError) this.stats.llmFallbacks += 1
 
+    // 越界问题不能被 LLM 的“客气回复”抵消成加分：这一轮亲密度只能往下走
+    if (analysis.intrusion > 0.12 && dual.neuro_delta) {
+      dual.neuro_delta.intimacy_delta = Math.min(Number(dual.neuro_delta.intimacy_delta) || 0, -0.4)
+    }
     // LLM 的神经增量只能微调，且被 allowlist + 限幅过（见 prefrontal.normalizeDualTrack）
     this.state.applyStimulus(dual.neuro_delta ?? {}, { at: now })
     if (Number.isFinite(dual.neuro_delta?.intimacy_delta)) {
