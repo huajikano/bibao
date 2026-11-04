@@ -908,7 +908,10 @@ window.__ModuleLoader__.load({
         { className: 'bb-grid' },
         h(
           Card,
-          { title: '她今天', hint: life.dayKey ?? '生活流' },
+          {
+            title: '她今天',
+            hint: [life.dayKey, life.theme?.label, life.theme?.weekend ? '周末' : ''].filter(Boolean).join(' · ') || '生活流',
+          },
           today.length
             ? today.map((item) =>
                 h(
@@ -2218,6 +2221,7 @@ window.__ModuleLoader__.load({
         ['groups', t('tabGroups')],
         ['gate', t('tabGate')],
         ['settings', t('tabSettings')],
+        ['owner', '主人'],
         ['usage', '用量'],
       ]
 
@@ -2280,6 +2284,7 @@ window.__ModuleLoader__.load({
             tab === 'groups' ? h(GroupsTab, { snap, t, onGoGate: () => setTab('gate') }) : null,
             tab === 'gate' ? h(GateTab, { snap, t, onRefresh: refresh }) : null,
             tab === 'settings' ? h(SettingsTab, { snap, t, act, busy }) : null,
+            tab === 'owner' ? h(OwnerPanel, { snap }) : null,
             tab === 'usage' ? h(UsagePanel, { t }) : null,
           ),
           toast ? h('div', { className: 'bb-toast', role: 'status' }, toast) : null,
@@ -3806,6 +3811,7 @@ window.__ModuleLoader__.load({
           ['senses', '感官'],
           ['friends', '好友'],
           ['settings', t('tabSettings')],
+          ['owner', '主人'],
           ['usage', '用量'],
         ]
         return h(
@@ -3866,6 +3872,7 @@ window.__ModuleLoader__.load({
           tab === 'groups' ? this.renderGroups(t, snap) : null,
           tab === 'gate' ? this.renderGate(t, snap) : null,
           tab === 'settings' ? this.renderSettings(t, snap) : null,
+          tab === 'owner' ? h(OwnerPanel, { snap }) : null,
           tab === 'usage' ? h(UsagePanel, { t }) : null,
           tab === 'senses' ? h(SensesPanel, { t, snap }) : null,
           tab === 'persona' ? h(PersonaPanel, { t, snap }) : null,
@@ -4593,6 +4600,95 @@ class FriendsPanel extends React.Component {
     }
 
     /* ------------------------------------------------------------------ */
+    /* 主人面板                                                            */
+    /* ------------------------------------------------------------------ */
+
+    class OwnerPanel extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { qq: '', requirements: '', note: '', busy: false }
+        this.save = this.save.bind(this)
+      }
+
+      componentDidMount() {
+        this.sync(this.props.snap)
+      }
+
+      componentDidUpdate(previous) {
+        if (previous.snap !== this.props.snap && !this.dirty) this.sync(this.props.snap)
+      }
+
+      sync(snap) {
+        const owner = snap?.owner ?? {}
+        this.setState({ qq: owner.qq ?? '', requirements: owner.requirements ?? '' })
+      }
+
+      async save() {
+        this.dirty = false
+        this.setState({ busy: true, note: '' })
+        try {
+          const data = await request('/settings', {
+            method: 'POST',
+            body: JSON.stringify({ owner: { qq: this.state.qq, requirements: this.state.requirements } }),
+          })
+          this.setState({ busy: false, note: '主人设置已保存', ...(data.snapshot?.owner ?? {}) })
+        } catch (error) {
+          this.dirty = true
+          this.setState({ busy: false, note: `保存失败：${error.message}` })
+        }
+      }
+
+      render() {
+        const note = this.state.note
+        return h(
+          Card,
+          { title: '主人', hint: 'QQ 身份与长期要求' },
+          h(
+            'div',
+            { className: 'bb-personaGrid' },
+            h(
+              'label',
+              { className: 'bb-personaField' },
+              h('span', { className: 'bb-muted' }, '主人 QQ（只填数字）'),
+              h('input', {
+                className: 'bb-input',
+                inputMode: 'numeric',
+                value: this.state.qq,
+                placeholder: '例如 123456789',
+                onChange: (event) => {
+                  this.dirty = true
+                  this.setState({ qq: event.target.value })
+                },
+              }),
+            ),
+          ),
+          h(
+            'label',
+            { className: 'bb-personaField' },
+            h('span', { className: 'bb-muted' }, '主人给的要求（会作为长期约定进入她的提示词，不是每句话的命令）'),
+            h('textarea', {
+              className: 'bb-textarea',
+              rows: 8,
+              value: this.state.requirements,
+              placeholder: '例如：晚上十一点后少聊工作；她可以主动分享，但不要刷屏；被冒犯时可以直接说。',
+              onChange: (event) => {
+                this.dirty = true
+                this.setState({ requirements: event.target.value })
+              },
+            }),
+          ),
+          h(
+            'div',
+            { className: 'bb-actions' },
+            h('button', { type: 'button', className: 'bb-btn primary', disabled: this.state.busy, onClick: this.save }, '保存主人设置'),
+            h('span', { className: 'bb-muted' }, '至少 5 位数字；留空 = 不绑定主人'),
+          ),
+          note ? h('div', { className: 'bb-chip good' }, note) : null,
+        )
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Token 用量                                                          */
     /* ------------------------------------------------------------------ */
 
@@ -4957,6 +5053,10 @@ class FriendsPanel extends React.Component {
         let ok = 0
         let failed = 0
         for (const file of files) {
+          if (file.size > 2 * 1024 * 1024) {
+            failed += 1
+            continue
+          }
           try {
             const text = await file.text()
             await request('/knowledge', {
@@ -4968,7 +5068,10 @@ class FriendsPanel extends React.Component {
             failed += 1
           }
         }
-        this.setState({ note: `知识导入：成功 ${ok} 个${failed ? `，失败 ${failed} 个` : ''}` })
+        if (ok > 0 && this.state.knowledge?.enabled !== true) {
+          await request('/settings', { method: 'POST', body: JSON.stringify({ knowledge: { enabled: true } }) }).catch(() => {})
+        }
+        this.setState({ note: `知识导入：成功 ${ok} 个${failed ? `，失败 ${failed} 个` : ''}${ok ? '，已自动打开知识库' : ''}` })
         await this.load()
       }
 
@@ -5058,9 +5161,9 @@ class FriendsPanel extends React.Component {
                 }),
                 knowledge?.enabled ? '接口已开启' : '接口已关闭',
               ),
-              h(Chip, { children: `${knowledge?.status?.files ?? 0} 个文件` }),
-              h(Chip, { children: `${knowledge?.status?.chunks ?? 0} 块知识` }),
-              h('span', { className: 'bb-muted' }, '开启后，聊天会先检索最相关的几块知识'),
+              h(Chip, { children: `${knowledge?.status?.books ?? 0} 本书` }),
+              h(Chip, { children: `${knowledge?.status?.chunks ?? 0} 块书页` }),
+              h('span', { className: 'bb-muted' }, '开启后，聊天会先翻最相关的 2 块书页'),
             ),
             h(
               'div',
@@ -5093,6 +5196,11 @@ class FriendsPanel extends React.Component {
                   }),
                 ),
               ),
+            ),
+            h(
+              'div',
+              { className: 'bb-muted' },
+              '限制：UTF-8 的 .md / .txt / .json；单本 ≤2MB；最多 3000 块；每次最多翻 2 块；不支持 PDF / DOCX / 图片。',
             ),
             h(
               'div',

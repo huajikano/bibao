@@ -1025,6 +1025,12 @@ export class BibaoBrain {
     const relation = this.social.ensure(entityId, frame.entityName || this.userName)
     const channel = frame.channel === 'group' ? 'group' : 'private'
     const atMe = Boolean(frame.atMe)
+    const isOwner = Boolean(frame.isOwner)
+    if (isOwner) {
+      relation.tags = Array.from(new Set([...(relation.tags ?? []), '主人']))
+      relation.friend = true
+      relation.friendSource = relation.friendSource ?? 'self'
+    }
     // 好友面板由"互动 10 条"自动管理；私聊一次不再直接算好友
 
     // 对方一开口，原来的"等回复"钩子立即销毁
@@ -1273,7 +1279,13 @@ export class BibaoBrain {
       budget.maxBubbles = 1
       budget.maxChars = Math.min(budget.maxChars, 16)
     }
-    const appraisalHint = await this._appraisalHint({ text, relation, analysis })
+    // 短句、普通寒暄不值得再开一次模型：把延迟留给真正需要揣测的时刻
+    const needsAppraisal =
+      analysis.hostility > 0.2 ||
+      analysis.preaching > 0.2 ||
+      (analysis.question > 0.5 && text.length >= 8) ||
+      text.length > 36
+    const appraisalHint = needsAppraisal ? await this._appraisalHint({ text, relation, analysis }) : null
     const memories = this.memory
       .retrieve({
         now,
@@ -1354,6 +1366,8 @@ export class BibaoBrain {
         style,
         playfulness: this.playfulness(),
         knowledge: frame.knowledge ?? [],
+        isOwner,
+        ownerRequirements: frame.ownerRequirements ?? '',
         pe,
         schemaHits,
         bias,
@@ -1623,6 +1637,15 @@ export class BibaoBrain {
 
     this.sync()
     const now = this.simMs
+    // 打开面板/跨天也要生成她自己的生活，不能等下一次聊天才翻页
+    if (this.growth?.life) {
+      this.life.ensureDay({
+        now,
+        biography: this.biography,
+        relations: this.social.snapshot(),
+        interests: this.interests,
+      })
+    }
     const theta = this.workspace.threshold(this.state, this.silenceMin)
     return {
       identity: {

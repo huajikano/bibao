@@ -73,6 +73,9 @@ const STUDENT = [
       '食堂排了十分钟，端回来发现想吃的那个窗口已经卖完了',
       '和小岚在走廊分了一袋薯片，被班主任看见，赶紧塞进校服口袋',
       '中午趴在桌上睡了十分钟，醒来脸上印着袖口的褶子',
+      '今天食堂有糖醋里脊，阿姨手抖了一下，还是给我多舀了一勺',
+      '本来想去小卖部买水，走到门口又懒得排队，回教室灌了半杯凉白开',
+      '午休和同桌聊到一半，她突然说"你黑眼圈好重"，我当场不想说话了',
     ],
   },
   {
@@ -134,6 +137,45 @@ const STUDENT = [
       '关灯之后反而清醒了，脑子里开始自动播放今天说错的每一句话',
       '躺在床上想明天要不要早起，想了半天也没定闹钟',
     ],
+  },
+]
+
+const STUDENT_WEEKEND = [
+  {
+    key: 'morning',
+    minutes: 10 * 60,
+    valence: 0.12,
+    arousal: 0.35,
+    tags: ['周末', '赖床'],
+    texts: ['周末睡到自然醒，摸到手机才发现已经十点了', '本来想早起，醒来的时候太阳已经照到床尾'],
+  },
+  {
+    key: 'afternoon',
+    minutes: 14 * 60 + 30,
+    valence: 0.22,
+    arousal: 0.5,
+    tags: ['周末', '出门'],
+    texts: [
+      '下午去商场转了一圈，什么也没买，试了三顶帽子',
+      '和{friend}去吃了顿好的，排队排到脚酸，但吃的时候很开心',
+      '一个人去书店坐了会儿，翻了两本没买的书',
+    ],
+  },
+  {
+    key: 'evening',
+    minutes: 19 * 60,
+    valence: 0.1,
+    arousal: 0.45,
+    tags: ['周末', '放松'],
+    texts: ['晚上本来想补作业，先打开了{interest}，然后就到这个点了', '本来只打算看一集，抬头已经十一点了'],
+  },
+  {
+    key: 'night',
+    minutes: 23 * 60 + 20,
+    valence: -0.02,
+    arousal: 0.3,
+    tags: ['周末', '深夜'],
+    texts: ['周日晚上突然意识到明天要上学，心情一下掉下去', '躺在床上想这周末好像什么都没做，又觉得这样也挺好'],
   },
 ]
 
@@ -200,6 +242,41 @@ const YOUNG = [
   },
 ]
 
+const YOUNG_WEEKEND = [
+  {
+    key: 'morning',
+    minutes: 10 * 60 + 20,
+    valence: 0.15,
+    arousal: 0.35,
+    tags: ['周末', '赖床'],
+    texts: ['周末睡到快中午，醒来第一件事是找水喝', '本来定了闹钟，按掉之后又睡了两个小时'],
+  },
+  {
+    key: 'afternoon',
+    minutes: 15 * 60,
+    valence: 0.2,
+    arousal: 0.45,
+    tags: ['周末', '出门'],
+    texts: ['下午去咖啡馆坐了一会儿，旁边有人在相亲，听得我差点笑出来', '去公园走了一圈，风很大，头发怎么压都压不住'],
+  },
+  {
+    key: 'evening',
+    minutes: 19 * 60 + 30,
+    valence: 0.1,
+    arousal: 0.4,
+    tags: ['周末', '放松'],
+    texts: ['晚上点了个外卖，边吃边看老电影，字幕都懒得开', '本来想收拾屋子，最后只洗了杯子'],
+  },
+  {
+    key: 'night',
+    minutes: 23 * 60 + 30,
+    valence: -0.02,
+    arousal: 0.3,
+    tags: ['周末', '深夜'],
+    texts: ['周日晚上想到明天要上班，心里堵了一下', '明明休息了两天，怎么还是觉得累'],
+  },
+]
+
 const ADULT = [
   {
     key: 'morning',
@@ -235,11 +312,22 @@ const ADULT = [
   },
 ]
 
-function templatesFor(biography = {}) {
+function templatesFor(biography = {}, { weekend = false } = {}) {
   const age = Number(biography.ageNow ?? 22)
-  if (age <= 18) return STUDENT
-  if (age <= 30) return YOUNG
-  return ADULT
+  if (age <= 18) return weekend ? STUDENT_WEEKEND : STUDENT
+  if (age <= 30) return weekend ? YOUNG_WEEKEND : YOUNG
+  return weekend ? YOUNG_WEEKEND : ADULT
+}
+
+const DAY_THEMES = [
+  { key: 'ordinary', label: '普通的一天', valence: 0 },
+  { key: 'tired', label: '有点累的一天', valence: -0.08 },
+  { key: 'lively', label: '心情不错的一天', valence: 0.08 },
+  { key: 'busy', label: '被事情追着跑的一天', valence: -0.04 },
+]
+
+function pickDayTheme(rng) {
+  return DAY_THEMES[Math.floor(rng.next() * DAY_THEMES.length)] ?? DAY_THEMES[0]
 }
 
 function fill(text, cast, interest) {
@@ -276,6 +364,8 @@ export class LifeStream {
     this.events = Array.isArray(state.events) ? state.events.slice(-24) : []
     this.generated = Array.isArray(state.generated) ? state.generated.slice(-24) : []
     this.diary = Array.isArray(state.diary) ? state.diary.slice(-14) : []
+    this.recentTexts = Array.isArray(state.recentTexts) ? state.recentTexts.slice(-24) : []
+    this.theme = state.theme && typeof state.theme === 'object' ? state.theme : null
   }
 
   /** 每天首次调用时重置；按当前时间补齐已经过去的时间槽。 */
@@ -289,16 +379,29 @@ export class LifeStream {
     }
     const parts = localParts(now)
     const minutesNow = parts.hour * 60 + parts.minute
-    const templates = templatesFor(biography)
+    const weekday = new Date(now + TZ_OFFSET_MS).getUTCDay()
+    const weekend = weekday === 0 || weekday === 6
+    const templates = templatesFor(biography, { weekend })
     const cast = chooseCast(biography, relations)
     const interest = gameInterest(biography, interests)
     const rng = createRng(hashString(`${this.seed}:${key}`))
     const dayStart = Math.floor((now + TZ_OFFSET_MS) / DAY_MS) * DAY_MS - TZ_OFFSET_MS
+    const theme = pickDayTheme(rng)
+    this.theme = { ...theme, weekend }
 
     for (const template of templates) {
       if (template.minutes > minutesNow) continue
       if (this.generated.includes(template.key)) continue
-      const text = fill(rng.pick(template.texts), cast, interest)
+      // 不是每天每个时段都会发生事：给生活留空档
+      if (['noon', 'afternoon', 'game', 'evening'].includes(template.key) && rng.chance(0.18)) {
+        this.generated.push(template.key)
+        continue
+      }
+      const filled = template.texts.map((line) => fill(line, cast, interest))
+      const recent = new Set(this.recentTexts)
+      const fresh = filled.filter((line) => !recent.has(line))
+      const text = rng.pick(fresh.length ? fresh : filled)
+      this.recentTexts.push(text)
       const jitter = Math.floor(rng.next() * 7 * MIN_MS)
       const at = Math.min(now, dayStart + template.minutes * MIN_MS + jitter)
       this.events.push({
@@ -306,15 +409,16 @@ export class LifeStream {
         at,
         slot: template.key,
         text: textOf(text, 90),
-        valence: Number(template.valence ?? 0),
+        valence: Number((Number(template.valence ?? 0) + theme.valence).toFixed(2)),
         arousal: Number(template.arousal ?? 0.4),
-        tags: template.tags ?? [],
+        tags: [...(template.tags ?? []), theme.key],
         written: false,
       })
       this.generated.push(template.key)
     }
     this.events = this.events.filter((item) => now - item.at < 2 * DAY_MS).sort((a, b) => a.at - b.at)
     this.generated = this.generated.slice(-24)
+    this.recentTexts = this.recentTexts.slice(-24)
     return this.events
   }
 
@@ -402,6 +506,7 @@ export class LifeStream {
           }
         : null,
       diary: this.diary.slice(-7),
+      theme: this.theme ? { ...this.theme } : null,
       moodHint: this.moodHint(now),
     }
   }
@@ -412,6 +517,8 @@ export class LifeStream {
       events: this.events.slice(-20),
       generated: this.generated.slice(-20),
       diary: this.diary.slice(-14),
+      recentTexts: this.recentTexts.slice(-24),
+      theme: this.theme,
     }
   }
 

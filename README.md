@@ -33,7 +33,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感，47 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 群层只看不回，40 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 主人面板 / 群层只看不回，42 项
 node bibao-brain/bin/group-smoke.mjs  # 固定白名单不会被自动降级，6 项
 node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 句子完整性，15 项
 node bibao-brain/bin/knowledge-smoke.mjs # 知识库分块 / 检索 / 导入 / BCI 开关，7 项
@@ -43,6 +43,7 @@ node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 分类，7 项
 node bibao-brain/bin/sticker-smoke.mjs # 表情包分类/自动归档，12 项
 node bibao-brain/bin/neuro-smoke.mjs # 神经递质昼夜节律，4 项
+node bibao-brain/bin/life-smoke.mjs # 生活流每日变化 / 周末 / 主题，4 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
@@ -68,6 +69,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.12.0` | 知识库改成“翻书”并说明导入限制、导入后自动启用；生活流按天/周末/主题变化且不等聊天才翻页；新增主人面板（QQ + 长期要求） |
 | [`v0.11.0`](https://github.com/huajikano/bibao/releases/tag/v0.11.0) | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |
 | [`v0.10.0`](https://github.com/huajikano/bibao/releases/tag/v0.10.0) | 表情包分「常用/默认/吃灰」并可手动归类；好感/神经递质加入昼夜节律与实时趋势；认知环路图静息态也会流动 |
 | [`v0.9.1`](https://github.com/huajikano/bibao/releases/tag/v0.9.1) | 新插件图标；越界问题会降好感并累积、正常关心仍能回升；好友/对话列表好感实时刷新并显示一位小数 |
@@ -94,7 +96,9 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 - 成长层：人格一致的动态提示词、自我复盘（证据 → 经验 → 六维说话倾向）、生活流、模糊记忆
 - 关系层：对话线程（没聊完的事会留一条线、两天后放下）、默认关闭的主动私聊分享
 - 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
-- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；新增可开关的知识库检索接口
+- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；新增可开关的知识库检索接口（像翻书，不是整篇 RAG）
+- 主人面板：设置主人 QQ 与长期要求；要求会作为“答应过的事”进入提示词，不是每句话的命令
+- 生活流：按天、周末、每日主题和空档变化，打开面板/跨天也会生成新一天，不再等聊天才翻页
 - 模型：直连支持完整 `/chat/completions` URL 和无 `provider/` 前缀的模型名（如 `spark-x2.6`）
 - 说话：长句优先在完整分句处收尾，不再把一句话砍掉半截
 - QQ 修复：表情包导入与描述编辑；被戳后按情绪/上下文二选一（回戳一下或表情包，不发文字）；反向 WS 连接、WS 配置重启不丢

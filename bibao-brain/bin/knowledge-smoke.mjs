@@ -26,7 +26,7 @@ check('能检索到相关知识', found.length > 0 && found.some((item) => item.
 check('检索结果带出处', found.every((item) => item.source), JSON.stringify(found.map((item) => item.source)))
 
 const prompt = kb.format(found)
-check('格式化成自然回忆', prompt.includes('你确实知道') && prompt.includes('不是刚查的资料'), prompt.slice(0, 80))
+check('格式化成自然翻书', prompt.includes('你脑子里有这几本书') && prompt.includes('《光遇》'), prompt.slice(0, 80))
 check('不会把整篇文档直接倒进去', prompt.length < 1200, String(prompt.length))
 
 const imported = await kb.importText({ name: '宠物.md', text: '比宝养过一只叫年糕的猫。' })

@@ -324,7 +324,8 @@ bibao-brain/
 | `node bin/sticker-import-smoke.mjs` | 7/7 通过（表情包导入 + 描述编辑 + 分类） |
 | `node bin/sticker-smoke.mjs` | 12/12 通过（情绪选择、常用/默认/吃灰、自动归档、手动锁定） |
 | `node bin/neuro-smoke.mjs` | 4/4 通过（昼夜节律、目标值、静息态漂移） |
-| `node bin/host-smoke.mjs` | 40/40 通过（路由、持久化、好友 10 条门槛、Token 用量、知识库 API/BCI、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/host-smoke.mjs` | 42/42 通过（路由、持久化、好友 10 条门槛、Token 用量、知识库 API/BCI、主人面板、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/life-smoke.mjs` | 4/4 通过（每日变化、周末主题、空档、每日主题） |
 | `node bin/group-smoke.mjs` | 6/6 通过（固定白名单、多个固定焦点、自动退化保护） |
 | `node bin/bubble-smoke.mjs` | 15/15 通过（长尾采样、情绪耦合、提示词默认一句、句子完整性） |
 | `node bin/knowledge-smoke.mjs` | 7/7 通过（分块、检索、出处、自然化格式、导入、BCI 开关） |

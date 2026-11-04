@@ -63,7 +63,8 @@ const DEFAULTS = {
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: false, model: '', maxPerHour: 20 },
-  knowledge: { enabled: false, dir: '', maxSnippets: 3, maxChars: 900 },
+  knowledge: { enabled: false, dir: '', maxSnippets: 2, maxChars: 700 },
+  owner: { qq: '', requirements: '' },
   // 手：默认关着；开着就会真的动鼠标键盘
   game: { control: false, layout: null, autoStart: false },
   llm: {
@@ -118,6 +119,7 @@ export function apply(ctx, config = {}) {
   settings.outreach = { ...DEFAULTS.outreach, ...(config?.outreach ?? {}) }
   settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
   settings.knowledge = { ...DEFAULTS.knowledge, ...(config?.knowledge ?? {}) }
+  settings.owner = { ...DEFAULTS.owner, ...(config?.owner ?? {}) }
   settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
@@ -478,6 +480,9 @@ export function apply(ctx, config = {}) {
   if (saved?.knowledge && typeof saved.knowledge === 'object') {
     settings.knowledge = { ...DEFAULTS.knowledge, ...saved.knowledge }
   }
+  if (saved?.owner && typeof saved.owner === 'object') {
+    settings.owner = { ...DEFAULTS.owner, ...saved.owner }
+  }
   knowledge.dir = settings.knowledge.dir || path.join(dataDir, 'knowledge')
   knowledge.maxSnippets = settings.knowledge.maxSnippets
   knowledge.maxChars = settings.knowledge.maxChars
@@ -689,6 +694,7 @@ export function apply(ctx, config = {}) {
       },
       vision: { ...settings.vision },
       knowledge: { ...settings.knowledge, status: knowledge.status() },
+      owner: { ...settings.owner },
       bci: bci.snapshot(),
       asleep: brain.isAsleep(),
       llmConfig: {
@@ -776,6 +782,8 @@ export function apply(ctx, config = {}) {
       groupId: group?.id,
       groupName: group?.name,
       knowledge: await knowledgeFor(message.text),
+      isOwner: Boolean(settings.owner.qq) && String(message.senderId) === String(settings.owner.qq),
+      ownerRequirements: settings.owner.requirements,
     })
 
     const transfer = result.dual?.action_route === 'TRANSFER_PRIVATE_GOSSIP'
@@ -1392,6 +1400,8 @@ export function apply(ctx, config = {}) {
       text: message.text,
       channel: 'private',
       knowledge: await knowledgeFor(message.text),
+      isOwner: Boolean(settings.owner.qq) && String(message.senderId) === String(settings.owner.qq),
+      ownerRequirements: settings.owner.requirements,
     })
     schedulePersist()
     await deliver(result, { targetId: message.senderId })
@@ -1430,6 +1440,8 @@ export function apply(ctx, config = {}) {
       groupId: group?.id,
       groupName: group?.name,
       knowledge: await knowledgeFor(message.text),
+      isOwner: Boolean(settings.owner.qq) && String(message.senderId) === String(settings.owner.qq),
+      ownerRequirements: settings.owner.requirements,
     })
     schedulePersist()
     funnel.record({
@@ -2364,6 +2376,7 @@ export function apply(ctx, config = {}) {
               outreach: settings.outreach,
               vision: settings.vision,
               knowledge: settings.knowledge,
+              owner: settings.owner,
             }), 'utf8')
           } catch (error) {
             console.warn('[bibao] tuning save failed:', error?.message ?? error)
@@ -3205,6 +3218,16 @@ export function apply(ctx, config = {}) {
         if (body.knowledge && typeof body.knowledge === 'object') {
           await updateKnowledgeSettings(body.knowledge)
         }
+        if (body.owner && typeof body.owner === 'object') {
+          if (typeof body.owner.qq === 'string') {
+            const qq = body.owner.qq.trim()
+            if (qq && !/^\d{5,15}$/.test(qq)) return fail('主人 QQ 必须是 5-15 位数字', 400)
+            settings.owner.qq = qq
+          }
+          if (typeof body.owner.requirements === 'string') {
+            settings.owner.requirements = body.owner.requirements.trim().slice(0, 2000)
+          }
+        }
         if (body.llm && typeof body.llm === 'object') {
           if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/') && !directEndpoint) {
             return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
@@ -3266,6 +3289,7 @@ export function apply(ctx, config = {}) {
               outreach: settings.outreach,
               vision: settings.vision,
               knowledge: settings.knowledge,
+              owner: settings.owner,
             }),
             'utf8',
           )
@@ -3414,6 +3438,7 @@ export function apply(ctx, config = {}) {
               outreach: settings.outreach,
               vision: settings.vision,
               knowledge: settings.knowledge,
+              owner: settings.owner,
             }),
             'utf8',
           )

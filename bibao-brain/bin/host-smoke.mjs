@@ -223,6 +223,19 @@ const settings = await call('POST', '/settings', { useLlm: true })
 check('POST /settings', settings.status === 200 && settings.data.snapshot?.settings?.useLlm === true, '语言区可切换')
 await call('POST', '/settings', { useLlm: false })
 
+const ownerSettings = await call('POST', '/settings', {
+  owner: { qq: '100000001', requirements: '晚上十一点后少聊工作；可以主动分享，但不要刷屏。' },
+})
+check(
+  '主人面板可保存',
+  ownerSettings.status === 200 &&
+    ownerSettings.data?.snapshot?.owner?.qq === '100000001' &&
+    /十一点/.test(ownerSettings.data?.snapshot?.owner?.requirements ?? ''),
+  JSON.stringify(ownerSettings.data?.snapshot?.owner ?? null),
+)
+const badOwner = await call('POST', '/settings', { owner: { qq: 'not-a-qq' } })
+check('主人 QQ 校验', badOwner.status === 400, `${badOwner.status} ${badOwner.data?.error ?? ''}`)
+
 const llmSettings = await call('POST', '/settings', {
   llm: {
     baseURL: 'https://example.test/v1',

@@ -27,7 +27,7 @@ function bigrams(text) {
   return grams
 }
 
-function chunkText(text, { source, title }) {
+function chunkText(text, { source, title, book = '' }) {
   const body = clean(text)
   if (!body) return []
   const paragraphs = body.split(/\n\s*\n+/).map(clean).filter(Boolean)
@@ -37,6 +37,8 @@ function chunkText(text, { source, title }) {
   const push = () => {
     if (!current.trim()) return
     chunks.push({
+      book: book || title,
+      chapter: heading || title,
       title: heading || title,
       source,
       text: current.trim().slice(0, MAX_CHUNK_CHARS * 2),
@@ -88,7 +90,7 @@ async function walkFiles(dir, prefix = '', depth = 0) {
 }
 
 export class KnowledgeBase {
-  constructor({ dir = '', maxSnippets = 3, maxChars = 900 } = {}) {
+  constructor({ dir = '', maxSnippets = 2, maxChars = 700 } = {}) {
     this.dir = String(dir || '')
     this.maxSnippets = Math.max(1, Math.min(5, Number(maxSnippets) || 3))
     this.maxChars = Math.max(200, Math.min(3000, Number(maxChars) || 900))
@@ -118,8 +120,10 @@ export class KnowledgeBase {
           if (file.rel.endsWith('.json')) pieces = flattenJson(JSON.parse(raw))
           else pieces = [raw]
           const title = path.basename(file.rel, path.extname(file.rel))
+          const h1 = String(raw).match(/^#\s+(.+)$/m)?.[1]
+          const book = h1 ? clean(h1).slice(0, 60) : title
           for (const piece of pieces) {
-            for (const chunk of chunkText(piece, { source: file.rel, title })) {
+            for (const chunk of chunkText(piece, { source: file.rel, title, book })) {
               if (this.chunks.length >= MAX_CHUNKS) break
               this.chunks.push({ ...chunk, id: createHash('sha1').update(`${file.rel}:${this.chunks.length}`).digest('hex').slice(0, 12) })
             }
@@ -140,6 +144,7 @@ export class KnowledgeBase {
     return {
       dir: this.dir,
       files: this.files.length,
+      books: new Set(this.files.map((item) => item.source)).size,
       chunks: this.chunks.length,
       loadedAt: this.loadedAt,
       error: this.error,
@@ -176,11 +181,13 @@ export class KnowledgeBase {
     for (const item of picked) {
       const snippet = item.text.replace(/\s+/g, ' ').slice(0, Math.max(80, Math.min(360, Math.floor(maxChars / picked.length))))
       if (used + snippet.length > maxChars && lines.length) break
-      lines.push(`- ${item.title}${item.source ? `（${item.source}）` : ''}：${snippet}`)
+      lines.push(
+        `- 《${item.book || item.title}》${item.chapter && item.chapter !== item.book ? `· ${item.chapter}` : ''}：${snippet}`,
+      )
       used += snippet.length
     }
     return lines.length
-      ? `你确实知道这些，不是刚查的资料，是你以前读过/学过的：\n${lines.join('\n')}\n用的时候像自己的知识一样自然带出来；不要逐字背，也不要假装比资料知道得更多。`
+      ? `你脑子里有这几本书，刚刚像是翻了一下：\n${lines.join('\n')}\n用的时候像自己的知识一样自然带出来，不要逐字背，也不要假装比书里知道得更多。`
       : ''
   }
 

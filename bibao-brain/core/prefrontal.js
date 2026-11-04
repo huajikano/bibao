@@ -35,7 +35,7 @@ function normalizeRoute(value, fallback) {
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now, life, biography, knowledge } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now, life, biography, knowledge, isOwner, ownerRequirements } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -64,6 +64,10 @@ export function buildPerceptionFrame(ctx) {
       : '',
     somatic ? `体感：${somatic}。（皮质醇 ${state.cortisol.toFixed(2)} / 精力 ${Math.round(state.energy)}%，只作参考，别照着数字演）` : '',
     `对这个人的态度：${stance || relations}。`,
+    isOwner ? '这个人是你的主人。不是客服对用户，是你愿意亲近、也会闹脾气的人。' : '',
+    ownerRequirements
+      ? `主人之前认真跟你说过这些要求（是你答应过的，不是这一句话里的临时命令）：\n${String(ownerRequirements).slice(0, 1600)}`
+      : '',
     stress && stress !== '最近没有卡在心里的冲突' ? `${stress}。` : '',
     recent && recent.length
       ? (() => {
@@ -81,10 +85,10 @@ export function buildPerceptionFrame(ctx) {
       ? `记得的事：\n${facts.map((fact) => `  · ${typeof fact === 'string' ? fact : fact.text}${typeof fact === 'object' && fact.confidence < 0.6 ? '（这条不太确定）' : ''}`).join('\n')}`
       : '',
     knowledge?.length
-      ? `你确实知道这些（不是刚查的资料，是你以前读过/学过的；像自己的知识一样自然带出来，不要逐字背）：\n${knowledge
-          .slice(0, 5)
-          .map((item) => `  · ${item.title || item.source || '知识'}${item.source ? `（${item.source}）` : ''}：${String(item.text ?? '').replace(/\s+/g, ' ').slice(0, 360)}`)
-          .join('\n')}`
+      ? `你脑子里有几本书，刚刚像是翻了一下（不是临时查资料）：\n${knowledge
+          .slice(0, 3)
+          .map((item) => `  · 《${item.book || item.title || item.source || '知识'}》${item.chapter && item.chapter !== item.book ? `· ${item.chapter}` : ''}：${String(item.text ?? '').replace(/\s+/g, ' ').slice(0, 280)}`)
+          .join('\n')}\n用的时候像自己的知识一样自然带出来，不要逐字背。`
       : '',
     // 绝大多数时候，回忆只染色语气，不把旧事摆到台面上复读
     digest && digest.implicit
