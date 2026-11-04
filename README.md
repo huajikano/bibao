@@ -68,7 +68,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.11.0` | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |
+| [`v0.11.0`](https://github.com/huajikano/bibao/releases/tag/v0.11.0) | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |
 | [`v0.10.0`](https://github.com/huajikano/bibao/releases/tag/v0.10.0) | 表情包分「常用/默认/吃灰」并可手动归类；好感/神经递质加入昼夜节律与实时趋势；认知环路图静息态也会流动 |
 | [`v0.9.1`](https://github.com/huajikano/bibao/releases/tag/v0.9.1) | 新插件图标；越界问题会降好感并累积、正常关心仍能回升；好友/对话列表好感实时刷新并显示一位小数 |
 | [`v0.9.0`](https://github.com/huajikano/bibao/releases/tag/v0.9.0) | 默认灵动小女孩节奏：长尾气泡、玩心/疲惫/生气耦合、提示词默认一句、最终条数不被标点切碎 |
