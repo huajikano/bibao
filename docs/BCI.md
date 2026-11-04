@@ -47,6 +47,7 @@ hub.register({
 | `sense.state` | 游戏或应用状态（只读） |
 | `sense.touch` | 戳一戳、震动、触觉 |
 | `sense.biometric` | EEG / 眼动 / 心率等只读生理信号 |
+| `sense.knowledge` | 从本地知识库检索"她以前学过"的内容 |
 | `act.pointer` | 鼠标移动、点击、拖拽 |
 | `act.keyboard` | 键盘输入、快捷键 |
 | `act.audio` | 语音输出 |
@@ -77,6 +78,7 @@ hub.register({
 | `tft` | `sense.state` | 只读，读云顶状态 |
 | `screen` | `sense.vision` | 只读，走现有视觉模型 |
 | `eeg` | `sense.biometric` | 只读占位，当前导出内在状态近似值，等真实设备 |
+| `knowledge` | `sense.knowledge` | 只读，检索导入的 .md/.txt/.json；可在「感官」页开关 |
 | `hands` | `act.pointer` / `act.keyboard` | 工厂已提供，默认不注册、不打开 |
 
 ## 接一个新设备
