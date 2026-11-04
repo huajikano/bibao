@@ -239,7 +239,9 @@ Host 半注册 `ctx.connection.fetch` 路由（同源、走 DSH 的浏览器鉴�
 | POST | `/api/bibao/self/review` | 立刻做一次自我复盘（`force:false` 时只在有新证据时跑） |
 | POST | `/api/bibao/outreach/preview` | 看"现在该不该主动找谁说一句"，不发送 |
 | GET | `/api/bibao/bci` | 已注册的脑机接口、能力、策略与最近审计 |
-| POST | `/api/bibao/bci/sense` | `{adapter, payload}` 只读拉一次外部感知 |
+| POST | `/api/bibao/bci/sense` | `{adapter, payload}` 只读拉一次外部感知（`adapter:"knowledge"` 即知识库检索） |
+| GET | `/api/bibao/knowledge` | 知识库开关、目录、文件/分块统计 |
+| POST | `/api/bibao/knowledge` | 导入 `{import:{name,text}}`、检索 `{search:{query}}`、重载 `{reload:true}` |
 | POST | `/api/bibao/reset` | `{seed}` 重新出生 |
 
 `cordis.patch.yml` 里的 config：
