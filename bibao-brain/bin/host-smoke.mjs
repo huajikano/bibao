@@ -236,6 +236,25 @@ check(
 const badOwner = await call('POST', '/settings', { owner: { qq: 'not-a-qq' } })
 check('主人 QQ 校验', badOwner.status === 400, `${badOwner.status} ${badOwner.data?.error ?? ''}`)
 
+const visionSettings = await call('POST', '/settings', {
+  vision: {
+    enabled: true,
+    baseURL: 'https://vision.test/v2/chat/completions',
+    apiKey: 'sk-vision-test',
+    model: 'spark-x2.6',
+    maxPerHour: 5,
+  },
+})
+check(
+  '视觉模型可单独配置',
+  visionSettings.status === 200 &&
+    visionSettings.data?.snapshot?.vision?.baseURL === 'https://vision.test/v2/chat/completions' &&
+    visionSettings.data?.snapshot?.vision?.model === 'spark-x2.6' &&
+    visionSettings.data?.snapshot?.vision?.hasKey === true &&
+    !JSON.stringify(visionSettings.data?.snapshot?.vision ?? {}).includes('sk-vision-test'),
+  JSON.stringify(visionSettings.data?.snapshot?.vision ?? null),
+)
+
 const llmSettings = await call('POST', '/settings', {
   llm: {
     baseURL: 'https://example.test/v1',

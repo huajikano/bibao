@@ -4951,7 +4951,17 @@ class FriendsPanel extends React.Component {
             channels: data.channels ?? [],
             recent: data.recent ?? [],
             vision,
-            visionDraft: this.state.visionDraft ?? (vision ? { enabled: vision.enabled, model: vision.model, maxPerHour: vision.maxPerHour } : null),
+            visionDraft:
+              this.state.visionDraft ??
+              (vision
+                ? {
+                    enabled: vision.enabled,
+                    baseURL: vision.baseURL ?? '',
+                    apiKey: '',
+                    model: vision.model,
+                    maxPerHour: vision.maxPerHour,
+                  }
+                : null),
             knowledge,
             knowledgeDir: this.state.knowledgeDir || knowledge?.settings?.dir || knowledge?.status?.dir || '',
             error: '',
@@ -5017,7 +5027,7 @@ class FriendsPanel extends React.Component {
           const data = await request('/vision/test', { method: 'POST', body: '{}' })
           this.setState({ note: `模型可用：${data.text}（${data.ms}ms）` })
         } catch (error) {
-          this.setState({ note: `测试失败：${error.message}` })
+          this.setState({ note: `测试失败：${String(error.message ?? error).replace(/^失败：/, '')}` })
         }
       }
 
@@ -5104,6 +5114,29 @@ class FriendsPanel extends React.Component {
               ? h(
                   'div',
                   { className: 'bb-personaGrid' },
+                  h(
+                    'label',
+                    { className: 'bb-personaField' },
+                    h('span', { className: 'bb-muted' }, '视觉 baseURL / 完整 URL（留空 = 用对话模型端点）'),
+                    h('input', {
+                      className: 'bb-input',
+                      value: this.state.visionDraft.baseURL ?? '',
+                      placeholder: 'https://…/v2/chat/completions',
+                      onChange: (event) => this.setState({ visionDraft: { ...this.state.visionDraft, baseURL: event.target.value } }),
+                    }),
+                  ),
+                  h(
+                    'label',
+                    { className: 'bb-personaField' },
+                    h('span', { className: 'bb-muted' }, '视觉 apiKey（留空 = 用对话模型 key）'),
+                    h('input', {
+                      className: 'bb-input',
+                      type: 'password',
+                      value: this.state.visionDraft.apiKey ?? '',
+                      placeholder: this.state.vision?.hasKey ? `已有 ${this.state.vision.keyMask}（留空不变）` : '可单独填',
+                      onChange: (event) => this.setState({ visionDraft: { ...this.state.visionDraft, apiKey: event.target.value } }),
+                    }),
+                  ),
                   h(
                     'label',
                     { className: 'bb-personaField' },

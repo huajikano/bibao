@@ -33,7 +33,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感，47 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 主人面板 / 群层只看不回，42 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 主人面板 / 视觉独立配置，43 项
 node bibao-brain/bin/group-smoke.mjs  # 固定白名单不会被自动降级，6 项
 node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 句子完整性，15 项
 node bibao-brain/bin/knowledge-smoke.mjs # 知识库分块 / 检索 / 导入 / BCI 开关，7 项
@@ -44,6 +44,7 @@ node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 分类，7 项
 node bibao-brain/bin/sticker-smoke.mjs # 表情包分类/自动归档，12 项
 node bibao-brain/bin/neuro-smoke.mjs # 神经递质昼夜节律，4 项
 node bibao-brain/bin/life-smoke.mjs # 生活流每日变化 / 周末 / 主题，4 项
+node bibao-brain/bin/vision-smoke.mjs # 视觉完整 URL / 拼接 JSON / SSE / 纯文本，3 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
@@ -69,6 +70,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.12.2` | 视觉模型支持独立 baseURL / key / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE 与纯文本响应 |
 | [`v0.12.1`](https://github.com/huajikano/bibao/releases/tag/v0.12.1) | 知识库翻书、导入限制与自动启用；生活流按天/周末/主题变化；主人面板（QQ + 长期要求）；短问候走本地快路径，减少慢模型等待 |
 | [`v0.12.0`](https://github.com/huajikano/bibao/releases/tag/v0.12.0) | 知识库改成“翻书”并说明导入限制、导入后自动启用；生活流按天/周末/主题变化且不等聊天才翻页；新增主人面板（QQ + 长期要求） |
 | [`v0.11.0`](https://github.com/huajikano/bibao/releases/tag/v0.11.0) | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |

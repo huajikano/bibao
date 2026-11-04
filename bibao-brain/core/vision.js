@@ -14,7 +14,77 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
   const cache = new Map()
   const stats = { calls: 0, cached: 0, failed: 0, last: null }
 
-  const endpoint = () => `${String(baseURL ?? '').replace(/\/+$/, '')}/chat/completions`
+  const endpoint = () => {
+    const value = String(baseURL ?? '').trim().replace(/\/+$/, '')
+    return /\/chat\/completions$/i.test(value) ? value : `${value}/chat/completions`
+  }
+
+  function parseModelResponse(raw) {
+    const text = String(raw ?? '').trim()
+    try {
+      return JSON.parse(text)
+    } catch {
+      /* 继续尝试宽松解析 */
+    }
+    // 有的中转站会返回 SSE 行，或者 JSON 后面又跟了一段文本
+    const dataLines = text
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .filter((line) => line && line !== '[DONE]')
+    if (dataLines.length) {
+      const pieces = []
+      for (const line of dataLines) {
+        try {
+          const chunk = JSON.parse(line)
+          const delta = chunk?.choices?.[0]?.delta?.content ?? chunk?.choices?.[0]?.message?.content
+          if (delta) pieces.push(String(delta))
+        } catch {
+          /* 跳过坏的 SSE 行 */
+        }
+      }
+      if (pieces.length) return { choices: [{ message: { content: pieces.join('') } }] }
+    }
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    const candidate = fenced?.[1] ?? text
+    // 有的中转站会把两个 JSON 对象直接拼在一起；逐个用大括号扫描，取第一个能用的
+    const objects = []
+    for (let start = candidate.indexOf('{'); start >= 0; start = candidate.indexOf('{', start + 1)) {
+      let depth = 0
+      let quoted = false
+      let escaped = false
+      for (let index = start; index < candidate.length; index += 1) {
+        const char = candidate[index]
+        if (quoted) {
+          if (escaped) escaped = false
+          else if (char === '\\') escaped = true
+          else if (char === '"') quoted = false
+          continue
+        }
+        if (char === '"') quoted = true
+        else if (char === '{') depth += 1
+        else if (char === '}') {
+          depth -= 1
+          if (depth === 0) {
+            try {
+              const parsed = JSON.parse(candidate.slice(start, index + 1))
+              if (parsed && typeof parsed === 'object') objects.push(parsed)
+            } catch {
+              /* 跳过坏对象 */
+            }
+            break
+          }
+        }
+      }
+      if (objects.length) break
+    }
+    if (objects.length) return objects[0]
+    // 视觉端点偶尔直接回一段描述文字，不强行要求 JSON
+    if (text && !text.startsWith('{') && !text.startsWith('[')) {
+      return { choices: [{ message: { content: text } }] }
+    }
+    throw new Error(`视觉返回不是合法 JSON：${text.slice(0, 120)}`)
+  }
 
   async function fetchImage(url) {
     if (String(url).startsWith('data:')) {
@@ -55,6 +125,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
             model,
             max_tokens: maxTokens,
             reasoning_effort: 'low',
+            stream: false,
             messages: [
               {
                 role: 'user',
@@ -67,8 +138,11 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
           }),
           signal: AbortSignal.timeout(timeoutMs),
         })
-        const data = await res.json()
-        const text = String(data?.choices?.[0]?.message?.content ?? '').trim()
+        const raw = await res.text()
+        if (!res.ok) throw new Error(`视觉 HTTP ${res.status}: ${raw.slice(0, 160)}`)
+        const data = parseModelResponse(raw)
+        const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text
+        const text = (typeof content === 'string' ? content : Array.isArray(content) ? content.map((part) => part?.text ?? '').join('') : '').trim()
         if (!text) throw new Error(data?.error?.message ?? '模型没有返回内容')
         const clean = text.replace(/\s+/g, ' ').slice(0, 1600)
         const usage = data?.usage ?? null

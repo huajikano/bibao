@@ -62,7 +62,7 @@ const DEFAULTS = {
   // 主动分享：默认关闭，且只发私聊；打开后每天最多一条
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
-  vision: { enabled: false, model: '', maxPerHour: 20 },
+  vision: { enabled: false, baseURL: '', apiKey: '', model: '', maxPerHour: 20 },
   knowledge: { enabled: false, dir: '', maxSnippets: 2, maxChars: 700 },
   owner: { qq: '', requirements: '' },
   // 手：默认关着；开着就会真的动鼠标键盘
@@ -127,6 +127,12 @@ export function apply(ctx, config = {}) {
   const stateFile = settings.stateFile || path.join(dataDir, 'brain-state.json')
   const settingsFile = path.join(dataDir, 'settings.json')
   const usage = new TokenMeter({ file: path.join(dataDir, 'usage.json') })
+  const visionConfig = () => ({
+    baseURL: settings.vision.baseURL || settings.llm.baseURL,
+    apiKey: settings.vision.apiKey || settings.llm.apiKey,
+    model: settings.vision.model,
+  })
+
   const visionUsage = (row = {}) =>
     usage.record({
       logic: 'vision',
@@ -559,9 +565,7 @@ export function apply(ctx, config = {}) {
       brain.applyTuning(settings.tuning)
       stickers = stickers || new StickerBook(path.join(dataDir, 'stickers'))
       vision = createVision({
-        baseURL: settings.llm.baseURL,
-        apiKey: settings.llm.apiKey,
-        model: settings.vision.model,
+        ...visionConfig(),
         onUsage: visionUsage,
       })
       {
@@ -692,7 +696,16 @@ export function apply(ctx, config = {}) {
         allowGroups: settings.snowluma.allowGroups ?? [],
         allowPrivate: Boolean(settings.snowluma.allowPrivate),
       },
-      vision: { ...settings.vision },
+      vision: {
+        enabled: settings.vision.enabled,
+        baseURL: settings.vision.baseURL,
+        model: settings.vision.model,
+        maxPerHour: settings.vision.maxPerHour,
+        hasKey: Boolean(settings.vision.apiKey),
+        keyMask: maskKey(settings.vision.apiKey),
+        effectiveBaseURL: visionConfig().baseURL,
+        effectiveModel: settings.vision.model,
+      },
       knowledge: { ...settings.knowledge, status: knowledge.status() },
       owner: { ...settings.owner },
       bci: bci.snapshot(),
@@ -2338,7 +2351,7 @@ export function apply(ctx, config = {}) {
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model, onUsage: visionUsage })
+          if (vision) vision = createVision({ ...visionConfig(), onUsage: visionUsage })
         }
         if (body.tuning && typeof body.tuning === 'object') {
             if (Number.isFinite(Number(body.tuning.memoryStrength))) {
@@ -2578,7 +2591,7 @@ export function apply(ctx, config = {}) {
           const result = await vision.describe(png, { prompt: '用一句中文说出这张图的颜色。', maxTokens: 60 })
           return json({ ok: true, text: result.text, model: settings.vision.model, ms: Date.now() - started })
         } catch (error) {
-          return fail(`失败：${String(error?.message ?? error).slice(0, 100)}`, 500)
+          return fail(String(error?.message ?? error).slice(0, 180), 500)
         }
       },
     },
@@ -3208,15 +3221,21 @@ export function apply(ctx, config = {}) {
         }
         if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
+          if (typeof body.vision.baseURL === 'string') settings.vision.baseURL = body.vision.baseURL.trim()
+          if (typeof body.vision.apiKey === 'string' && body.vision.apiKey) settings.vision.apiKey = body.vision.apiKey.trim()
+          const visionDirect = Boolean(
+            (body.vision.baseURL || settings.vision.baseURL || settings.llm.baseURL) &&
+              (body.vision.apiKey || settings.vision.apiKey || settings.llm.apiKey),
+          )
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
             const model = body.vision.model.trim()
-            if (!directEndpoint && !model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
+            if (!visionDirect && !model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
             settings.vision.model = model
           }
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model, onUsage: visionUsage })
+          if (vision) vision = createVision({ ...visionConfig(), onUsage: visionUsage })
         }
         if (body.knowledge && typeof body.knowledge === 'object') {
           await updateKnowledgeSettings(body.knowledge)
