@@ -322,8 +322,11 @@ bibao-brain/
 | `node bin/sticker-import-smoke.mjs` | 7/7 通过（表情包导入 + 描述编辑 + 分类） |
 | `node bin/sticker-smoke.mjs` | 12/12 通过（情绪选择、常用/默认/吃灰、自动归档、手动锁定） |
 | `node bin/neuro-smoke.mjs` | 4/4 通过（昼夜节律、目标值、静息态漂移） |
-| `node bin/host-smoke.mjs` | 35/35 通过（路由、持久化、好友 10 条门槛、Token 用量、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
-| `node bin/bubble-smoke.mjs` | 13/13 通过（长尾采样、情绪耦合、提示词默认一句、最终条数不被标点切碎） |
+| `node bin/host-smoke.mjs` | 40/40 通过（路由、持久化、好友 10 条门槛、Token 用量、知识库 API/BCI、余光/免打扰 @ 也不回、漏斗、吐槽闭环、LLM 钳制、自我复盘、BCI、WS 配置保存） |
+| `node bin/group-smoke.mjs` | 6/6 通过（固定白名单、多个固定焦点、自动退化保护） |
+| `node bin/bubble-smoke.mjs` | 15/15 通过（长尾采样、情绪耦合、提示词默认一句、句子完整性） |
+| `node bin/knowledge-smoke.mjs` | 7/7 通过（分块、检索、出处、自然化格式、导入、BCI 开关） |
+| `node bin/openai-smoke.mjs` | 3/3 通过（baseURL 自动补全、完整 URL 不重复拼、Bearer/model） |
 | `node bin/usage-smoke.mjs` | 9/9 通过（精确 usage / 估算 / 按逻辑 / 缓存 / 会话 / 持久化 / 清零） |
 | 安装后 Host 启动 | `boot-report.json`：13 条路由、23 条记忆、gate 6/6、Phase 2 unlocked |
 | 存档 | `%USERPROFILE%\.dsh\bibao\brain-state.json`（约 24 KB，原子写） |

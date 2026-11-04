@@ -22,7 +22,9 @@ export async function chatCompletion({
 }) {
   if (!baseURL || !apiKey || !model) throw new Error('缺少 baseURL / apiKey / model')
   const startedAt = Date.now()
-  const url = `${String(baseURL).replace(/\/+$/, '')}/chat/completions`
+  const endpoint = String(baseURL).trim().replace(/\/+$/, '')
+  // 既接受 baseURL（自动补 /chat/completions），也接受用户直接粘贴完整 URL
+  const url = /\/chat\/completions$/i.test(endpoint) ? endpoint : `${endpoint}/chat/completions`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   if (typeof timer.unref === 'function') timer.unref()

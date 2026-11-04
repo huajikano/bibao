@@ -190,6 +190,35 @@ check(
 const usageReset = await call('POST', '/usage/reset')
 check('POST /usage/reset', usageReset.status === 200 && usageReset.data.usage?.total?.calls === 0, JSON.stringify(usageReset.data.usage?.total ?? null))
 
+const knowledgeGet = await call('GET', '/knowledge')
+check('GET /knowledge', knowledgeGet.status === 200 && knowledgeGet.data?.adapter?.id === 'knowledge', JSON.stringify(knowledgeGet.data?.status ?? null))
+const knowledgeImport = await call('POST', '/knowledge', {
+  import: { name: 'test.md', text: '比宝喜欢冰美式，但晚上喝会睡不着。' },
+})
+check('POST /knowledge 导入', knowledgeImport.status === 200 && knowledgeImport.data?.imported?.chunks >= 1, JSON.stringify(knowledgeImport.data?.imported ?? null))
+const knowledgeSearch = await call('POST', '/knowledge', { search: { query: '冰美式' } })
+check(
+  'POST /knowledge 检索',
+  knowledgeSearch.status === 200 && knowledgeSearch.data?.results?.length > 0 && Boolean(knowledgeSearch.data?.prompt),
+  JSON.stringify(knowledgeSearch.data?.results?.map((item) => item.title) ?? null),
+)
+const knowledgeOn = await call('POST', '/settings', { knowledge: { enabled: true } })
+const knowledgeAfter = await call('GET', '/knowledge')
+check(
+  '知识库接口可开关',
+  knowledgeOn.status === 200 && knowledgeAfter.data?.enabled === true,
+  String(knowledgeAfter.data?.enabled),
+)
+const knowledgeBci = await call('POST', '/bci/sense', {
+  adapter: 'knowledge',
+  payload: { query: '冰美式' },
+})
+check(
+  '知识库走 BCI 检索',
+  knowledgeBci.status === 200 && knowledgeBci.data?.ok === true && knowledgeBci.data?.data?.results?.length > 0,
+  JSON.stringify(knowledgeBci.data?.data?.results?.map((item) => item.title) ?? null),
+)
+
 const settings = await call('POST', '/settings', { useLlm: true })
 check('POST /settings', settings.status === 200 && settings.data.snapshot?.settings?.useLlm === true, '语言区可切换')
 await call('POST', '/settings', { useLlm: false })

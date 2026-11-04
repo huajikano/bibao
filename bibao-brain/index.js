@@ -27,7 +27,8 @@ import { openBrainStore } from './core/store.js'
 import { createVision } from './core/vision.js'
 import { StickerBook } from './core/stickers.js'
 import { TftAdapter, MotorModel } from './core/bci.js'
-import { BciHub, tftAdapter, screenVisionAdapter, biometricAdapter } from './core/bci-hub.js'
+import { BciHub, tftAdapter, screenVisionAdapter, biometricAdapter, knowledgeAdapter } from './core/bci-hub.js'
+import { KnowledgeBase } from './core/knowledge.js'
 import { ensureHands, handsAlive } from './core/hands.js'
 import { createHash } from 'node:crypto'
 import { decideTft } from './core/tft.js'
@@ -62,6 +63,7 @@ const DEFAULTS = {
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
   vision: { enabled: false, model: '', maxPerHour: 20 },
+  knowledge: { enabled: false, dir: '', maxSnippets: 3, maxChars: 900 },
   // 手：默认关着；开着就会真的动鼠标键盘
   game: { control: false, layout: null, autoStart: false },
   llm: {
@@ -115,6 +117,7 @@ export function apply(ctx, config = {}) {
   settings.growth = { ...DEFAULTS.growth, ...(config?.growth ?? {}) }
   settings.outreach = { ...DEFAULTS.outreach, ...(config?.outreach ?? {}) }
   settings.vision = { ...DEFAULTS.vision, ...(config?.vision ?? {}) }
+  settings.knowledge = { ...DEFAULTS.knowledge, ...(config?.knowledge ?? {}) }
   settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
@@ -146,6 +149,11 @@ export function apply(ctx, config = {}) {
   let stickers = null
   const tft = new TftAdapter()
   const motor = new MotorModel()
+  const knowledge = new KnowledgeBase({
+    dir: settings.knowledge.dir || path.join(dataDir, 'knowledge'),
+    maxSnippets: settings.knowledge.maxSnippets,
+    maxChars: settings.knowledge.maxChars,
+  })
   // 多脑机接口的发现层：现在只有只读通道；真正的动作要显式打开 policy
   const bci = new BciHub({ policy: { actuation: false, requireConfirmation: true, maxActionsPerMin: 12 } })
   bci.register(tftAdapter(tft))
@@ -156,6 +164,20 @@ export function apply(ctx, config = {}) {
       if (!url) return { ok: false, reason: 'no-image-url' }
       const described = await vision.describe(url, { prompt: String(payload.prompt ?? '') })
       return { text: String(described?.text ?? '').slice(0, 800), gist: String(described?.text ?? '').slice(0, 80) }
+    }),
+  )
+  bci.register(
+    knowledgeAdapter({
+      enabled: () => settings.knowledge.enabled === true,
+      read: async (payload = {}) => {
+        const query = String(payload.query ?? payload.text ?? '')
+        const results = knowledge.search(query, { limit: settings.knowledge.maxSnippets })
+        return {
+          query,
+          results,
+          prompt: knowledge.format(results, { maxChars: settings.knowledge.maxChars }),
+        }
+      },
     }),
   )
   bci.register(
@@ -246,6 +268,33 @@ export function apply(ctx, config = {}) {
   }
 
   /** 用一份传记重新出生：/reset 与 /biography 共用同一条路径。 */
+  async function updateKnowledgeSettings(patch = {}) {
+    if (!patch || typeof patch !== 'object') return
+    if (typeof patch.enabled === 'boolean') {
+      settings.knowledge.enabled = patch.enabled
+      knowledge.enabled = patch.enabled
+    }
+    if (typeof patch.dir === 'string') {
+      settings.knowledge.dir = patch.dir.trim()
+      knowledge.dir = settings.knowledge.dir || path.join(dataDir, 'knowledge')
+    }
+    if (Number.isFinite(Number(patch.maxSnippets))) {
+      settings.knowledge.maxSnippets = Math.max(1, Math.min(5, Number(patch.maxSnippets)))
+      knowledge.maxSnippets = settings.knowledge.maxSnippets
+    }
+    if (Number.isFinite(Number(patch.maxChars))) {
+      settings.knowledge.maxChars = Math.max(200, Math.min(3000, Number(patch.maxChars)))
+      knowledge.maxChars = settings.knowledge.maxChars
+    }
+    await knowledge.load()
+  }
+
+  /** 白名单是固定白名单：允许群始终是焦点，不参与自动退化。 */
+  function applyPinnedWhitelist() {
+    if (!funnel) return
+    funnel.setPinned(settings.snowluma.allowGroups ?? [])
+  }
+
   function friendList() {
     const rows = brain.social.snapshot().filter((row) => (row.interactions ?? 0) >= 10)
     // 旧存档里可能聊够了但 friend 标记还是 false；面板读取时补上，让她自己"记住"这个人
@@ -305,6 +354,7 @@ export function apply(ctx, config = {}) {
     })
     funnel = new GroupAttentionFunnel({ social: brain.social, interests: brain.interests, userName: brain.name })
     for (const group of defaultGroups()) funnel.addGroup(group)
+    applyPinnedWhitelist()
     funnel.focus('g_class', Date.now())
     return brain
   }
@@ -425,6 +475,14 @@ export function apply(ctx, config = {}) {
         if (saved?.vision && typeof saved.vision === 'object') {
     settings.vision = { ...DEFAULTS.vision, ...saved.vision }
   }
+  if (saved?.knowledge && typeof saved.knowledge === 'object') {
+    settings.knowledge = { ...DEFAULTS.knowledge, ...saved.knowledge }
+  }
+  knowledge.dir = settings.knowledge.dir || path.join(dataDir, 'knowledge')
+  knowledge.maxSnippets = settings.knowledge.maxSnippets
+  knowledge.maxChars = settings.knowledge.maxChars
+  knowledge.enabled = settings.knowledge.enabled === true
+  await knowledge.load()
   if (saved?.llm && typeof saved.llm === 'object') {
           settings.llm = { ...DEFAULTS.llm, ...saved.llm, profiles: { ...(saved.llm.profiles ?? {}) } }
         }
@@ -477,7 +535,7 @@ export function apply(ctx, config = {}) {
       }
       brain.llms = llms
       // 模型名缺 provider/ 前缀时自动补全：网关只认 provider/model
-      if (settings.llm.model && !settings.llm.model.includes('/')) {
+      if (settings.llm.model && !settings.llm.model.includes('/') && !String(settings.llm.baseURL).includes('/chat/completions')) {
         try {
           const res = await fetch(`${settings.llm.baseURL.replace(/\/+$/, '')}/models`, {
             headers: { authorization: `Bearer ${settings.llm.apiKey}` },
@@ -630,6 +688,7 @@ export function apply(ctx, config = {}) {
         allowPrivate: Boolean(settings.snowluma.allowPrivate),
       },
       vision: { ...settings.vision },
+      knowledge: { ...settings.knowledge, status: knowledge.status() },
       bci: bci.snapshot(),
       asleep: brain.isAsleep(),
       llmConfig: {
@@ -716,6 +775,7 @@ export function apply(ctx, config = {}) {
       priority: anchors.some((a) => a.key === 'at-me') ? 0.25 : group?.layer === 'foveal' ? 0.2 : 0.1,
       groupId: group?.id,
       groupName: group?.name,
+      knowledge: await knowledgeFor(message.text),
     })
 
     const transfer = result.dual?.action_route === 'TRANSFER_PRIVATE_GOSSIP'
@@ -1060,6 +1120,7 @@ export function apply(ctx, config = {}) {
             layer: 'muted',
           })
         }
+        applyPinnedWhitelist()
         const first =
           groups.find((group) => (settings.snowluma.allowGroups ?? []).includes(String(group.group_id))) ?? groups[0]
         if (first) funnel.focus(String(first.group_id), Date.now())
@@ -1159,6 +1220,7 @@ export function apply(ctx, config = {}) {
           layer: 'muted',
         })
       }
+      applyPinnedWhitelist()
       const first = groups.find((group) => (settings.snowluma.allowGroups ?? []).includes(String(group.group_id))) ?? groups[0]
       if (first) funnel.focus(String(first.group_id), Date.now())
       snow.reason = ''
@@ -1173,6 +1235,16 @@ export function apply(ctx, config = {}) {
     snow.bridge = null
     snow.connected = false
     snow.reason = '已断开'
+  }
+
+  /** 开启知识库接口时，把最相关的几块知识交给语言区。 */
+  async function knowledgeFor(text) {
+    if (settings.knowledge.enabled !== true) return []
+    try {
+      return knowledge.search(String(text ?? ''), { limit: settings.knowledge.maxSnippets })
+    } catch {
+      return []
+    }
   }
 
   /**
@@ -1319,6 +1391,7 @@ export function apply(ctx, config = {}) {
       entityName: message.senderName,
       text: message.text,
       channel: 'private',
+      knowledge: await knowledgeFor(message.text),
     })
     schedulePersist()
     await deliver(result, { targetId: message.senderId })
@@ -1356,6 +1429,7 @@ export function apply(ctx, config = {}) {
       priority: message.atMe ? 0.35 : group?.layer === 'foveal' ? 0.25 : 0.06,
       groupId: group?.id,
       groupName: group?.name,
+      knowledge: await knowledgeFor(message.text),
     })
     schedulePersist()
     funnel.record({
@@ -1854,7 +1928,7 @@ export function apply(ctx, config = {}) {
     const allowed = (settings.snowluma.allowGroups ?? []).map(String)
     if (allowed.length && !allowed.includes(String(message.groupId))) return
     if (!funnel.get(message.groupId)) {
-      funnel.addGroup({ id: message.groupId, name: `群 ${message.groupId}`, layer: 'muted' })
+      funnel.addGroup({ id: message.groupId, name: `群 ${message.groupId}`, layer: 'muted', pinned: true })
     }
     const decision = funnel.ingest(message, { now: Date.now(), energy: brain?.state.energy ?? 60 })
     funnel.record({
@@ -2005,6 +2079,48 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/knowledge',
+      methods: ['GET', 'POST'],
+      handler: async (request) => {
+        await boot()
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          try {
+            if (body.import && typeof body.import === 'object') {
+              return json({
+                ok: true,
+                imported: await knowledge.importText({
+                  name: body.import.name,
+                  text: body.import.text,
+                }),
+                status: knowledge.status(),
+              })
+            }
+            if (body.reload) {
+              await knowledge.load()
+            }
+            if (body.search) {
+              const query = String(body.search.query ?? body.search)
+              const results = knowledge.search(query, { limit: settings.knowledge.maxSnippets })
+              return json({ ok: true, query, results, prompt: knowledge.format(results, { maxChars: settings.knowledge.maxChars }), status: knowledge.status() })
+            }
+            if (body.settings && typeof body.settings === 'object') {
+              await updateKnowledgeSettings(body.settings)
+            }
+            return json({ ok: true, status: knowledge.status(), enabled: settings.knowledge.enabled === true })
+          } catch (error) {
+            return fail(String(error?.message ?? error), 400)
+          }
+        }
+        return json({
+          enabled: settings.knowledge.enabled === true,
+          settings: settings.knowledge,
+          status: knowledge.status(),
+          adapter: bci.list().find((item) => item.id === 'knowledge') ?? null,
+        })
+      },
+    },
+    {
       path: '/outreach/preview',
       methods: ['POST'],
       handler: async () => {
@@ -2141,6 +2257,7 @@ export function apply(ctx, config = {}) {
           userName: brain.name,
         })
         for (const group of defaultGroups()) funnel.addGroup(group)
+        applyPinnedWhitelist()
         funnel.focus('g_class', Date.now())
         return json({ group: funnel.snapshot() })
       },
@@ -2246,6 +2363,7 @@ export function apply(ctx, config = {}) {
               growth: settings.growth,
               outreach: settings.outreach,
               vision: settings.vision,
+              knowledge: settings.knowledge,
             }), 'utf8')
           } catch (error) {
             console.warn('[bibao] tuning save failed:', error?.message ?? error)
@@ -3024,6 +3142,10 @@ export function apply(ctx, config = {}) {
           url: request.url,
         })
         if (typeof body.useLlm === 'boolean') settings.useLlm = body.useLlm
+        const snowTouched = Boolean(body.snowluma && typeof body.snowluma === 'object')
+        const directEndpoint = Boolean(
+          (body.llm?.baseURL || settings.llm.baseURL) && (body.llm?.apiKey || settings.llm.apiKey),
+        )
         if (body.snowluma && typeof body.snowluma === 'object') {
           if (typeof body.snowluma.enabled === 'boolean') settings.snowluma.enabled = body.snowluma.enabled
           if (typeof body.snowluma.sendEnabled === 'boolean') {
@@ -3046,6 +3168,7 @@ export function apply(ctx, config = {}) {
           if (body.snowluma.wsServer && typeof body.snowluma.wsServer === 'object') {
             settings.snowluma.wsServer = { ...settings.snowluma.wsServer, ...body.snowluma.wsServer }
           }
+          applyPinnedWhitelist()
         }
         if (body.tuning && typeof body.tuning === 'object') {
           if (Number.isFinite(Number(body.tuning.memoryStrength))) {
@@ -3071,15 +3194,19 @@ export function apply(ctx, config = {}) {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
             const model = body.vision.model.trim()
-            if (!model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
+            if (!directEndpoint && !model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
             settings.vision.model = model
           }
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
           if (vision) vision = createVision({ baseURL: settings.llm.baseURL, apiKey: settings.llm.apiKey, model: settings.vision.model, onUsage: visionUsage })
-        }        if (body.llm && typeof body.llm === 'object') {
-          if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/')) {
+        }
+        if (body.knowledge && typeof body.knowledge === 'object') {
+          await updateKnowledgeSettings(body.knowledge)
+        }
+        if (body.llm && typeof body.llm === 'object') {
+          if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/') && !directEndpoint) {
             return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
           }
           for (const key of ['baseURL', 'apiKey', 'model']) {
@@ -3138,6 +3265,7 @@ export function apply(ctx, config = {}) {
               growth: settings.growth,
               outreach: settings.outreach,
               vision: settings.vision,
+              knowledge: settings.knowledge,
             }),
             'utf8',
           )
@@ -3146,11 +3274,13 @@ export function apply(ctx, config = {}) {
         }
         await boot()
         refreshLlm()
-        if (settings.snowluma.enabled) {
-          stopSnow()
-          await startSnow()
-        } else {
-          stopSnow()
+        if (snowTouched) {
+          if (settings.snowluma.enabled) {
+            stopSnow()
+            await startSnow()
+          } else {
+            stopSnow()
+          }
         }
         return json({ ok: true, snapshot: snapshot() })
       },
@@ -3173,7 +3303,14 @@ export function apply(ctx, config = {}) {
         const wantSend = body.send === true || url.searchParams.get('send') === '1'
         const groupId = String(body.groupId ?? (settings.snowluma.allowGroups ?? [])[0] ?? '')
         if (!groupId) return fail('没有配置允许的群', 400)
-        if (!funnel.get(groupId)) funnel.addGroup({ id: groupId, name: `群 ${groupId}`, layer: 'muted' })
+        if (!funnel.get(groupId)) {
+          funnel.addGroup({
+            id: groupId,
+            name: `群 ${groupId}`,
+            layer: 'muted',
+            pinned: (settings.snowluma.allowGroups ?? []).map(String).includes(groupId),
+          })
+        }
         const message = {
           kind: 'group',
           groupId,
@@ -3276,6 +3413,7 @@ export function apply(ctx, config = {}) {
               growth: settings.growth,
               outreach: settings.outreach,
               vision: settings.vision,
+              knowledge: settings.knowledge,
             }),
             'utf8',
           )

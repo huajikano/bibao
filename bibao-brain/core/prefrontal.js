@@ -35,7 +35,7 @@ function normalizeRoute(value, fallback) {
 
 /** 第一人称内部神经感知报告：外部原话只作为"被引用的信号"。 */
 export function buildPerceptionFrame(ctx) {
-  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now, life, biography } = ctx
+  const { frame, relation, state, schema, pe, schemaHits, bias, memories, budget, routeHint, clockLabel, appraisalHint, recent, digest, tip, now, life, biography, knowledge } = ctx
   const schemaLine = (schema?.snapshot?.() ?? [])
     .map((item) => `${item.label}${item.value >= 0 ? '+' : ''}${item.value.toFixed(2)}`)
     .join(' / ')
@@ -79,6 +79,12 @@ export function buildPerceptionFrame(ctx) {
       : '',
     facts.length
       ? `记得的事：\n${facts.map((fact) => `  · ${typeof fact === 'string' ? fact : fact.text}${typeof fact === 'object' && fact.confidence < 0.6 ? '（这条不太确定）' : ''}`).join('\n')}`
+      : '',
+    knowledge?.length
+      ? `你确实知道这些（不是刚查的资料，是你以前读过/学过的；像自己的知识一样自然带出来，不要逐字背）：\n${knowledge
+          .slice(0, 5)
+          .map((item) => `  · ${item.title || item.source || '知识'}${item.source ? `（${item.source}）` : ''}：${String(item.text ?? '').replace(/\s+/g, ' ').slice(0, 360)}`)
+          .join('\n')}`
       : '',
     // 绝大多数时候，回忆只染色语气，不把旧事摆到台面上复读
     digest && digest.implicit

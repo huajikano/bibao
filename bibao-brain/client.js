@@ -183,7 +183,7 @@ window.__ModuleLoader__.load({
         settingsInheritModel: '继承默认 model',
         settingsInheritKey: '继承默认 apiKey',
         settingsSnowHint: '只在这个群里测试',
-        settingsAllowGroups: '允许的群号（逗号分隔）',
+        settingsAllowGroups: '固定白名单群号（逗号分隔，不会被自动退出焦点）',
         settingsAllowSend: '允许真的发到 QQ',
         settingsAllowPrivate: '允许私聊',
         settingsSnowNote: '白名单为空 = 谁都不理；发送关闭时只观察、不发消息',
@@ -340,7 +340,7 @@ window.__ModuleLoader__.load({
         settingsInheritModel: 'inherit model',
         settingsInheritKey: 'inherit apiKey',
         settingsSnowHint: 'Test in this group only',
-        settingsAllowGroups: 'Allowed group ids (comma separated)',
+        settingsAllowGroups: 'Pinned whitelist group ids (comma separated; never auto-demoted)',
         settingsAllowSend: 'Actually send to QQ',
         settingsAllowPrivate: 'Allow private chats',
         settingsSnowNote: 'Empty whitelist = ignore everyone; sending off = observe only',
@@ -2572,8 +2572,8 @@ window.__ModuleLoader__.load({
                 'section',
                 { className: 'bb-card' },
                 h('div', { className: 'bb-cardTitle' }, '默认模型'),
-                h(Field, { label: 'baseURL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://api.deepseek.com', onChange: (e) => this.set({ baseURL: e.target.value }) })),
-                h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'deepseek-chat', onChange: (e) => this.set({ model: e.target.value }) })),
+                h(Field, { label: 'baseURL / 完整 URL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://…/v2/chat/completions', onChange: (e) => this.set({ baseURL: e.target.value }) })),
+                h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'spark-x2.6 / deepseek-chat', onChange: (e) => this.set({ model: e.target.value }) })),
                 h(Field, { label: 'apiKey' }, h('input', { className: 'bb-input', type: 'password', value: form.apiKey, placeholder: snap?.llmConfig?.hasKey ? `${snap.llmConfig.keyMask}（留空不变）` : '留空 = 用 DSH 默认模型', onChange: (e) => this.set({ apiKey: e.target.value }) })),
                 h('div', { className: 'bb-muted' }, '每个逻辑可以各用一套；留空就继承上面的默认'),
                 LOGIC_META.map((meta) => {
@@ -2619,7 +2619,7 @@ window.__ModuleLoader__.load({
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeReply !== false, onChange: (event) => this.setField({ pokeReply: event.target.checked }) }), '被戳后用表情包回应（仅焦点群；和“戳回去”二选一）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.outreachEnabled === true, onChange: (event) => this.setField({ outreachEnabled: event.target.checked }) }), '允许她偶尔主动私聊你（默认关，每天最多一条）'),
             h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.pokeBack === true, onChange: (event) => this.setField({ pokeBack: event.target.checked }) }), '被戳后戳回去一下（仅焦点群；只戳一下，20 秒内不重复）'),
-            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
+            h(Field, { label: '固定白名单群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789,987654321', onChange: (e) => this.set({ allowGroups: e.target.value }) })),
                 h('div', { className: 'bb-inline bb-inline--wrap' },
                   h('label', { className: 'bb-check' },
                     h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.set({ sendEnabled: e.target.checked }) }),
@@ -3489,7 +3489,13 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { key: group.id, className: `bb-group is-${group.layer}${group.id === this.state.groupId ? ' is-picked' : ''}`, onClick: () => this.setState({ groupId: group.id }) },
-                  h('div', { className: 'bb-groupHead' }, h('span', { className: 'bb-groupName' }, group.name), h(Chip, { children: t(group.layer), tone: group.layer === 'foveal' ? 'good' : group.layer === 'peripheral' ? 'on' : '' })),
+                  h(
+                    'div',
+                    { className: 'bb-groupHead' },
+                    h('span', { className: 'bb-groupName' }, group.name),
+                    h(Chip, { children: t(group.layer), tone: group.layer === 'foveal' ? 'good' : group.layer === 'peripheral' ? 'on' : '' }),
+                    group.pinned ? h(Chip, { children: '固定白名单', tone: 'warn' }) : null,
+                  ),
                   h('div', { className: 'bb-slotMeta' }, `${group.memberCount} 人 · ${group.unread} ${t('unread')}`),
                   h(
                     'div',
@@ -3500,6 +3506,8 @@ window.__ModuleLoader__.load({
                         {
                           key: layer,
                           type: 'button',
+                          disabled: group.pinned === true,
+                          title: group.pinned ? '固定白名单群不能自动/手动降级' : '',
                           className: `bb-layerBtn${group.layer === layer ? ' is-active' : ''}`,
                           onClick: (event) => {
                             event.stopPropagation()
@@ -3659,8 +3667,8 @@ window.__ModuleLoader__.load({
           h(
             Card,
             { title: '语言区模型', hint: '留空则用 DSH 当前默认模型' },
-            h(Field, { label: 'baseURL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://api.deepseek.com', onChange: (e) => this.setField({ baseURL: e.target.value }) })),
-            h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'deepseek-chat', onChange: (e) => this.setField({ model: e.target.value }) })),
+            h(Field, { label: 'baseURL / 完整 URL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://…/v2/chat/completions', onChange: (e) => this.setField({ baseURL: e.target.value }) })),
+            h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'spark-x2.6 / deepseek-chat', onChange: (e) => this.setField({ model: e.target.value }) })),
             h(Field, { label: 'apiKey' }, h('input', { className: 'bb-input', type: 'password', value: form.apiKey, placeholder: snap.llmConfig?.hasKey ? `${snap.llmConfig.keyMask}（留空不变）` : '留空 = 用 DSH 默认模型', onChange: (e) => this.setField({ apiKey: e.target.value }) })),
             h('div', { className: 'bb-muted' }, '三种逻辑可各指向不同厂商 / 不同 key；关掉「独立配置」就继承默认'),
             LOGIC_META.map((meta) => {
@@ -3705,7 +3713,7 @@ window.__ModuleLoader__.load({
             h(Field, { label: 'HTTP token' }, h('input', { className: 'bb-input', type: 'password', value: form.httpToken, placeholder: '留空 = 沿用已保存的', onChange: (e) => this.setField({ httpToken: e.target.value }) })),
             h(Field, { label: 'WS' }, h('input', { className: 'bb-input', value: form.wsUrl, placeholder: 'ws://127.0.0.1:3001/', onChange: (e) => this.setField({ wsUrl: e.target.value }) })),
             h(Field, { label: 'WS token' }, h('input', { className: 'bb-input', type: 'password', value: form.wsToken, placeholder: '留空 = 沿用已保存的', onChange: (e) => this.setField({ wsToken: e.target.value }) })),
-            h(Field, { label: '允许群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789', onChange: (e) => this.setField({ allowGroups: e.target.value }) })),
+            h(Field, { label: '固定白名单群' }, h('input', { className: 'bb-input', value: form.allowGroups, placeholder: '123456789,987654321', onChange: (e) => this.setField({ allowGroups: e.target.value }) })),
             h('div', { className: 'bb-inline bb-inline--wrap' },
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.setField({ sendEnabled: e.target.checked }) }), '允许真的发到 QQ'),
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.allowPrivate, onChange: (e) => this.setField({ allowPrivate: e.target.checked }) }), '允许私聊'),
@@ -4804,10 +4812,27 @@ class FriendsPanel extends React.Component {
     class SensesPanel extends React.Component {
       constructor(props) {
         super(props)
-        this.state = { channels: [], recent: [], drafts: {}, levels: {}, error: '', note: '', vision: null, visionDraft: null }
+        this.state = {
+          channels: [],
+          recent: [],
+          drafts: {},
+          levels: {},
+          error: '',
+          note: '',
+          vision: null,
+          visionDraft: null,
+          knowledge: null,
+          knowledgeDir: '',
+          knowledgeQuery: '',
+          knowledgeResult: null,
+        }
         this.load = this.load.bind(this)
         this.feed = this.feed.bind(this)
         this.toggle = this.toggle.bind(this)
+        this.toggleKnowledge = this.toggleKnowledge.bind(this)
+        this.saveKnowledgeDir = this.saveKnowledgeDir.bind(this)
+        this.importKnowledge = this.importKnowledge.bind(this)
+        this.searchKnowledge = this.searchKnowledge.bind(this)
       }
 
       componentDidMount() {
@@ -4823,6 +4848,7 @@ class FriendsPanel extends React.Component {
         try {
           const data = await request('/senses')
           const state = await request('/state')
+          const knowledge = await request('/knowledge').catch(() => null)
           if (!this.alive) return
           const vision = state.vision ?? null
           this.setState({
@@ -4830,6 +4856,8 @@ class FriendsPanel extends React.Component {
             recent: data.recent ?? [],
             vision,
             visionDraft: this.state.visionDraft ?? (vision ? { enabled: vision.enabled, model: vision.model, maxPerHour: vision.maxPerHour } : null),
+            knowledge,
+            knowledgeDir: this.state.knowledgeDir || knowledge?.settings?.dir || knowledge?.status?.dir || '',
             error: '',
           })
         } catch (error) {
@@ -4897,9 +4925,71 @@ class FriendsPanel extends React.Component {
         }
       }
 
+      async toggleKnowledge() {
+        const enabled = !(this.state.knowledge?.enabled === true)
+        try {
+          await request('/settings', { method: 'POST', body: JSON.stringify({ knowledge: { enabled } }) })
+          this.setState({ note: enabled ? '知识库接口已打开' : '知识库接口已关闭' })
+          await this.load()
+        } catch (error) {
+          this.setState({ note: `切换失败：${error.message}` })
+        }
+      }
+
+      async saveKnowledgeDir() {
+        try {
+          await request('/settings', {
+            method: 'POST',
+            body: JSON.stringify({ knowledge: { dir: this.state.knowledgeDir } }),
+          })
+          this.setState({ note: '知识库目录已更新' })
+          await this.load()
+        } catch (error) {
+          this.setState({ note: `目录保存失败：${error.message}` })
+        }
+      }
+
+      async importKnowledge(event) {
+        const files = Array.from(event.target.files ?? [])
+        event.target.value = ''
+        if (!files.length) return
+        this.setState({ note: `导入 ${files.length} 个知识文件…` })
+        let ok = 0
+        let failed = 0
+        for (const file of files) {
+          try {
+            const text = await file.text()
+            await request('/knowledge', {
+              method: 'POST',
+              body: JSON.stringify({ import: { name: file.name, text } }),
+            })
+            ok += 1
+          } catch {
+            failed += 1
+          }
+        }
+        this.setState({ note: `知识导入：成功 ${ok} 个${failed ? `，失败 ${failed} 个` : ''}` })
+        await this.load()
+      }
+
+      async searchKnowledge() {
+        const query = this.state.knowledgeQuery.trim()
+        if (!query) return
+        this.setState({ note: '检索中…' })
+        try {
+          const result = await request('/knowledge', {
+            method: 'POST',
+            body: JSON.stringify({ search: { query } }),
+          })
+          this.setState({ knowledgeResult: result, note: `检索到 ${result.results?.length ?? 0} 块知识` })
+        } catch (error) {
+          this.setState({ note: `检索失败：${error.message}` })
+        }
+      }
+
       render() {
         const t = typeof this.props.t === 'function' ? this.props.t : (key) => key
-        const { channels, recent, drafts, levels, error, note } = this.state
+        const { channels, recent, drafts, levels, error, note, knowledge, knowledgeDir, knowledgeQuery, knowledgeResult } = this.state
         return h(
           'div',
           { className: 'bb-stack' },
@@ -4914,7 +5004,7 @@ class FriendsPanel extends React.Component {
                   h(
                     'label',
                     { className: 'bb-personaField' },
-                    h('span', { className: 'bb-muted' }, '模型（provider/model）'),
+                    h('span', { className: 'bb-muted' }, '模型（直连可填 spark-x2.6，DSH 填 provider/model）'),
                     h('input', {
                       className: 'bb-input',
                       value: this.state.visionDraft.model,
@@ -4951,6 +5041,77 @@ class FriendsPanel extends React.Component {
               h('button', { type: 'button', className: 'bb-btn', onClick: () => this.testVision() }, '测试一下'),
               h('span', { className: 'bb-muted' }, '对话模型在「设置」页里单独配'),
             ),
+          ),
+          h(
+            Card,
+            { title: '知识库接口（BCI）', hint: '只读 · 像回忆一样进入语言区' },
+            h(
+              'div',
+              { className: 'bb-inline bb-inline--wrap' },
+              h(
+                'label',
+                { className: 'bb-check' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: knowledge?.enabled === true,
+                  onChange: () => this.toggleKnowledge(),
+                }),
+                knowledge?.enabled ? '接口已开启' : '接口已关闭',
+              ),
+              h(Chip, { children: `${knowledge?.status?.files ?? 0} 个文件` }),
+              h(Chip, { children: `${knowledge?.status?.chunks ?? 0} 块知识` }),
+              h('span', { className: 'bb-muted' }, '开启后，聊天会先检索最相关的几块知识'),
+            ),
+            h(
+              'div',
+              { className: 'bb-personaGrid' },
+              h(
+                'label',
+                { className: 'bb-personaField' },
+                h('span', { className: 'bb-muted' }, '知识目录（.md / .txt / .json）'),
+                h('input', {
+                  className: 'bb-input',
+                  value: knowledgeDir,
+                  placeholder: '留空 = ~/.dsh/bibao/knowledge',
+                  onChange: (event) => this.setState({ knowledgeDir: event.target.value }),
+                }),
+              ),
+              h(
+                'div',
+                { className: 'bb-actions' },
+                h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: this.saveKnowledgeDir }, '保存目录'),
+                h(
+                  'label',
+                  { className: 'bb-btn primary bb-btn--tiny', style: { cursor: 'pointer' } },
+                  '导入知识',
+                  h('input', {
+                    type: 'file',
+                    accept: '.md,.txt,.json,text/plain,application/json',
+                    multiple: true,
+                    style: { display: 'none' },
+                    onChange: (event) => this.importKnowledge(event),
+                  }),
+                ),
+              ),
+            ),
+            h(
+              'div',
+              { className: 'bb-inline' },
+              h('input', {
+                className: 'bb-input',
+                value: knowledgeQuery,
+                placeholder: '测试检索：她学过什么？',
+                onChange: (event) => this.setState({ knowledgeQuery: event.target.value }),
+                onKeyDown: (event) => event.key === 'Enter' && this.searchKnowledge(),
+              }),
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: this.searchKnowledge }, '检索'),
+            ),
+            knowledgeResult?.prompt
+              ? h('pre', { className: 'bb-pre bb-knowledgePreview' }, knowledgeResult.prompt)
+              : knowledgeResult
+                ? h('div', { className: 'bb-muted' }, '没有检索到相关知识')
+                : null,
+            knowledge?.status?.error ? h('div', { className: 'bb-error' }, knowledge.status.error) : null,
           ),
           h(
             Card,

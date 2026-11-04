@@ -25,12 +25,22 @@ export class GroupAttentionFunnel {
     this.lastFovealAt = 0
   }
 
-  addGroup({ id, name, memberCount = 40, layer = 'muted' }) {
+  addGroup({ id, name, memberCount = 40, layer = 'muted', pinned = false }) {
+    const key = String(id)
+    const existing = this.groups.get(key)
+    if (existing) {
+      existing.name = name ?? existing.name
+      existing.memberCount = Number(memberCount) || existing.memberCount
+      existing.pinned = Boolean(existing.pinned || pinned)
+      if (existing.pinned) existing.layer = 'foveal'
+      return existing
+    }
     const group = {
-      id: String(id),
+      id: key,
       name,
       memberCount,
-      layer,
+      layer: pinned ? 'foveal' : layer,
+      pinned: Boolean(pinned),
       unread: 0,
       buffer: [],
       lastActivityAt: 0,
@@ -38,6 +48,23 @@ export class GroupAttentionFunnel {
     }
     this.groups.set(group.id, group)
     return group
+  }
+
+  /** 把白名单群固定为焦点：自动退化、手动降级都不再把它踢出焦点。 */
+  setPinned(ids = []) {
+    const wanted = new Set((Array.isArray(ids) ? ids : []).map(String))
+    for (const group of this.groups.values()) {
+      if (wanted.has(group.id)) {
+        group.pinned = true
+        group.layer = 'foveal'
+        if (!this.fovealId) this.fovealId = group.id
+      } else if (group.pinned) {
+        group.pinned = false
+        if (group.layer === 'foveal') group.layer = 'peripheral'
+        if (this.fovealId === group.id) this.fovealId = null
+      }
+    }
+    return this.snapshot()
   }
 
   get(id) {
@@ -123,7 +150,8 @@ export class GroupAttentionFunnel {
     const previous = this.fovealId
     if (previous && previous !== group.id) {
       const old = this.get(previous)
-      if (old && old.layer === 'foveal') old.layer = 'peripheral'
+      // 白名单固定群不能被另一个焦点顶掉
+      if (old && old.layer === 'foveal' && !old.pinned) old.layer = 'peripheral'
     }
     group.layer = 'foveal'
     this.fovealId = group.id
@@ -136,6 +164,9 @@ export class GroupAttentionFunnel {
   setLayer(id, layer, now = Date.now()) {
     const group = this.get(id)
     if (!group) return null
+    if (group.pinned && layer !== 'foveal') {
+      return { previous: this.fovealId, current: group.id, layer: 'foveal', pinned: true }
+    }
     if (layer === 'foveal') return { previous: this.fovealId, current: this.focus(id, now)?.current ?? id }
     group.layer = layer === 'peripheral' ? 'peripheral' : 'muted'
     if (this.fovealId === group.id) this.fovealId = null
@@ -152,7 +183,7 @@ export class GroupAttentionFunnel {
 
   demote(id, to = 'peripheral') {
     const group = this.get(id)
-    if (!group) return
+    if (!group || group.pinned) return
     group.layer = to
     if (this.fovealId === group.id) this.fovealId = null
   }
@@ -222,7 +253,7 @@ export class GroupAttentionFunnel {
   tick(now) {
     if (this.fovealId) {
       const group = this.get(this.fovealId)
-      if (group && now - this.lastFovealAt > 5 * 60_000) {
+      if (group && !group.pinned && now - this.lastFovealAt > 5 * 60_000) {
         this.demote(group.id, 'peripheral')
         return { demoted: group.id, reason: '焦点群 5 分钟无交互，退回余光' }
       }
@@ -254,6 +285,7 @@ export class GroupAttentionFunnel {
           name: group.name,
           layer: group.layer,
           layerLabel: LAYER_LABEL[group.layer],
+          pinned: Boolean(group.pinned),
           memberCount: group.memberCount,
           unread: group.unread,
           buffer: group.buffer.slice(-8),

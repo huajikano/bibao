@@ -359,24 +359,43 @@ function buildBubbles({ style, category, analysis, route, rng, state = {}, playf
   return picked.slice(0, target)
 }
 
+/** 尽量在完整的分句处收尾，宁可轻微超出预算，也不把一句话砍掉半截。 */
+function fitBubble(raw, room) {
+  const source = String(raw).replace(/\s+/g, ' ').trim()
+  if (!source) return ''
+  const clean = source
+    .replace(/[。！？!?；;]/g, ' ')
+    .replace(/[，,、…~～\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (clean.length <= room) return clean
+
+  // 先看标点/空格；只接受至少保留预算 45% 的断点
+  const window = source.slice(0, Math.max(1, room))
+  const boundary = Math.max(
+    ...['，', ',', '、', '；', ';', '。', '！', '？', '!', '?', ' '].map((char) => window.lastIndexOf(char)),
+  )
+  if (boundary >= Math.max(6, Math.floor(room * 0.45))) {
+    return source.slice(0, boundary).replace(/[，,、；;。！？!?]+$/g, '').trim()
+  }
+  // 没有可读断点：短句允许小幅溢出，长句才截断
+  if (source.length <= room + 12) return clean
+  return clean.slice(0, room).replace(/[，,、；;。！？!?]+$/g, '').trim()
+}
+
 /**
  * 去标点 + 预算截断：一个 bubble 就是一个气泡，不再按句号切成多条。
- * 条数由 sampleBubbleCount 决定；这里只负责不超字数、不超条数。
+ * 条数由 sampleBubbleCount 决定；这里只负责尽量完整地收尾。
  */
 export function enforceBudget(bubbles, maxChars, maxBubbles) {
   const out = []
   let used = 0
   for (const raw of bubbles) {
     if (out.length >= maxBubbles) break
-    const clean = String(raw)
-      .replace(/[。！？!?；;]/g, ' ')
-      .replace(/[，,、…~～\s]+$/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-    if (!clean) continue
     const room = maxChars - used
     if (room <= 0) break
-    const slice = clean.length > room ? clean.slice(0, room) : clean
+    const slice = fitBubble(raw, room)
+    if (!slice) continue
     out.push(slice)
     used += slice.length
   }

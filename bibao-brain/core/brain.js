@@ -1353,6 +1353,7 @@ export class BibaoBrain {
         routeReasons: decision.reasons,
         style,
         playfulness: this.playfulness(),
+        knowledge: frame.knowledge ?? [],
         pe,
         schemaHits,
         bias,

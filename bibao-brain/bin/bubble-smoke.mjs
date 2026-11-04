@@ -48,6 +48,11 @@ check('一条气泡不会被句号切成三条', one.length === 1, JSON.stringif
 const capped = enforceBudget(['一', '二', '三', '四'], 100, 2)
 check('最终条数受 maxBubbles 约束', capped.length === 2, JSON.stringify(capped))
 
+const complete = enforceBudget(['这是一句没有句号的完整短句'], 8, 3)
+check('短句轻微超出预算也不砍断', complete[0] === '这是一句没有句号的完整短句', JSON.stringify(complete))
+const clause = enforceBudget(['前面这句很长，后面这句会被保留吗'], 8, 3)
+check('长句优先在逗号处收完整', clause[0] === '前面这句很长', JSON.stringify(clause))
+
 const prompt = buildSystemPrompt({ biography: { name: '比宝', oneLine: '爱玩的小女孩' }, maxBubbles: 2, playfulness: 0.7 })
 check('提示词默认一句', prompt.includes('通常只说一句'), '')
 check('提示词用动态上限', prompt.includes('不得超过 2 条'), '')

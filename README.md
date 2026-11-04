@@ -33,8 +33,11 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
 node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感，47 项
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
-node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 群层只看不回，35 项
-node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 最终条数，13 项
+node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 群层只看不回，40 项
+node bibao-brain/bin/group-smoke.mjs  # 固定白名单不会被自动降级，6 项
+node bibao-brain/bin/bubble-smoke.mjs # 气泡长尾 / 情绪耦合 / 句子完整性，15 项
+node bibao-brain/bin/knowledge-smoke.mjs # 知识库分块 / 检索 / 导入 / BCI 开关，7 项
+node bibao-brain/bin/openai-smoke.mjs # 直连 baseURL 与完整 URL，3 项
 node bibao-brain/bin/usage-smoke.mjs  # Token 计量：精确/估算/分组/缓存/会话/持久化，9 项
 node bibao-brain/bin/render-smoke.mjs # 设置页各标签的渲染冒烟
 node bibao-brain/bin/sticker-import-smoke.mjs # 表情包导入 + 分类，7 项
@@ -65,6 +68,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| `v0.11.0` | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |
 | [`v0.10.0`](https://github.com/huajikano/bibao/releases/tag/v0.10.0) | 表情包分「常用/默认/吃灰」并可手动归类；好感/神经递质加入昼夜节律与实时趋势；认知环路图静息态也会流动 |
 | [`v0.9.1`](https://github.com/huajikano/bibao/releases/tag/v0.9.1) | 新插件图标；越界问题会降好感并累积、正常关心仍能回升；好友/对话列表好感实时刷新并显示一位小数 |
 | [`v0.9.0`](https://github.com/huajikano/bibao/releases/tag/v0.9.0) | 默认灵动小女孩节奏：长尾气泡、玩心/疲惫/生气耦合、提示词默认一句、最终条数不被标点切碎 |
@@ -90,10 +94,12 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 - 成长层：人格一致的动态提示词、自我复盘（证据 → 经验 → 六维说话倾向）、生活流、模糊记忆
 - 关系层：对话线程（没聊完的事会留一条线、两天后放下）、默认关闭的主动私聊分享
 - 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
-- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；当前只读通道已接
+- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；新增可开关的知识库检索接口
+- 模型：直连支持完整 `/chat/completions` URL 和无 `provider/` 前缀的模型名（如 `spark-x2.6`）
+- 说话：长句优先在完整分句处收尾，不再把一句话砍掉半截
 - QQ 修复：表情包导入与描述编辑；被戳后按情绪/上下文二选一（回戳一下或表情包，不发文字）；反向 WS 连接、WS 配置重启不丢
 - 隐私：补丁/测试只含占位符，不写本机 snowluma 路径、QQ 号或群号；真实配置只留在本机
-- 群聊层级：只有「焦点」群会回复；「余光」和「免打扰」只看不回，被 @ 或被戳一戳也不会回
+- 群聊层级：白名单是**固定白名单**，不会被自动退出焦点；只有「焦点」群会回复，「余光」和「免打扰」只看不回，被 @ 或被戳一戳也不会回
 - 界面：设置页十标签（脑内 / 对话 / 记忆 / 群聊 / 验脑 / 人物 / 感官 / 好友 / 设置 / 用量）+ 独立控制台
 
 路线图见 [docs/ROADMAP.md](docs/ROADMAP.md)，多接口说明见 [docs/BCI.md](docs/BCI.md)。

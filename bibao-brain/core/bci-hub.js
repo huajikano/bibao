@@ -21,6 +21,7 @@ export const CAPABILITIES = Object.freeze({
   SENSE_STATE: 'sense.state',
   SENSE_TOUCH: 'sense.touch',
   SENSE_BIOMETRIC: 'sense.biometric',
+  SENSE_KNOWLEDGE: 'sense.knowledge',
   ACT_POINTER: 'act.pointer',
   ACT_KEYBOARD: 'act.keyboard',
   ACT_AUDIO: 'act.audio',
@@ -224,6 +225,26 @@ export function handsAdapter(actions = {}) {
       return handler(action)
     },
     meta: { mode: 'actuation', note: '默认禁用；需要在 policy 里显式打开 actuation' },
+  }
+}
+
+/**
+ * 知识库接口：只读检索，不写文件；是否启用由 settings.knowledge.enabled 控制。
+ * sense({query, limit}) -> { query, results, prompt }
+ */
+export function knowledgeAdapter({ read = null, enabled = () => true } = {}) {
+  return {
+    id: 'knowledge',
+    label: '知识库',
+    kind: 'knowledge',
+    capabilities: [CAPABILITIES.SENSE_KNOWLEDGE],
+    readOnly: true,
+    sense: async (payload = {}) => {
+      if (!enabled()) return { disabled: true, results: [], prompt: '' }
+      if (typeof read !== 'function') return { disabled: true, results: [], prompt: '' }
+      return read(payload)
+    },
+    meta: { mode: 'read-only', note: '从导入的知识库里检索，像回忆一样进入语言区' },
   }
 }
 
