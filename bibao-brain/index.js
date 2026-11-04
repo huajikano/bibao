@@ -2583,9 +2583,10 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async () => {
         await boot()
-        if (!vision) return fail('视觉还没配置', 400)
+        if (!vision || settings.vision.enabled !== true) return fail('视觉还没配置（先在感官页启用并填模型）', 400)
+        // 很多视觉模型有最小分辨率限制（例如 50x50），不要用 1x1 测试图
         const png =
-          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAgElEQVR4nNXOQREAIAzAsFKFyEEishCxB9coyNrnUiZxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEufvwNQDpcECENET7EAAAAAASUVORK5CYII='
         try {
           const started = Date.now()
           const result = await vision.describe(png, { prompt: '用一句中文说出这张图的颜色。', maxTokens: 60 })
