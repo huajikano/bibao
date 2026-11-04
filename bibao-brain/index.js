@@ -1248,8 +1248,11 @@ export function apply(ctx, config = {}) {
   /** 开启知识库接口时，把最相关的几块知识交给语言区。 */
   async function knowledgeFor(text) {
     if (settings.knowledge.enabled !== true) return []
+    // 寒暄不翻书；只有像提问/需要具体信息时才检索，减少无意义 token 和延迟
+    const query = String(text ?? '').trim()
+    if (query.length < 6) return []
     try {
-      return knowledge.search(String(text ?? ''), { limit: settings.knowledge.maxSnippets })
+      return knowledge.search(query, { limit: settings.knowledge.maxSnippets, minScore: 0.18 })
     } catch {
       return []
     }

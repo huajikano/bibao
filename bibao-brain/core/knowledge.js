@@ -152,7 +152,7 @@ export class KnowledgeBase {
     }
   }
 
-  search(query, { limit = this.maxSnippets } = {}) {
+  search(query, { limit = this.maxSnippets, minScore = 0.08 } = {}) {
     const terms = bigrams(query)
     if (!terms.size || !this.chunks.length) return []
     const scored = this.chunks.map((chunk) => {
@@ -167,7 +167,7 @@ export class KnowledgeBase {
     })
     scored.sort((a, b) => b.score - a.score)
     return scored
-      .filter((item) => item.score > 0.08)
+      .filter((item) => item.score >= minScore)
       .slice(0, Math.max(1, Math.min(5, Number(limit) || this.maxSnippets)))
       .map(({ grams, ...item }) => ({ ...item, score: Number(item.score.toFixed(3)) }))
   }

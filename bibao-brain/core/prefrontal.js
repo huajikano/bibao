@@ -226,7 +226,7 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
       model,
       system,
       temperature: 0.9,
-      maxTokens: 1800,
+      maxTokens: 1200,
       reasoningEffort: 'low',
       messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
     })
@@ -248,7 +248,7 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
         model,
         system: `${system}\n重要：只输出 JSON 对象本身，不要任何思考过程、解释或代码块标记。`,
         temperature: 0.4,
-        maxTokens: 1800,
+        maxTokens: 1200,
         reasoningEffort: 'low',
         messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
       })

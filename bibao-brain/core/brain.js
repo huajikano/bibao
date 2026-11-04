@@ -1394,7 +1394,9 @@ export class BibaoBrain {
           moodHint: this.growth?.life ? this.life.moodHint(now) : '',
         },
       },
-      this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
+      text.length <= 2 && analysis.hostility < 0.2
+        ? {}
+        : this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
     )
 
     // 犹豫：打完又删 / 只说一半 / 发完补一句
