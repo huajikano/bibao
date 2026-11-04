@@ -70,7 +70,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
-| `v0.12.2` | 视觉模型支持独立 baseURL / key / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE 与纯文本响应 |
+| [`v0.12.2`](https://github.com/huajikano/bibao/releases/tag/v0.12.2) | 视觉模型支持独立 baseURL / key / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE 与纯文本响应 |
 | [`v0.12.1`](https://github.com/huajikano/bibao/releases/tag/v0.12.1) | 知识库翻书、导入限制与自动启用；生活流按天/周末/主题变化；主人面板（QQ + 长期要求）；短问候走本地快路径，减少慢模型等待 |
 | [`v0.12.0`](https://github.com/huajikano/bibao/releases/tag/v0.12.0) | 知识库改成“翻书”并说明导入限制、导入后自动启用；生活流按天/周末/主题变化且不等聊天才翻页；新增主人面板（QQ + 长期要求） |
 | [`v0.11.0`](https://github.com/huajikano/bibao/releases/tag/v0.11.0) | 直连模型可填完整 `/chat/completions` URL 与无斜杠模型名；白名单改为固定焦点；长句在完整分句处收尾；新增知识库 BCI |
