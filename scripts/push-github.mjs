@@ -43,7 +43,8 @@ async function call(method, url, body) {
   return data
 }
 
-const SKIP = new Set(['.git', 'node_modules', '.dsh', 'state'])
+// .tmp / scratch 里常放本机调试脚本和回环 token，绝不能进仓库
+const SKIP = new Set(['.git', 'node_modules', '.dsh', 'state', '.tmp', 'scratch', '.vscode'])
 async function walk(dir, prefix = '') {
   const out = []
   for (const entry of await readdir(dir, { withFileTypes: true })) {

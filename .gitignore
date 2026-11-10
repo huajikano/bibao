@@ -6,3 +6,6 @@ Thumbs.db
 .dsh/
 state/
 *.bak
+# 本机调试脚本 / 回环 token 之类，不进仓库
+.tmp/
+scratch/
