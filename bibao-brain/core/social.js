@@ -95,9 +95,14 @@ export class SocialMemory {
   bestGossipTarget(exclude = []) {
     const ranked = this.ranked({ exclude })
     const family = new Set(['母亲', '父亲', '爸妈', '家人', '亲戚', '长辈'])
-    const friendly = ranked.filter((item) => !item.tags.some((tag) => family.has(tag)))
-    const pool = friendly.length ? friendly : ranked
-    return pool.find((item) => item.intimacy >= 40) ?? pool[0]
+    return (
+      ranked.find(
+        (item) =>
+          !item.tags.some((tag) => family.has(tag)) &&
+          (item.friend || item.intimacy >= 50) &&
+          item.trust >= 45,
+      ) ?? null
+    )
   }
 
   /** 群聊唤醒锚点③：群内是否有亲密度 > 60 的死党在说话。 */

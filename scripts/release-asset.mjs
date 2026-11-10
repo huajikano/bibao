@@ -1,7 +1,9 @@
 /**
  * 发布：建 tag + Release，并把预构建 tarball 挂上去（资产名不带版本号，
  * 这样 latest/download/bibao.tgz 不会在下次发版后 404）。
- * 用法：GH_TOKEN=... node scripts/release-asset.mjs [version]
+ *
+ * 发布说明从 docs/CHANGELOG.md 取当前版本的小节，取不到再用兜底文案。
+ * 用法：GH_TOKEN=... node scripts/release-asset.mjs [version] [owner/repo]
  */
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -25,65 +27,29 @@ const api = (pathname, options = {}) =>
     },
   })
 
-const body = `## ${VERSION}
+/** 从 CHANGELOG 里切出 `## x.y.z` 到下一个 `## ` 之间的内容。 */
+async function sectionFromChangelog(version) {
+  try {
+    const text = await readFile(new URL('../docs/CHANGELOG.md', import.meta.url), 'utf8')
+    const lines = text.split(/\r?\n/)
+    const start = lines.findIndex((line) => line.trim() === `## ${version}`)
+    if (start < 0) return ''
+    const rest = lines.slice(start + 1)
+    const end = rest.findIndex((line) => /^##\s/.test(line))
+    const body = (end < 0 ? rest : rest.slice(0, end)).join('\n').trim()
+    // 小节标题降一级，避免和 Release 里的标题打架
+    return body.replace(/^### /gm, '#### ')
+  } catch {
+    return ''
+  }
+}
 
-### 0.8 这一版的重点
-- **对话线程**：没答的问题、答应过的事、还热的话题会留一条线；2 天后自动放下，不变成查岗
-- **主动分享**：默认关闭。只在"真实好友 + 沉默 6 小时 + 今天有生活事件 + 心情允许"时最多一天一条私聊
-- **QQ 修复**：表情包导入补上 \`shrinkImage\`，收藏夹可改描述；被戳后真正回一句（20 秒冷却，任意群生效）；WS 配置重启不丢
-- **反向 WS**：插件监听 \`ws://127.0.0.1:8080/ws\`，snowluma 的 \`wsClients\` 主动连进来；事件和动作走同一条连接，不再依赖 3000/3001 是否开着
-- **戳一戳**：被戳后二选一——回戳一下，或发一张表情包；不再发文字。表情包按当下情绪/上下文匹配，不匹配就戳回去，20 秒/对象冷却
-- **插件图标**：换成比宝新立绘（512px，内置到 icon.svg）
-- **好感边界**：问工资/年龄/住址/前任/"是不是 AI"等越界问题会降好感；同一人重复越界会累积扣分，正常关心仍能回升；LLM 的客气回复不能把越界抵消成加分
-- **表情包分类**：常用 / 默认 / 吃灰；用够次数自动升常用，30 天没用自动吃灰，手动归类别后不再自动改
-- **神经递质与环路图**：激素加入昼夜节律和 90 分钟小波动，静息态也会缓慢漂移；环路图增加流动脉冲与静息态扫描
-- **直连模型**：\`baseURL\` 可以填完整 \`/chat/completions\` URL，模型名不再强制 \`provider/\` 前缀
-- **视觉模型独立配置**：视觉可用自己的 baseURL / apiKey / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE、纯文本响应；测试图 64px，避开最小分辨率限制
-- **固定白名单**：白名单群永远保持焦点，不会被 5 分钟自动退化或另一个焦点顶掉
-- **句子完整性**：长句优先在逗号/分句处收尾，短句允许轻微超预算，不再把一句话砍掉半截
-- **知识库 BCI**：可开关的只读书架，支持 .md/.txt/.json，按书名/章节分块；每次最多翻 2 块，导入后自动启用，界面写明 2MB / 3000 块等限制
-- **生活流**：不再每天同一套日程；按工作日/周末、每日主题和随机空档变化，跨天打开面板也会生成新一天
-- **主人面板**：设置主人 QQ 与长期要求；要求作为“答应过的事”进入提示词，QQ 号只留本机
-- **响应速度**：寒暄/超短问候不再额外调用慢模型（直接走本地布洛卡），其他短句不再额外调用 appraisal，知识注入限制为 2 块
-- **说话节奏**：默认灵动小女孩，不再固定三连。气泡数按玩心/疲惫/生气/关系长尾采样，平时一句，玩心高才偶尔连发；提示词默认一句，最终条数不会被句号切碎
-- **群聊层级**：只有「焦点」群会回复；「余光」和「免打扰」只看不回，被 @ 或被戳一戳也不会回
-- **好友面板**：不需要手动加好友，互动 ≥ 10 条自动进入；由她自己记（\`friendSource='self'\`），昵称旁显示小号 QQ
-- **Token 用量面板**：设置页后面新增「用量」，参考 CC Switch 的会话视图：本次会话 / 累计、输入/输出/缓存读/缓存写、命中率、平均延迟、按模块/模型/最近调用；精确 usage 与估算分开标记
-- **隐私**：补丁/测试不再包含本机 snowluma 路径、QQ 号或群号；\`snowluma.configDir\` 留空自动探测，真实配置只留在本机
-- **任意安装位置**：snowluma 目录支持环境变量、面板字段、常见相邻目录与盘符浅扫；不再要求 \`D:\\XiangMu\\snowluma\\config\`
-- **盲评**：20 个 QQ 场景 + 五维评分表，见 \`docs/EVAL.md\`
+const body =
+  (await sectionFromChangelog(VERSION)) ||
+  `## ${VERSION}
 
-### 成长层（0.7）
-- **人格一致**：系统提示词从当前 \`biography.json\` 生成；换成 16 岁高中生后，不再说"我毕业了"，也不再带旧版 22 岁毒舌人设
-- **自我复盘**：每轮记录"对方接住了/变冷了/没回"，睡眠或每 6 小时压成 1-2 条经验，微调暖意、玩心、直率、话量、示弱、主动六个维度；单次 ±0.06、经验上限 10 条
-- **她的一天**：按年龄/关系/爱好生成早读、食堂、放学、作业、游戏、被催睡等生活事件；进提示词、睡前压成日记与情景记忆
-- **模糊记忆**：新增清晰度 \`fidelity/blur\`；旧事只交梗概并明确"记不清"，不编细节
-- **多脑机接口**：\`core/bci-hub.js\` 统一适配器、能力声明、只读/动作策略、确认、限频、审计；已接 TFT/视觉/生理只读通道
-
-### 认知内核
-- 四定律：自由能/主动推理、全局工作空间、互补学习系统、艾宾浩斯 + 再巩固
-- 6 大沙盒验收：情绪惯性、抗洗脑、24h 感官剥夺、记忆罗生门、打断忘词、社会面具
-
-### 记忆
-- SQLite 持久层（node:sqlite）：情景热层 + 软删除归档 + 语义事实层
-- 夜间把当天情景压成带出处的事实；低置信 7 天过期；同一件事新说法推翻旧说法
-- 词法向量（256 维哈希）混合检索：R × 显著性 × 余弦 × 情绪一致
-- 倒摄干扰、舌尖现象、复述续期、模糊召回
-
-### 交互
-- snowluma OneBot：HTTP 发送 + WS 收事件，三层注意力漏斗（焦点/余光/免打扰）
-- 私聊与 @ 直接绕过显著性阈值；修复 \`maybeSticker is not defined\` 导致的发送链路中断
-- 表情包导入、戳一戳回复、WS 配置持久化与 token 查询串、连接状态日志
-- 六个认知模块各一个模型槽；行为滑杆：记忆力、说话频率
-- 时间校准：脑内时间与系统时间平移对齐，记忆年龄不变
-
-### 安装
-\`\`\`sh
-dsh plugin add huajikano/bibao
-\`\`\`
-或使用本页附件 \`bibao.tgz\`（预构建，免构建授权）。
-
-完整说明见仓库 README；路线图见 \`docs/ROADMAP.md\`，多接口说明见 \`docs/BCI.md\`。`
+安装：\`dsh plugin add huajikano/bibao\`，或下载本页附件 \`bibao.tgz\`（预构建，免构建授权）。
+完整说明见仓库 README；更新记录见 \`docs/CHANGELOG.md\`。`
 
 let res = await api(`/repos/${OWNER}/${REPO}/releases`, {
   method: 'POST',
@@ -104,6 +70,13 @@ if (res.status === 422) {
 if (!res.ok) throw new Error(`release failed ${res.status}: ${(await res.text()).slice(0, 300)}`)
 const release = await res.json()
 console.log(`release ${release.tag_name} → ${release.html_url}`)
+
+// 同名资产重复上传会 422：先删掉旧的 bibao.tgz 再传
+for (const asset of release.assets ?? []) {
+  if (asset.name !== 'bibao.tgz') continue
+  const del = await api(`/repos/${OWNER}/${REPO}/releases/assets/${asset.id}`, { method: 'DELETE' })
+  console.log(`removed old asset ${asset.name}: ${del.status}`)
+}
 
 try {
   await stat(tarball)

@@ -9,7 +9,7 @@ import { PARAMS, clamp } from './constants.js'
 import { CORE_CUES } from './schema.js'
 
 const LEXICON = {
-  hostile: ['废物', '垃圾', '蠢', '傻', '闭嘴', '滚', '恶心', '有病', '烦', '幼稚', '可笑', '丢人', '没救', '你懂什么', '就你'],
+  hostile: ['废物', '垃圾', '蠢', '傻', '闭嘴', '滚', '恶心', '有病', '幼稚', '可笑', '丢人', '没救', '你懂什么', '就你'],
   preach: ['你应该', '你必须', '听我的', '为你好', '你错了', '你根本', '你不懂', '别那么', '成熟点', '想开点', '都是你', '我早就说'],
   care: ['没事吧', '怎么了', '在吗', '抱抱', '辛苦了', '别熬夜', '早点睡', '想你', '等你', '吃饭没', '注意身体'],
   gossip: ['听说', '笑死', '你知道', '八卦', '绝了', '离谱', '真的假的', '居然', '吃瓜', '爆料'],
@@ -32,23 +32,65 @@ const PRIVACY_CUES = [
   /你(?:爸妈|父母).{0,8}(?:干嘛|做什么|离婚|工资)/,
 ]
 
+const SPEECH_ACTS = [
+  ['reassurance_seeking', /(?:(?:你是不是觉得我|你觉得我|我是不是).{0,6}(?:烦|讨厌|很差|不重要|说错了|废物|没用)|你还生气吗|你是不是不想理我|我是不是给你添麻烦)/],
+  ['complaint', /(?:上次.{0,12}(?:说好|答应|约好)|我等了你|你又放我鸽子|你又爽约|你怎么没来)/],
+  ['support_seeking', /(?:想听你(?:说说话|聊聊)|想找你聊聊|陪我(?:聊|说会儿)|能听我说(?:说)?吗|想有人听我说|今天.{0,12}(?:累|难受|不开心|烦).{0,12}(?:聊聊|说说|陪我)|我想跟你说说)/],
+  ['invitation', /(?:(?:周末|明天|今晚|下次|有空|改天).{0,8}(?:去不去|要不要|一起|出来)|去不去|要不要一起|要不要去|一起.{0,4}(?:吗|不)|约不约|陪我去(?:吗|不))/],
+  ['praise', /(?:你(?:真|好)?(?:棒|厉害|可爱|好看)(?:啊|了)?|(?:好|太)厉害了|太可爱了|做得真好|你很(?:聪明|温柔|靠谱))/],
+  ['gratitude', /(?:谢谢你|谢谢|辛苦了|多亏你|感谢你|太感谢了)/],
+  ['farewell', /(?:晚安|拜拜|先睡了|我去睡了|先忙了|回头聊|下次聊|我先走了)/],
+  ['venting', /(?:我今天.{0,8}(?:好烦|很累|难受|不开心)|最近.{0,8}(?:压力|烦|累|难受)|不想.{0,4}(?:上班|上学|说话))/],
+]
+
+export function classifySpeechAct(text = '') {
+  const raw = String(text).trim()
+  if (/(?:上次|说好|答应|放鸽子|又爽约)/.test(raw) && /(?:一起去|没来|没去|不来|鸽子|爽约)/.test(raw)) {
+    return 'complaint'
+  }
+  for (const [act, pattern] of SPEECH_ACTS) {
+    if (pattern.test(raw)) return act
+  }
+  return /[?？]|吗|呢|怎么|为什么|啥|什么/.test(raw) ? 'question' : 'statement'
+}
+
 export const DEFAULT_INTERESTS = ['猫', 'livehouse', '乐队', '番剧', '摄影', '通宵', '游戏', '奶茶']
+
+function hasAffirmedCue(text, cue) {
+  let index = String(text).indexOf(cue)
+  while (index >= 0) {
+    const prefix = String(text).slice(Math.max(0, index - 8), index)
+    if (!/(?:不|没|并非|没有|不是|绝不|没(?:有)?觉得|并不觉得|别再说我是)\s*$/.test(prefix)) return true
+    index = String(text).indexOf(cue, index + cue.length)
+  }
+  return false
+}
+
+function countAffirmedCues(text, cues) {
+  return cues.reduce((sum, cue) => sum + Number(hasAffirmedCue(text, cue.toLowerCase())), 0)
+}
 
 export function analyzeText(text = '') {
   const raw = String(text)
   const lower = raw.toLowerCase()
   const count = (list) => list.reduce((sum, word) => sum + (lower.includes(word.toLowerCase()) ? 1 : 0), 0)
-  const hostile = count(LEXICON.hostile)
-  const preach = count(LEXICON.preach)
+  const hostile = countAffirmedCues(lower, LEXICON.hostile)
+  const preach = countAffirmedCues(lower, LEXICON.preach)
   const care = count(LEXICON.care)
   const gossip = count(LEXICON.gossip)
   const desire = count(LEXICON.desire)
+  const speechAct = classifySpeechAct(raw)
+  const speechActConfidence = speechAct === 'question' || speechAct === 'statement' ? 0.35 : 0.86
+  const directInsult = countAffirmedCues(lower, ['烦不烦', '烦死了', '别烦我', '你好烦', '你真烦', '你烦']) > 0
+  const effectiveHostile = speechAct === 'reassurance_seeking' ? 0 : hostile + Number(directInsult)
   const question = /[?？]|吗|呢|怎么|为什么|啥|什么/.test(raw) ? 1 : 0
   const exclaim = /[!！]/.test(raw) ? 1 : 0
   const privacyHits = PRIVACY_CUES.reduce((sum, rule) => sum + (rule.test(raw) ? 1 : 0), 0)
   const intrusion = clamp(privacyHits * 0.48 + (privacyHits && question ? 0.12 : 0))
   return {
     text: raw,
+    speechAct,
+    speechActConfidence,
     length: raw.length,
     hostile,
     preach,
@@ -59,11 +101,18 @@ export function analyzeText(text = '') {
     exclaim,
     privacyHits,
     intrusion,
-    hostility: clamp(hostile * 0.55 + exclaim * 0.1),
+    hostility: clamp(effectiveHostile * 0.55 + exclaim * 0.1),
     preaching: clamp(preach * 0.5),
-    warmth: clamp(care * 0.5 + desire * 0.35),
+    warmth: clamp(
+      care * 0.5 +
+        desire * 0.35 +
+        (speechAct === 'praise' ? 0.65 : 0) +
+        (speechAct === 'gratitude' ? 0.35 : 0) +
+        (speechAct === 'support_seeking' ? 0.4 : 0) +
+        (speechAct === 'reassurance_seeking' ? 0.35 : 0),
+    ),
     gossipy: clamp(gossip * 0.4),
-    urgency: clamp(hostile * 0.4 + exclaim * 0.2),
+    urgency: clamp(effectiveHostile * 0.4 + exclaim * 0.2),
   }
 }
 
@@ -72,7 +121,7 @@ export function coreCues(text = '') {
   const raw = String(text)
   const cues = []
   for (const [word, hits] of Object.entries(CORE_CUES)) {
-    if (raw.includes(word)) {
+    if (hasAffirmedCue(raw, word)) {
       for (const hit of hits) cues.push({ ...hit, word })
     }
   }
@@ -223,6 +272,11 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
     delta.serotonin -= 0.06 * analysis.preaching
     valenceTarget -= 0.45 * analysis.preaching
   }
+  if (analysis.speechAct === 'complaint') {
+    delta.cortisol += 0.12
+    delta.serotonin -= 0.03
+    valenceTarget -= 0.18
+  }
   if (analysis.warmth > 0) {
     delta.oxytocin += 0.2 * analysis.warmth
     delta.cortisol -= 0.12 * analysis.warmth
@@ -253,18 +307,27 @@ export function stimulusDelta({ analysis, relation, schemaHits = [], channel = '
 
   const closeness = clamp(((relation?.intimacy ?? 0) + 40) / 140)
   const normalIntimacy =
-    analysis.hostility > 0
-      ? -3 - 4 * closeness
+    analysis.speechAct === 'complaint'
+      ? -1.2
+      : analysis.hostility > 0
+        ? -3 - 4 * closeness
       : analysis.warmth > 0
         ? 2.4 + 2 * closeness
-        : analysis.gossipy > 0
+      : analysis.gossipy > 0
           ? 0.9
           : 0.9
   // 越界问句的扣分独立于"语气好不好"：问得客气也不代表可以问
   const boundaryDelta =
     intrusion > 0.12 ? -(1.8 + 2 * closeness + 0.8 * repeat) * (0.55 + intrusion) : 0
   const intimacyDelta = intrusion > 0.12 ? Math.min(normalIntimacy, boundaryDelta) : normalIntimacy
-  const normalTrust = analysis.hostility > 0 ? -2.5 * analysis.hostility : analysis.warmth > 0 ? 0.6 : 0
+  const normalTrust =
+    analysis.speechAct === 'complaint'
+      ? -0.8
+      : analysis.hostility > 0
+        ? -2.5 * analysis.hostility
+        : analysis.warmth > 0
+          ? 0.6
+          : 0
   const boundaryTrust = intrusion > 0.12 ? -(1.2 + 1.6 * intrusion + 0.5 * repeat) : 0
 
   return {

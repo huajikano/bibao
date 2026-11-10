@@ -48,7 +48,7 @@ import {
   tagsFor,
 } from './appraisal.js'
 import { composeEndogenous, decideBudget } from './broca.js'
-import { generateDualTrack, extractJson } from './prefrontal.js'
+import { generateDualTrack, extractJson, collectStream } from './prefrontal.js'
 import { bootstrapLife } from './life.js'
 import { SensoryCortex, SENSE_CHANNELS, SENSE_REACTIONS } from './senses.js'
 import { HabitMemory } from './learn.js'
@@ -58,7 +58,7 @@ import { SelfModel } from './self.js'
 import { LifeStream } from './life-stream.js'
 import { ThreadMemory } from './threads.js'
 import { planOutreach } from './outreach.js'
-import { clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
+import { clockAnswer, clockLabel, dayKey, isNight, isSleeping, localParts, motorPlan, TZ_OFFSET_MS } from './clock.js'
 
 export class BibaoBrain {
   constructor({
@@ -75,6 +75,7 @@ export class BibaoBrain {
     onDream = null,
     store = null,
     growth = {},
+    llmTimeoutMs = 0,
   }) {
     this.store = store
     this.seed = seed
@@ -87,6 +88,9 @@ export class BibaoBrain {
     this.llm = llm
     this.llmProvider = llmProvider
     this.llmModel = llmModel
+    // 模型再慢也不能让她"已读不回"：超时就用本地布洛卡，连续超时就先冷静一阵
+    this.llmTimeoutMs = Math.max(0, Number(llmTimeoutMs) || 0)
+    this.llmGuard = { timeouts: 0, skipUntil: 0, lastReason: '' }
     // 每个认知逻辑可以各用一套模型：{ appraisal, broca, reflection }
     this.llms = {
       broca: { llm, provider: llmProvider, model: llmModel, source: llm ? 'external' : 'local' },
@@ -940,6 +944,43 @@ export class BibaoBrain {
     if (this.inner.length > 80) this.inner = this.inner.slice(-80)
   }
 
+  /** 模型最近是不是慢到不值得等：熔断期间直接走本地布洛卡。 */
+  llmReady(now = Date.now()) {
+    return now >= (this.llmGuard?.skipUntil ?? 0)
+  }
+
+  /**
+   * 这一次最多等多久：下限是配置值，上限跟着"这台模型平时多快"走。
+   * 15 秒的硬上限会把 17 秒才回来的正常回复砍掉，接着丢一句模板——那才是真的"失忆"。
+   */
+  llmDeadlineMs() {
+    const base = this.llmTimeoutMs
+    if (!base) return 0
+    const observed = Number(this.llmLatencyEma) || 0
+    const adaptive = observed ? Math.min(45000, Math.round(observed * 1.8)) : 0
+    return Math.max(base, adaptive)
+  }
+
+  /** 记一次模型结果：连续三次超时才冷静三分钟，且记录真实耗时用于自适应时限。 */
+  noteLlmResult(meta = {}) {
+    if (!this.llmGuard) return
+    if (meta.llmTimedOut) {
+      this.llmGuard.timeouts += 1
+      this.llmGuard.lastReason = 'timeout'
+      if (this.llmGuard.timeouts >= 3) {
+        this.llmGuard.skipUntil = Date.now() + 3 * MIN_MS
+        this.llmGuard.timeouts = 0
+      }
+      return
+    }
+    this.llmGuard.timeouts = 0
+    if (Number(meta.llmLatencyMs) > 0) {
+      const value = Number(meta.llmLatencyMs)
+      this.llmLatencyEma = this.llmLatencyEma ? this.llmLatencyEma * 0.7 + value * 0.3 : value
+    }
+    this.llmGuard.lastReason = meta.llmError ? String(meta.llmError).slice(0, 60) : ''
+  }
+
   /** 潜台词揣测（appraisal 模型）：只影响"怎么理解这句话"，不改路由与激素。 */
   async _appraisalHint({ text, relation, analysis }) {
     const appraisal = this.llms?.appraisal
@@ -948,19 +989,21 @@ export class BibaoBrain {
       '你只做潜台词判断。只输出一个 JSON：{"subtext":"20字内的潜台词","hostility":0.0,"warmth":0.0}。hostility/warmth 取 0-1。不要解释，不要寒暄。'
     const user = `对方：${relation?.name ?? '陌生人'}（亲密度 ${Math.round(relation?.intimacy ?? 0)}，信任 ${Math.round(relation?.trust ?? 35)}）\n原话：「${text}」\n我现在的皮质醇：${this.state.cortisol.toFixed(2)}，精力：${Math.round(this.state.energy)}%`
     try {
-      let raw = ''
+      const controller = new AbortController()
       const stream = appraisal.llm.stream({
         provider: appraisal.provider,
         model: appraisal.model,
         system,
+        signal: controller.signal,
         messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
         maxTokens: 260,
         temperature: 0.4,
       })
-      for await (const chunk of stream) {
-        if (chunk.type === 'text-delta') raw += chunk.text
-        if (chunk.type === 'finish' && chunk.reason?.kind === 'error') break
-      }
+      const { text: raw, timedOut } = await collectStream(stream, {
+        timeoutMs: this.llmDeadlineMs(),
+        onTimeout: () => controller.abort(),
+      })
+      this.noteLlmResult({ llmTimedOut: timedOut, llmError: timedOut ? 'timeout' : '' })
       const parsed = extractJson(raw)
       if (!parsed) return null
       return {
@@ -1012,6 +1055,7 @@ export class BibaoBrain {
   async perceive(frame = {}) {
     this.sync()
     const now = this.simMs
+    const silenceBefore = this.silenceMin
     const text = String(frame.text ?? '').trim()
     if (this.growth?.life) {
       this.life.ensureDay({
@@ -1261,7 +1305,7 @@ export class BibaoBrain {
       channel,
       atMe,
       salience: salienceInfo.salience,
-      silenceMin: this.silenceMin,
+      silenceMin: silenceBefore,
     })
     if (decision.defensive) {
       relation.defiances += 1
@@ -1279,13 +1323,17 @@ export class BibaoBrain {
       budget.maxBubbles = 1
       budget.maxChars = Math.min(budget.maxChars, 16)
     }
-    // 短句、普通寒暄不值得再开一次模型：把延迟留给真正需要揣测的时刻
+    // 明确的语用动作走本地规则；歧义、强敌意和越界输入仍可请求潜台词模型。
     const needsAppraisal =
-      analysis.hostility > 0.2 ||
-      analysis.preaching > 0.2 ||
-      (analysis.question > 0.5 && text.length >= 8) ||
-      text.length > 36
-    const appraisalHint = needsAppraisal ? await this._appraisalHint({ text, relation, analysis }) : null
+      analysis.hostility > 0.6 ||
+      schemaHits.length > 0 ||
+      analysis.intrusion > 0.3 ||
+      (analysis.speechActConfidence < 0.8 &&
+        (analysis.hostility > 0.2 ||
+          analysis.preaching > 0.2 ||
+          (analysis.question > 0.5 && text.length >= 8) ||
+          text.length > 36))
+    const appraisalHint = needsAppraisal && this.llmReady() ? await this._appraisalHint({ text, relation, analysis }) : null
     const memories = this.memory
       .retrieve({
         now,
@@ -1304,6 +1352,10 @@ export class BibaoBrain {
       decision.route === 'TRANSFER_PRIVATE_GOSSIP'
         ? this.social.bestGossipTarget([entityId, this.userId])
         : null
+    if (decision.route === 'TRANSFER_PRIVATE_GOSSIP' && !transferTarget) {
+      decision.route = 'SILENT_READ'
+      decision.reasons.push('没有足够亲近且可信的私聊对象，先不转述')
+    }
 
     // "你最开始说啥来着"——这类考记性的探针，如果话题确实被挤掉了，
     // 就必须真的答不上来，而不是检索到一条似是而非的记忆硬圆。
@@ -1326,6 +1378,9 @@ export class BibaoBrain {
           })()
         : null
 
+    // "现在几点""今天几号"：真的知道答案，就别让模型猜（她以前会把 11 月说成 9 月）
+    const clockReply = clockAnswer(text, now)
+
     stages.push({
       key: 'appraisal',
       label: '情感评估',
@@ -1347,9 +1402,12 @@ export class BibaoBrain {
       },
     )
 
+    const llmDeadline = this.llmDeadlineMs()
+    const llmStartedAt = Date.now()
     const dual = await generateDualTrack(
       {
         analysis,
+        decision,
         frame: {
           text,
           entityId,
@@ -1388,25 +1446,39 @@ export class BibaoBrain {
         now,
         biography: this.biography,
         selfModel: this.selfModel,
+        llmTimeoutMs: llmDeadline,
         life: {
           today: this.growth?.life ? this.life.promptLines(now) : [],
           current: this.growth?.life ? this.life.current(now) : null,
           moodHint: this.growth?.life ? this.life.moodHint(now) : '',
         },
       },
-      text.length <= 2 && analysis.hostility < 0.2
+      clockReply
         ? {}
-        : this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel },
+        : text.length <= 2 && analysis.hostility < 0.2
+          ? {}
+          : this.llmReady()
+            ? (this.llms?.broca ?? { llm: this.llm, provider: this.llmProvider, model: this.llmModel })
+            : {},
     )
+    this.noteLlmResult({ ...(dual.meta ?? {}), llmLatencyMs: Date.now() - llmStartedAt })
+    if (clockReply) {
+      // 事实问题直接答，不走犹豫、不复读、不改路由
+      dual.bubbles = [clockReply]
+      dual.action_route = 'REPLY_CURRENT'
+      dual.meta = { ...dual.meta, source: 'local', fastPath: 'clock' }
+    }
 
-    // 犹豫：打完又删 / 只说一半 / 发完补一句
-    const hesitation = decideHesitation({
-      bubbles: dual.bubbles ?? [],
-      state: this.state,
-      relation,
-      pe,
-      rng: this.rng,
-    })
+    // 犹豫：打完又删 / 只说一半 / 发完补一句（事实回答不犹豫）
+    const hesitation = clockReply
+      ? { kind: 'none', tail: '', note: '' }
+      : decideHesitation({
+          bubbles: dual.bubbles ?? [],
+          state: this.state,
+          relation,
+          pe,
+          rng: this.rng,
+        })
     if (hesitation.kind === 'abort') {
       dual.bubbles = []
       dual.action_route = 'SILENT_READ'
@@ -1723,6 +1795,12 @@ export class BibaoBrain {
         provider: this.llmProvider,
         model: this.llmModel,
         lastError: this.lastLlmError ?? '',
+        timeoutMs: this.llmTimeoutMs,
+        deadlineMs: this.llmDeadlineMs(),
+        latencyEmaMs: Math.round(this.llmLatencyEma || 0),
+        timeouts: this.llmGuard?.timeouts ?? 0,
+        skipUntil: this.llmGuard?.skipUntil ?? 0,
+        throttled: !this.llmReady(),
       },
       biographyMissing: !this.biography,
     }
@@ -1764,7 +1842,7 @@ export class BibaoBrain {
     }
   }
 
-  static fromJSON(json, { biography, llm, llmProvider, llmModel, interests, userName, userId, store = null }) {
+  static fromJSON(json, { biography, llm, llmProvider, llmModel, llmTimeoutMs = 0, interests, userName, userId, store = null }) {
     const brain = new BibaoBrain({
       biography,
       seed: json.seed ?? 20261101,
@@ -1773,6 +1851,7 @@ export class BibaoBrain {
       llm,
       llmProvider,
       llmModel,
+      llmTimeoutMs,
       interests,
       userName,
       userId,

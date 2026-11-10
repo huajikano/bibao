@@ -71,6 +71,8 @@ const DEFAULTS = {
     baseURL: 'https://api.deepseek.com',
     apiKey: '',
     model: 'deepseek-chat',
+    // 语言区最多等多久：超过就先用本地布洛卡回一句，别让人对着"正在输入"干等
+    timeoutMs: 20000,
   },
   snowluma: {
     enabled: false,
@@ -346,6 +348,7 @@ export function apply(ctx, config = {}) {
       llm: llms.broca.llm,
       llmProvider: llms.broca.provider,
       llmModel: llms.broca.model,
+      llmTimeoutMs: llmTimeoutMs(),
       userName: settings.userName,
       userId: settings.userId,
       store,
@@ -513,6 +516,7 @@ export function apply(ctx, config = {}) {
           llm: llms.broca.llm,
           llmProvider: llms.broca.provider,
           llmModel: llms.broca.model,
+          llmTimeoutMs: llmTimeoutMs(),
           userName: settings.userName,
           userId: settings.userId,
           store,
@@ -528,6 +532,7 @@ export function apply(ctx, config = {}) {
           llm: llms.broca.llm,
           llmProvider: llms.broca.provider,
           llmModel: llms.broca.model,
+          llmTimeoutMs: llmTimeoutMs(),
           userName: settings.userName,
           userId: settings.userId,
           store,
@@ -620,6 +625,13 @@ export function apply(ctx, config = {}) {
     return loading
   }
 
+  /** 语言区的等待上限：太短会白等，太长又成了"已读不回"；夹在 3–60 秒之间。 */
+  function llmTimeoutMs() {
+    const value = Number(settings.llm?.timeoutMs)
+    if (!Number.isFinite(value) || value <= 0) return 15000
+    return Math.max(3000, Math.min(60000, Math.round(value)))
+  }
+
   function refreshLlm() {
     if (!brain) return
     const llms = llmNow()
@@ -627,6 +639,7 @@ export function apply(ctx, config = {}) {
     brain.llm = llms.broca.llm
     brain.llmProvider = llms.broca.provider
     brain.llmModel = llms.broca.model
+    brain.llmTimeoutMs = llmTimeoutMs()
   }
 
   async function runGate() {
@@ -1306,25 +1319,46 @@ export function apply(ctx, config = {}) {
 
   async function deliver(result, { targetId, groupId, dry = false }) {
     const bubbles = result.dual?.bubbles ?? []
+    const route = result.dual?.action_route
     if (dry) {
       await appendSnowLog({
         at: Date.now(),
         kind: 'dry-send',
         groupId: groupId ?? '',
         target: targetId ?? '',
-        route: result.dual?.action_route,
+        route,
         bubbles,
         gossip: result.dual?.transfer_bubbles ?? [],
       })
       return
     }
-    const transfer = result.dual?.action_route === 'TRANSFER_PRIVATE_GOSSIP'
+    const transfer = route === 'TRANSFER_PRIVATE_GOSSIP'
     const gossip = result.dual?.transfer_bubbles ?? []
     if (!settings.snowluma.sendEnabled) {
       if (bubbles.length || gossip.length) snow.reason = '只读观察：sendEnabled=false，未发送'
       return
     }
     if (!snow.bridge) return
+    if (route === 'POKE_ONLY') {
+      if (groupId ? funnel?.get(groupId)?.layer !== 'foveal' : !settings.snowluma.allowPrivate) return
+      if (groupId && settings.snowluma.pokeAnyGroup === false && !(settings.snowluma.allowGroups ?? []).map(String).includes(String(groupId))) return
+      if (settings.snowluma.pokeBack === false) return
+      const cooldownKey = `${groupId || 'private'}:${targetId}`
+      const now = Date.now()
+      if ((pokeActionCooldown.get(cooldownKey) ?? 0) > now) return
+      pokeActionCooldown.set(cooldownKey, now + 20_000)
+      if (pokeActionCooldown.size > 300) pokeActionCooldown.delete(pokeActionCooldown.keys().next().value)
+      try {
+        await snow.bridge.call('send_poke', {
+          group_id: Number(groupId) || undefined,
+          user_id: Number(targetId),
+        })
+        await appendSnowLog({ at: Date.now(), kind: 'poke-out', groupId: groupId ?? '', userId: targetId, group: Boolean(groupId), source: 'route' })
+      } catch (error) {
+        snow.reason = `戳一戳失败：${error.message}`
+      }
+      return
+    }
     const send = async (text, to) => {
       try {
         const id = groupId ? await snow.bridge.sendGroup(groupId, text) : await snow.bridge.sendPrivate(to, text)
@@ -3260,6 +3294,9 @@ export function apply(ctx, config = {}) {
             // 空字符串 = 表单没填，保留已保存的（尤其是 apiKey，面板只回显掩码）
             if (key === 'apiKey' && body.llm[key] === '') continue
             settings.llm[key] = body.llm[key]
+          }
+          if (Number.isFinite(Number(body.llm.timeoutMs)) && Number(body.llm.timeoutMs) > 0) {
+            settings.llm.timeoutMs = Math.max(3000, Math.min(60000, Math.round(Number(body.llm.timeoutMs))))
           }
           if (body.llm.profiles && typeof body.llm.profiles === 'object') {
             settings.llm.profiles = settings.llm.profiles ?? {}

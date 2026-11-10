@@ -31,7 +31,7 @@ LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知�
 
 ```bash
 node bibao-brain/bin/sandbox.mjs      # 6 大认知沙盒，应输出 6/6
-node bibao-brain/bin/growth-smoke.mjs # 人格 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享 / 越界降好感，47 项
+node bibao-brain/bin/growth-smoke.mjs # 97 项：人格 / 语用识别 / 路由权限 / 回复时限与熔断 / 隐私边界 / 复盘 / 生活流 / 模糊记忆 / 线程 / 主动分享
 node bibao-brain/bin/bci-hub-smoke.mjs # 多脑机接口策略，12 项
 node bibao-brain/bin/host-smoke.mjs   # Host 路由 / 持久化 / 好友面板 / 用量 / 知识库 / 主人面板 / 视觉独立配置，43 项
 node bibao-brain/bin/group-smoke.mjs  # 固定白名单不会被自动降级，6 项
@@ -70,6 +70,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.13.0`](https://github.com/huajikano/bibao/releases/tag/v0.13.0) | 拟人表达重做：8 类语用动作识别 + 动作路由权限收归状态机；回复时限自适应与熔断、模型跑题换本地、隐私边界（不主动讲自己的生活、不拿难堪换亲近）、日期时间直接照生物钟答、上下文窗口扩到 2 小时；成长冒烟 97 项 |
 | [`v0.12.3`](https://github.com/huajikano/bibao/releases/tag/v0.12.3) | 视觉测试图改为 64px（兼容最小分辨率限制），未启用时给明确提示；视觉独立端点/Key 已可用 |
 | [`v0.12.2`](https://github.com/huajikano/bibao/releases/tag/v0.12.2) | 视觉模型支持独立 baseURL / key / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE 与纯文本响应 |
 | [`v0.12.1`](https://github.com/huajikano/bibao/releases/tag/v0.12.1) | 知识库翻书、导入限制与自动启用；生活流按天/周末/主题变化；主人面板（QQ + 长期要求）；短问候走本地快路径，减少慢模型等待 |
@@ -94,6 +95,10 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 ## 状态
 
+- 拟人表达优化：本地语用动作识别（求确认/求陪伴/邀约/夸奖/感谢/告别/倾诉/抱怨）、否定线索处理与低置信 appraisal 回退；模型负责措辞，状态机负责动作路由；跨通道转述只发给可信好友。
+- 回复时限与熔断：语言区/潜台词/造梦共用 `llm.timeoutMs`（默认 15 秒），超时立刻用本地布洛卡回话；连续两次超时冷静 10 分钟。高置信动作为模型提供"话到嘴边"的锚点，模型跑题时换回本地回应（`meta.speechActFallbackUsed` / `meta.modelBubbles` 可复盘）。
+- 隐私与体面：不主动汇报自己的生活、不拿难堪细节换亲近、不说"你要听吗"；感知帧只留一句生活底色并按亲密度放行，输出端 `pruneSelfDisclosure()` 兜底（`meta.selfDisclosureTrimmed` 可复盘）。
+
 - Phase 1（纯认知沙盒）：6/6 通过
 - Phase 2（snowluma 感知与运动皮层）：已接通 OneBot HTTP/WS + **反向 WS**（snowluma `wsClients` 直连 `8080/ws`），
   群白名单 + 防抖 + 三层漏斗；真实群消息已验证能触发回复
@@ -115,4 +120,3 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 ## 许可
 
 代码仅供学习与个人使用。snowluma 是第三方运行时，不随本仓库分发。
-

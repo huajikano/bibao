@@ -46,6 +46,14 @@ const BUBBLES = {
     gossip: [['细说', '哪个群 拉我', '快 我要听'], ['笑死 真的假的', '这瓜保熟吗']],
     question: [['在啊', '说', '刚醒 怎么了'], ['干嘛', '有事说事', '想我了就直说']],
     flat: [['嗯', '在', '说呗'], ['哦', '然后呢']],
+    support_seeking: [['我在呢', '怎么啦', '慢慢说'], ['来 我听着', '今天怎么这么累']],
+    reassurance_seeking: [['没有啊', '你怎么突然这么想'], ['不烦', '我刚才只是没顾上回']],
+    invitation: [['去啊', '你想去哪'], ['可以呀', '几点出发']],
+    praise: [['突然夸我干嘛', '我会当真的'], ['哪有', '再说两句我听听']],
+    gratitude: [['跟我还客气什么', '小事啦'], ['嗯 收到你的谢意了']],
+    farewell: [['晚安', '明天再聊'], ['去吧', '别又熬太晚']],
+    venting: [['怎么啦', '今天发生什么了'], ['先说给我听', '我不急着给你出主意']],
+    complaint: [['你说得对 那次是我没做到', '这次我补你一次'], ['我记着呢', '下次不让你白等']],
   },
   warm: {
     hostile: [['你这话有点过了', '我不太舒服', '换个说法'], ['怎么了你', '谁惹你了', '别冲我来']],
@@ -54,6 +62,14 @@ const BUBBLES = {
     gossip: [['真的假的', '细说细说', '我听着呢'], ['哪个群 我也去看看', '笑死']],
     question: [['在呢', '刚忙完', '怎么啦'], ['在 有点累', '你说']],
     flat: [['嗯嗯', '在的', '怎么啦'], ['刚看到', '在忙 一会儿说']],
+    support_seeking: [['我在呀', '你慢慢说'], ['怎么了', '我听着呢']],
+    reassurance_seeking: [['没有觉得你烦', '怎么会这么想'], ['不会呀', '刚才可能没顾上看手机']],
+    invitation: [['好呀', '你想去哪儿'], ['可以', '我们约几点']],
+    praise: [['被你夸得有点不好意思', '你今天嘴真甜'], ['哪有那么厉害', '不过我收下啦']],
+    gratitude: [['不用谢呀', '这有什么'], ['你记得就好']],
+    farewell: [['晚安呀', '明天见'], ['好 去休息吧', '别熬太晚']],
+    venting: [['怎么啦', '愿意跟我说说吗'], ['今天很难熬吗', '我先听你讲']],
+    complaint: [['那次确实是我没做到', '下次我补你一次'], ['我知道你等了很久', '这次我记着了']],
   },
   cold: {
     hostile: [[], ['哦'], ['嗯']],
@@ -62,6 +78,14 @@ const BUBBLES = {
     gossip: [['哦'], ['嗯']],
     question: [['嗯'], ['在'], ['忙']],
     flat: [['嗯'], ['哦']],
+    support_seeking: [['怎么了'], ['嗯 我听着']],
+    reassurance_seeking: [['没有'], ['不烦']],
+    invitation: [['可以'], ['看时间']],
+    praise: [['还好'], ['谢谢']],
+    gratitude: [['嗯'], ['没事']],
+    farewell: [['晚安'], ['去吧']],
+    venting: [['怎么了'], ['嗯']],
+    complaint: [['那次是我没做到'], ['下次我补你']],
   },
   polite: {
     hostile: [['哈哈 您说得对', '我回头注意'], ['嗯嗯 受教了', '谢谢提醒']],
@@ -70,6 +94,14 @@ const BUBBLES = {
     gossip: [['哈哈 是有点', '不太清楚呢']],
     question: [['在的 您说', '嗯嗯'], ['还好 谢谢']],
     flat: [['嗯嗯', '好的']],
+    support_seeking: [['怎么了 我听着'], ['您慢慢说']],
+    reassurance_seeking: [['没有的', '您别多想']],
+    invitation: [['可以的', '您看什么时候方便']],
+    praise: [['您过奖了', '谢谢您']],
+    gratitude: [['不客气', '应该的']],
+    farewell: [['晚安', '您早点休息']],
+    venting: [['怎么了', '您愿意说说吗']],
+    complaint: [['那次我没处理好'], ['以后我会提前说']],
   },
 }
 
@@ -82,11 +114,27 @@ const INNER = {
   gossip: ['这瓜我得找个人说说', '在群里接话就是找死', '阿柚肯定爱听'],
   question: ['他找我是有事 还是没事', '不想显得太积极', '回一句就行 别聊太深'],
   flat: ['没什么想说的', '回个嗯就够了', '今天真的累'],
+  support_seeking: ['她今天好像是真的累了', '想找我说说，先别急着讲道理', '她这句后面像是还有话'],
+  reassurance_seeking: ['她怕我嫌她烦', '先让她知道我没有躲她', '这句不是来吵架的'],
+  invitation: ['她是在认真约我吗', '听起来像想一起出去', '先问问她想去哪'],
+  praise: ['被夸得有点飘', '想装得不在意，没装住', '她刚才是在夸我吧'],
+  gratitude: ['被认真记在心上的感觉还不错', '嘴上不用说太多', '这句我收到了'],
+  farewell: ['她准备去忙了', '这时候就别硬拉着聊', '好好收个尾'],
+  venting: ['先听她把话说完', '今天确实不太好过', '别急着给建议'],
+  complaint: ['她不是在重新约我，是在说我让她失望了', '先认这次确实没做到，再听她怎么想', '她等过我，这事不能当没发生'],
 }
 
 const BUBBLE_ODDS = {
   flat: [0.58, 0.32, 0.10],
   question: [0.55, 0.33, 0.12],
+  support_seeking: [0.48, 0.38, 0.14],
+  reassurance_seeking: [0.45, 0.42, 0.13],
+  invitation: [0.48, 0.4, 0.12],
+  praise: [0.55, 0.35, 0.1],
+  gratitude: [0.65, 0.3, 0.05],
+  farewell: [0.62, 0.33, 0.05],
+  venting: [0.45, 0.4, 0.15],
+  complaint: [0.48, 0.4, 0.12],
   care: [0.48, 0.36, 0.16],
   gossip: [0.42, 0.38, 0.20],
   hostile: [0.40, 0.36, 0.24],
@@ -175,6 +223,7 @@ export function composeReply(ctx) {
   parts.push(rng.pick(POOLS.mood[moodKey]))
   if (analysis.hostility > 0.3) parts.push(rng.pick(INNER.hostileCold))
   else if (analysis.preaching > 0.3) parts.push(rng.pick(INNER.preach))
+  else if (INNER[category]) parts.push(rng.pick(INNER[category]))
   else if (analysis.warmth > 0.3) parts.push(rng.pick(INNER.care))
   else if (analysis.gossipy > 0.2) parts.push(rng.pick(INNER.gossip))
   else if (analysis.question) parts.push(rng.pick(INNER.question))
@@ -213,7 +262,7 @@ export function composeReply(ctx) {
   }
   bubbles = enforceBudget(bubbles, budget.maxChars, budget.maxBubbles)
 
-  if (route === 'SILENT_READ' || route === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
+  if (route === 'SILENT_READ' || route === 'POKE_ONLY' || route === 'TRANSFER_PRIVATE_GOSSIP') bubbles = []
 
   // 舌尖现象：具体情节沉下去了，只剩一个标题和一点情绪
   if (tip && !forgot) {
@@ -273,9 +322,30 @@ export function composeReply(ctx) {
       moodKey,
       budget,
       category,
+      speechAct: analysis.speechAct ?? 'statement',
+      speechActConfidence: analysis.speechActConfidence ?? 0,
       routeReasons: ctx.routeReasons ?? [],
     },
   }
+}
+
+/**
+ * 模型没按时回来时，别丢一句跟自己无关的模板（"哦/然后呢"读起来像失忆）。
+ * 真被人问住的时候，人是会说"等下 我想想"的。
+ */
+const STALL = {
+  support_seeking: ['我在 你说', '嗯 我听着呢'],
+  complaint: ['我知道了 你先别急', '这事我记着了'],
+  invitation: ['让我想想 晚点回你', '嗯…我看下时间'],
+  praise: ['等下 你这一夸我还没想好怎么接', '嗯…让我高兴一下'],
+  question: ['等下 我想想', '你这一问 我得捋捋'],
+  default: ['等下 我捋一下', '嗯…让我想想'],
+}
+
+export function composeStall(ctx = {}) {
+  const act = ctx?.analysis?.speechAct ?? 'statement'
+  const pool = STALL[act] ?? STALL.default
+  return [ctx?.rng?.pick ? ctx.rng.pick(pool) : pool[0]]
 }
 
 /** 内源点火（走神 / 内耗 / 深夜反刍）的独白生成。 */
@@ -320,6 +390,7 @@ export function composeEndogenous({ kind, state, pending, memory, relation, rng,
 function pickCategory(analysis) {
   if (analysis.hostility > 0.3) return 'hostile'
   if (analysis.preaching > 0.25) return 'preach'
+  if (analysis.speechAct && BUBBLE_ODDS[analysis.speechAct]) return analysis.speechAct
   if (analysis.warmth > 0.3) return 'care'
   if (analysis.gossipy > 0.2) return 'gossip'
   if (analysis.question) return 'question'

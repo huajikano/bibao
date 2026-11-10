@@ -152,13 +152,13 @@ check(
 
 await call('POST', '/group/feed', {
   groupId: 'g_class',
-  senderId: '100000002',
-  text: '笑死 你们听说了吗 那个事真的绝了',
+  senderId: '100000004',
+  text: '笑死 你们听说了吗 游戏群那个事真的绝了',
   atMe: false,
 })
 await new Promise((resolve) => setTimeout(resolve, 3600))
 const funnelState = await call('GET', '/group/state')
-const brainEntry = (funnelState.data.group?.log ?? []).find((entry) => entry.kind === 'brain')
+const brainEntry = (funnelState.data.group?.log ?? []).filter((entry) => entry.kind === 'brain').at(-1)
 check('防抖 3s 后进脑', Boolean(brainEntry), brainEntry ? `${brainEntry.route} · ${(brainEntry.bubbles ?? []).join(' / ') || '沉默'}` : '无')
 check(
   '跨通道吐槽闭环',
@@ -355,6 +355,14 @@ const brainWithLlm = new BibaoBrain({
 })
 brainWithLlm.social.upsert({ qq: 'owner', name: '我', intimacy: 42, trust: 58 })
 const llmTurn = await brainWithLlm.perceive({ entityId: 'owner', text: '在干嘛呢', channel: 'private' })
+const baselineBrain = new BibaoBrain({
+  biography,
+  seed: 7,
+  startMs: Date.now(),
+  virtual: true,
+})
+baselineBrain.social.upsert({ qq: 'owner', name: '我', intimacy: 42, trust: 58 })
+const baselineTurn = await baselineBrain.perceive({ entityId: 'owner', text: '在干嘛呢', channel: 'private' })
 const bubbles = llmTurn.dual?.bubbles ?? []
 const totalChars = bubbles.join('').length
 check(
@@ -365,11 +373,11 @@ check(
   `${totalChars}/${llmTurn.budget.maxChars} 字 · ${bubbles.join(' / ')}`,
 )
 check(
-  'LLM 输出：neuro_delta 被限幅',
-  Math.abs(llmTurn.dual.neuro_delta.dopamine) <= 0.15 &&
-    Math.abs(llmTurn.dual.neuro_delta.intimacy_delta) <= 4 &&
-    llmTurn.dual.expect_reply_within_sec <= 3600,
-  JSON.stringify(llmTurn.dual.neuro_delta),
+  '模型不能修改算法决定的神经与关系变化',
+  JSON.stringify(llmTurn.dual.neuro_delta) === JSON.stringify(baselineTurn.dual.neuro_delta) &&
+    llmTurn.dual.expect_reply_within_sec === baselineTurn.dual.expect_reply_within_sec &&
+    llmTurn.dual.trigger_regret_recall === baselineTurn.dual.trigger_regret_recall,
+  `${JSON.stringify(llmTurn.dual.neuro_delta)} vs ${JSON.stringify(baselineTurn.dual.neuro_delta)}`,
 )
 
 const brokenLlm = {
