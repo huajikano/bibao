@@ -25,7 +25,7 @@ interactive_visual_im_*.html   最初的六模块认知环路可视化初稿
 | 艾宾浩斯 + 再巩固 | `core/memory.js`：`R = exp(−Δt/S)`，三态分层，心境会永久涂抹旧记忆 |
 
 LLM 只是布洛卡区：外部原话先被重编码成第一人称内部感知帧，模型只能返回被限幅的双轨 JSON；
-`appraisal` / `broca` / `reflection` 三条逻辑可以各用一套模型与 key。
+`appraisal` / `broca` / `reflection` 三条认知逻辑与 `distill` 蒸馏任务可以分别配置模型；蒸馏也可直接使用 DSH 已保存的模型，不必重复保存密钥。
 
 ## 快速开始
 
@@ -46,6 +46,10 @@ node bibao-brain/bin/neuro-smoke.mjs # 神经递质昼夜节律，4 项
 node bibao-brain/bin/life-smoke.mjs # 生活流每日变化 / 周末 / 主题，4 项
 node bibao-brain/bin/vision-smoke.mjs # 视觉完整 URL / 拼接 JSON / SSE / 纯文本，3 项
 node bibao-brain/bin/ws-reverse-smoke.mjs # 反向 WS，6 项
+node bibao-brain/bin/distill-smoke.mjs # 蒸馏工作台、人物应用与 ZCode 模型目录的 HTTP 回归
+node bibao-brain/bin/distill-background-smoke.mjs # 后台任务、阶段落盘与思考设置
+node bibao-brain/bin/distill-restart-smoke.mjs # 两个独立进程间的阶段恢复
+node bibao-brain/bin/model-catalog-smoke.mjs # 已注册/可配置模型来源兼容，9 项
 node bibao-brain/bin/eval-qq.mjs      # 20 个 QQ 场景的盲评样本
 ```
 
@@ -70,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.14.0`](https://github.com/huajikano/bibao/releases/tag/v0.14.0) | 蒸馏人生工作台：长材料分片导入、人物证据与表达分析、后台任务及跨进程恢复、思考设置与流式响应兼容；修复 ZCode 等无设置命名空间来源的模型列表空白，保留 0.13.0 既有修复 |
 | [`v0.13.0`](https://github.com/huajikano/bibao/releases/tag/v0.13.0) | 拟人表达重做：8 类语用动作识别 + 动作路由权限收归状态机；回复时限自适应与熔断、模型跑题换本地、隐私边界（不主动讲自己的生活、不拿难堪换亲近）、日期时间直接照生物钟答、上下文窗口扩到 2 小时；成长冒烟 97 项 |
 | [`v0.12.3`](https://github.com/huajikano/bibao/releases/tag/v0.12.3) | 视觉测试图改为 64px（兼容最小分辨率限制），未启用时给明确提示；视觉独立端点/Key 已可用 |
 | [`v0.12.2`](https://github.com/huajikano/bibao/releases/tag/v0.12.2) | 视觉模型支持独立 baseURL / key / 无斜杠模型名；兼容完整 URL、拼接 JSON、SSE 与纯文本响应 |
@@ -96,7 +101,8 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 ## 状态
 
 - 拟人表达优化：本地语用动作识别（求确认/求陪伴/邀约/夸奖/感谢/告别/倾诉/抱怨）、否定线索处理与低置信 appraisal 回退；模型负责措辞，状态机负责动作路由；跨通道转述只发给可信好友。
-- 回复时限与熔断：语言区/潜台词/造梦共用 `llm.timeoutMs`（默认 15 秒），超时立刻用本地布洛卡回话；连续两次超时冷静 10 分钟。高置信动作为模型提供"话到嘴边"的锚点，模型跑题时换回本地回应（`meta.speechActFallbackUsed` / `meta.modelBubbles` 可复盘）。
+- 回复时限与熔断：语言区/潜台词/造梦共用 `llm.timeoutMs`（默认 20 秒，随近期延迟放宽，上限 45 秒）；连续三次超时冷静 3 分钟。高置信动作为模型提供"话到嘴边"的锚点，模型跑题时换回本地回应（`meta.speechActFallbackUsed` / `meta.modelBubbles` 可复盘）。蒸馏任务单独使用阶段时限，不占用聊天的短时等待预算。
+- 蒸馏人生：导入小说或 QQ/微信等聊天文本，提取有出处的经历、性格、说话与回复习惯，审核后选择保留旧聊天应用、只补经历或备份后重建。支持后台阶段存档、重启后手动恢复和 DSH 已保存模型；详见[工作台说明](bibao-brain/README.md#蒸馏人生工作台)。
 - 隐私与体面：不主动汇报自己的生活、不拿难堪细节换亲近、不说"你要听吗"；感知帧只留一句生活底色并按亲密度放行，输出端 `pruneSelfDisclosure()` 兜底（`meta.selfDisclosureTrimmed` 可复盘）。
 
 - Phase 1（纯认知沙盒）：6/6 通过

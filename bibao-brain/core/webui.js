@@ -76,6 +76,7 @@ input[type=range] { width:100%; accent-color:var(--brand); }
     <button data-tab="friends">好友</button>
     <button data-tab="stickers">表情包</button>
     <button data-tab="settings">设置</button>
+    <button data-tab="persona">人物 · 蒸馏人生</button>
   </nav>
 
   <section class="panel on" id="panel-brain">
@@ -177,6 +178,11 @@ input[type=range] { width:100%; accent-color:var(--brand); }
     <div class="row"><button class="btn primary" id="save">保存全部</button><span class="muted" id="saveNote"></span></div>
   </section>
 
+  <section class="panel" id="panel-persona">
+    <div class="card"><h2>人物 · 蒸馏人生</h2><p class="muted">导入小说或聊天记录，审核经历、性格和表达档案后应用。</p>
+      <iframe title="蒸馏人生导入与审核" src="/api/bibao/biography/distill/ui" loading="lazy" style="width:100%;height:820px;border:0;border-radius:10px"></iframe>
+    </div>
+  </section>
   <div class="toast" id="toast"></div>
 </div>
 <script>

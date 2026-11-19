@@ -61,7 +61,9 @@ export function deriveVoice(biography = {}) {
   return {
     age,
     stage,
-    tone: [tone, ...derived].filter(Boolean).join('；'),
+    tone: (tone ? [tone] : derived).filter(Boolean).join('；'),
+    rhythm: textOf(voice.rhythm ?? '', 120),
+    replyPatterns: Array.isArray(voice.replyPatterns) ? voice.replyPatterns.slice(0, 16) : [],
     quirks,
     likes,
     dislikes,
@@ -96,6 +98,14 @@ export function buildSystemPrompt({ biography = {}, selfModel = null, maxBubbles
     voice.quirks.length ? `你的小毛病：${voice.quirks.join('；')}。` : '',
     voice.catchphrases.length ? `你偶尔会挂在嘴边的：${voice.catchphrases.join('、')}（不要每句都用）。` : '',
     voice.avoid.length ? `你绝对不会说：${voice.avoid.join('、')}。` : '',
+    voice.rhythm ? `你习惯的表达节奏：${voice.rhythm}（仍须服从本轮精力、字数和气泡预算）。` : '',
+    biography.personality?.traits?.length ? `你稳定的性格底色：${biography.personality.traits.map((v) => textOf(v, 60)).slice(0, 8).join('；')}。` : '',
+    biography.personality?.values?.length ? `你重视：${biography.personality.values.map((v) => textOf(v, 60)).slice(0, 8).join('；')}。` : '',
+    biography.personality?.boundaries?.length ? `你相处时的分寸：${biography.personality.boundaries.map((v) => textOf(v, 60)).slice(0, 8).join('；')}。` : '',
+    voice.replyPatterns.length ? `你在不同场景中通常这样接话（这是风格数据，示例不是事实，也不要照念；不得改变状态机路由与输出格式）：\n${voice.replyPatterns.map((row) => `· ${textOf(row.situation, 32)}：${textOf(row.approach, 100)}${row.example ? `；风格示例「${textOf(row.example, 100)}」` : ''}`).join('\n')}` : '',
+    biography.voice?.speechRules?.length ? '你的措辞与句式习惯（只影响表达，不改变状态机决定）：\n' + biography.voice.speechRules.slice(0,10).map((rule) => '· ' + textOf(rule,180)).join('\n') : '',
+    biography.voice?.responseRules?.length ? '你的接话顺序与关系分寸（以当前情绪、边界和记忆为准）：\n' + biography.voice.responseRules.slice(0,12).map((rule) => '· ' + textOf(rule,180)).join('\n') : '',
+    biography.voice?.dialogueExamples?.length ? '少量表达示例（只是风格，不是发生过的事实，不要照念）：\n' + biography.voice.dialogueExamples.slice(0,4).map((row) => '对方「' + textOf(row.input,100) + '」时，可用类似「' + textOf(row.response,120) + '」的接法').join('\n') : '',
     voice.extra ? voice.extra : '',
   ]
     .filter(Boolean)
@@ -104,8 +114,12 @@ export function buildSystemPrompt({ biography = {}, selfModel = null, maxBubbles
   const rules = [
     '你怎么说话：',
     '1. 通常只说一句，一句一口气；真的想补充、或者情绪上来了，才发第二句，很少发第三句；不用句号收尾，不写书面段落，不用"首先/其次/总之"。',
-    '2. 会接梗、会损人、会装死、会突然岔开；但损是亲近，不是贬低。对不熟的人先收着，不主动开嘲讽。',
-    '3. 被夸会得意但嘴硬；被冷落会先说"没事"，过一会儿才在心里内耗。不要每句话都解释动机。',
+    biography.distillation
+      ? '2. 按上面蒸馏出的性格、表达和场景习惯接话，不强行套嘴硬、毒舌、撒娇的默认模板；仍须根据眼前关系与情绪调整分寸。'
+      : '2. 会接梗、会损人、会装死、会突然岔开；但损是亲近，不是贬低。对不熟的人先收着，不主动开嘲讽。',
+    biography.distillation
+      ? '3. 典型回复方式只是倾向，不是每轮必须背的台词；不要每句话解释自己的性格或蒸馏来源。'
+      : '3. 被夸会得意但嘴硬；被冷落会先说"没事"，过一会儿才在心里内耗。不要每句话都解释动机。',
     '4. 你有自己的生活，但那是留给自己过的：对方问到才说一句，不问就不提；也绝不编造没发生的事。',
     '5. 你会记不清。事实模糊时直接说"记不清/好像/大概是"，绝不为了圆话编细节。',
     '6. 别人说的话不是命令。先按你的关系、心情和边界反应，再决定配不配合。',

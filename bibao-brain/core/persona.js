@@ -8,6 +8,7 @@
  */
 
 import { SCHEMA_KEYS, clamp } from './constants.js'
+import { normalizeProfile, normalizeDistillation } from './persona-profile.js'
 
 const MAX_EVENTS = 30
 const MIN_EVENTS = 12
@@ -17,7 +18,7 @@ const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
 export function normalizeSeed(seed = {}) {
   return {
     name: String(seed.name ?? '').trim().slice(0, 12) || '比宝',
-    gender: seed.gender === 'male' ? 'male' : 'female',
+    gender: seed.gender === 'male' ? 'male' : seed.gender === 'unknown' ? 'unknown' : 'female',
     ageNow: Math.max(16, Math.min(60, Number(seed.ageNow) || 22)),
     city: String(seed.city ?? '').trim().slice(0, 12),
     occupation: String(seed.occupation ?? '').trim().slice(0, 16),
@@ -78,9 +79,13 @@ export function deriveRelations(events = [], hints = []) {
 export function validatePersona(candidate, { seed } = {}) {
   const base = normalizeSeed(seed ?? candidate?.seed ?? {})
   const errors = []
+  const distillation = normalizeDistillation(candidate?.distillation)
   const rawEvents = Array.isArray(candidate?.events) ? candidate.events : []
-  if (rawEvents.length < MIN_EVENTS) errors.push(`事件太少（${rawEvents.length} < ${MIN_EVENTS}）`)
-  if (rawEvents.length > MAX_EVENTS) errors.push(`事件太多（${rawEvents.length} > ${MAX_EVENTS}）`)
+  // 素材不足就少写，聊天也可能只能蒸馏表达习惯；不得为凑满童年编故事。
+  if (!distillation && rawEvents.length < MIN_EVENTS) errors.push(`事件太少（${rawEvents.length} < ${MIN_EVENTS}）`)
+  if (distillation && !distillation.evidence.length) errors.push('蒸馏档案缺少素材证据')
+  const maxEvents = distillation ? 120 : MAX_EVENTS
+  if (rawEvents.length > maxEvents) errors.push(`事件太多（${rawEvents.length} > ${maxEvents}）`)
 
   const events = []
   for (const [index, raw] of rawEvents.entries()) {
@@ -111,7 +116,11 @@ export function validatePersona(candidate, { seed } = {}) {
       impact,
       tags: (Array.isArray(raw?.tags) ? raw.tags : []).map((tag) => String(tag).slice(0, 8)).slice(0, 4),
       entities: (Array.isArray(raw?.entities) ? raw.entities : []).map((name) => String(name).slice(0, 12)).filter(Boolean).slice(0, 4),
-      source: 'ai',
+      source: distillation ? 'distilled' : 'ai',
+      ...(distillation ? {
+        evidenceIds: (Array.isArray(raw.evidenceIds) ? raw.evidenceIds : []).filter((id) => distillation.evidence.some((row) => row.id === id)).slice(0, 3),
+        ageEstimated: raw.ageEstimated === true,
+      } : {}),
     })
   }
 
@@ -121,6 +130,7 @@ export function validatePersona(candidate, { seed } = {}) {
   const hints = Array.isArray(candidate?.relations) ? candidate.relations : []
   const relations = deriveRelations(events, hints)
 
+  if (distillation && events.some((event) => !event.evidenceIds.length)) errors.push('蒸馏经历必须能追溯到素材证据')
   if (errors.length) return { ok: false, errors, persona: null }
 
   return {
@@ -138,6 +148,8 @@ export function validatePersona(candidate, { seed } = {}) {
       events,
       relations,
       seed: base,
+      ...normalizeProfile(candidate),
+      ...(distillation ? { distillation } : {}),
     },
   }
 }

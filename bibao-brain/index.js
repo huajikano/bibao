@@ -40,6 +40,11 @@ import { traitBonus } from './core/traits.js'
 import { InputAgent } from './core/input.js'
 import { buildGenerationPrompt, parsePersonaJson, templatePersona, validatePersona } from './core/persona.js'
 import { renderUiHtml } from './core/webui.js'
+import { DistillationJobs } from './core/distill.js'
+import { renderDistillHtml } from './core/distill-ui.js'
+import { DISTILL_BUILD, DISTILL_API_VERSION } from './core/distill-version.js'
+import { reasoningCapabilities, validateReasoningEffort } from './core/distill-reasoning.js'
+import { readDshModelCatalog } from './core/model-catalog.js'
 
 export const name = 'bibao-brain'
 export const inject = ['connection']
@@ -155,6 +160,7 @@ export function apply(ctx, config = {}) {
   // AI 生成的人物草稿：应用时只发 id，避免把几 KB 的 JSON 塞进 URL（会 431）
   let personaDraft = null
   let personaDraftId = ''
+  const distillationJobs = new DistillationJobs({ dir: path.join(dataDir,'distill-tasks') })
   let vision = null
   let stickers = null
   const tft = new TftAdapter()
@@ -371,17 +377,29 @@ export function apply(ctx, config = {}) {
   }
 
   // 六个认知模块各一个配置槽；只有真正会调用模型的那几个会用到这里
-  const LOGICS = ['funnel', 'ignition', 'appraisal', 'memory', 'broca', 'feedback']
+  const LOGICS = ['funnel', 'ignition', 'appraisal', 'memory', 'broca', 'feedback', 'distill']
   const LEGACY_LOGIC_ALIAS = { reflection: 'memory' }
 
   /** 每个认知逻辑各自解析模型：逻辑级覆盖 > 默认直连 > DSH 默认模型 > 本地布洛卡。 */
   function resolveLogic(name) {
     const base = settings.llm ?? DEFAULTS.llm
-    const override = base.profiles?.[name] ?? base.profiles?.[LEGACY_LOGIC_ALIAS[name]] ?? {}
+    const override = name === 'distill' && (!base.profiles?.distill || base.profiles.distill.enabled === false || !['baseURL','apiKey','model','provider','dsh'].some((key) => Boolean(base.profiles.distill[key])))
+      ? base.profiles?.broca ?? {}
+      : base.profiles?.[name] ?? base.profiles?.[LEGACY_LOGIC_ALIAS[name]] ?? {}
+    const dsh = ctx.get('llm')
     const cfg = {
       baseURL: override.baseURL || base.baseURL,
       apiKey: override.apiKey || base.apiKey,
       model: override.model || base.model,
+    }
+    // 蒸馏工作台可直接选用 DSH 已保存的模型：经 DSH 的适配、限额与计量，不需要另存密钥。
+    if (name === 'distill' && override.enabled !== false && override.dsh === true && override.provider && override.model && dsh && typeof dsh.stream === 'function') {
+      return {
+        llm: meterLlm(dsh, { meter: usage, logic: name, provider: override.provider, model: override.model, source: 'dsh:' + override.provider }),
+        provider: override.provider,
+        model: override.model,
+        source: 'dsh:' + override.provider,
+      }
     }
     if (override.enabled !== false && cfg.apiKey && cfg.baseURL && cfg.model) {
       const onUsage = (row = {}) =>
@@ -399,7 +417,6 @@ export function apply(ctx, config = {}) {
         })
       return { llm: createDirectLlm({ ...cfg, onUsage }), provider: 'direct', model: cfg.model, source: 'direct' }
     }
-    const dsh = ctx.get('llm')
     const selection = ctx.get('agentDefaultModel')?.currentSelection?.() ?? null
     const provider = settings.provider || selection?.provider || ''
     const model = settings.model || selection?.model || ''
@@ -450,8 +467,9 @@ export function apply(ctx, config = {}) {
       }, 30000)
       void ensureHands({ log: (line) => void appendSnowLog({ at: Date.now(), kind: 'hands', line }).catch(() => {}) }).catch(() => {})
     }
-    if (brain) return brain
+    // 已创建实例不等于启动完成：模型发现、注意力漏斗等仍可能在 await 之后。
     if (loading) return loading
+    if (brain) return brain
     loading = (async () => {
       await usage.load()
       const bio = await loadBiography()
@@ -622,7 +640,8 @@ export function apply(ctx, config = {}) {
       }
       return brain
     })()
-    return loading
+    try { return await loading }
+    finally { loading = null }
   }
 
   /** 语言区的等待上限：太短会白等，太长又成了"已读不回"；夹在 3–60 秒之间。 */
@@ -2478,6 +2497,94 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      path: '/biography/distill/ui', methods: ['GET'],
+      handler: async () => new Response(renderDistillHtml(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } }),
+    },
+    {
+      path: '/biography/distill/config', methods: ['GET'],
+      handler: async () => { await boot(); const model=llmNow().distill;const reasoning=await reasoningCapabilities(model,ctx.get('llm'));return json({enabled:Boolean(model.llm),provider:model.provider,model:model.model,source:model.source,reasoning,build:DISTILL_BUILD,apiVersion:DISTILL_API_VERSION,sourceRoot:HERE,backgroundPersistence:true}) },
+    },
+    {
+      path: '/biography/distill/jobs', methods: ['GET'],
+      handler: async () => json({...distillationJobs.list(),apiVersion:DISTILL_API_VERSION}),
+    },
+    {
+      path: '/biography/distill/remove', methods: ['POST'],
+      handler: async (request) => {const body=await readBody(request);try{await distillationJobs.remove(body.jobId);return json({ok:true})}catch(error){return fail(error.message,400)}},
+    },
+    {
+      path: '/biography/distill/models', methods: ['GET'],
+      handler: async (request) => {
+        await boot()
+        try {
+          return json(await readDshModelCatalog(ctx.get('llm'), {
+            provider: new URL(request.url).searchParams.get('provider') || '',
+            signal: request.signal,
+          }))
+        } catch (error) { return fail('读取 DSH 模型目录失败：' + String(error?.message ?? error).slice(0, 120), 502) }
+      },
+    },
+    {
+      path: '/biography/distill/upload/init', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { return json(await distillationJobs.uploads.init(body.files,body.encoding),201) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/upload/chunk', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { return json(await distillationJobs.uploads.chunk(body)) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/upload/complete', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { return json(await distillationJobs.uploads.complete(body.uploadId,(sources)=>distillationJobs.preview(sources,{kind:body.kind}))) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/plan', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { return json(distillationJobs.plan(body.importId,body)) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/people', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { return json(distillationJobs.people(body.importId,body.query)) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/resume', methods: ['POST'],
+      handler: async (request) => { await boot();const body=await readBody(request);try{const model=llmNow().distill;const job=distillationJobs.get(body.jobId);const effort=await validateReasoningEffort(body.reasoningEffort??job.reasoningEffort,model,ctx.get('llm'));return json(await distillationJobs.resume(body.jobId,model,{reasoningEffort:effort}),202)}catch(error){return fail(error.message,400)} },
+    },
+    {
+      path: '/biography/distill/clear', methods: ['POST'],
+      handler: async (request) => { const body=await readBody(request); try { if(body.uploadId) await distillationJobs.uploads.remove(body.uploadId); if(body.importId) await distillationJobs.forgetImport(body.importId); return json({ok:true}) } catch(error) { return fail(error.message,400) } },
+    },
+    {
+      path: '/biography/distill/preview', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        try { return json(distillationJobs.preview(body.sources, { kind: body.kind })) }
+        catch (error) { return fail(error.message, 400) }
+      },
+    },
+    {
+      path: '/biography/distill', methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        try { const model=llmNow().distill;const effort=await validateReasoningEffort(body.reasoningEffort,model,ctx.get('llm'));const result=distillationJobs.start(body.importId,{target:body.target,aliases:body.aliases,seed:body.seed,mode:body.mode,analysisChars:body.analysisChars,chunkChars:body.chunkChars,maxEvents:body.maxEvents,maxTokens:body.maxTokens,timeoutMs:body.timeoutMs,reasoningEffort:effort},model);await distillationJobs.waitAccepted(result.jobId);return json(result,202) }
+        catch (error) { return fail(error.message, 400) }
+      },
+    },
+    {
+      path: '/biography/distill/status', methods: ['GET'],
+      handler: async (request) => {
+        try { return json(distillationJobs.get(new URL(request.url).searchParams.get('jobId'))) }
+        catch (error) { return fail(error.message, 404) }
+      },
+    },
+    {
+      path: '/biography/distill/cancel', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        try { return json(distillationJobs.cancel(body.jobId)) }
+        catch (error) { return fail(error.message, 404) }
+      },
+    },
+    {
       path: '/biography/generate',
       methods: ['POST'],
       handler: async (request) => {
@@ -2536,12 +2643,19 @@ export function apply(ctx, config = {}) {
       handler: async (request) => {
         await boot()
         const body = await readBody(request)
-        const incoming =
-          body.draftId && body.draftId === personaDraftId && personaDraft ? personaDraft : body.persona ?? {}
+        let incoming = body.draftId && body.draftId === personaDraftId && personaDraft ? personaDraft : body.persona ?? {}
+        if (body.distillJobId) {
+          await distillationJobs.ready()
+          try {
+            const job = distillationJobs.get(body.distillJobId)
+            if (job.status !== 'done' || !job.persona) return fail('蒸馏尚未完成，不能应用', 400)
+            incoming = job.persona
+          } catch (error) { return fail(error.message, 400) }
+        } else if (body.draftId && body.draftId !== personaDraftId) return fail('草稿已失效，请重新生成', 400)
         const checked = validatePersona(incoming, { seed: incoming?.seed ?? {} })
         if (!checked.ok) return fail(`档案不合法：${checked.errors.slice(0, 3).join('；')}`, 400)
         const persona = checked.persona
-        const mode = body.mode === 'rebuild' ? 'rebuild' : 'merge'
+        const mode = body.mode === 'rebuild' ? 'rebuild' : body.mode === 'adopt' && persona.distillation ? 'adopt' : 'merge'
         const rev = new Date().toISOString().replace(/[:.]/g, '-')
         try {
           await mkdir(dataDir, { recursive: true })
@@ -2554,15 +2668,34 @@ export function apply(ctx, config = {}) {
         await mkdir(dataDir, { recursive: true })
         let result = { mode, rev }
         if (mode === 'rebuild') {
-          // 重建才改档案：整颗大脑按新人生重来
+          // 重建前备份真正的当前脑状态（而不只是人物文件）。
+          await writeFile(path.join(dataDir, `brain-state.rev-${rev}.json`), JSON.stringify(brain.toJSON()), 'utf8')
           await writeFile(path.join(dataDir, 'biography.json'), JSON.stringify(saved, null, 2), 'utf8')
           biography = saved
           rebuildBrain(saved)
+          await persist()
           result = { ...result, rebuilt: true }
         } else {
-          // 合并只进记忆，不动档案：老经历还在，新的补进去
-          result = { ...result, ...brain.injectBiography(saved) }
-          schedulePersist(200)
+          if (mode === 'adopt') {
+            // 保留身份、年龄和旧经历；只把明确审核过的表达档案带入当前人格。
+            const current = await loadBiography()
+            const titles = new Set((current.events ?? []).map((event) => event.title))
+            const adaptedEvents = saved.events.filter((event) => !titles.has(event.title)).map((event) => ({
+              ...event, age: Math.min(current.ageNow, event.age),
+              ageEstimated: event.ageEstimated || event.age > current.ageNow,
+            }))
+            const adopted = { ...current, oneLine: saved.oneLine, coreWound: saved.coreWound, copingStyle: saved.copingStyle,
+              voice: saved.voice, personality: saved.personality, distillation: saved.distillation,
+              events: [...(current.events ?? []), ...adaptedEvents].sort((a, b) => a.age - b.age) }
+            await writeFile(path.join(dataDir, 'biography.json'), JSON.stringify(adopted, null, 2), 'utf8')
+            biography = adopted
+            brain.biography = adopted
+            brain.applyPersonalityProfile(adopted)
+            result.profileApplied = true
+          }
+          result = { ...result, ...brain.injectBiography({ ...saved, ageNow: brain.age,
+            events: saved.events.map((event) => ({ ...event, age: Math.min(brain.age, event.age) })) }) }
+          await persist()
         }
         return json({ ok: true, result, snapshot: snapshot() })
       },
@@ -3127,11 +3260,15 @@ export function apply(ctx, config = {}) {
             copingStyle: biography.copingStyle,
             events: biography.events ?? [],
             relations: biography.relations ?? [],
+            gender: biography.gender,
+            voice: biography.voice,
+            personality: biography.personality,
+            distillation: biography.distillation,
           })
         }
         const body = await readBody(request)
         const events = Array.isArray(body.events) ? body.events : null
-        if (!events || events.length < 1) return fail('至少要有一个人生事件', 400)
+        if (!events || (!events.length && !biography?.distillation)) return fail('至少要有一个人生事件（已蒸馏的纯表达档案除外）', 400)
         const cleaned = []
         for (const [index, event] of events.entries()) {
           const age = Number(event.age)
@@ -3153,6 +3290,7 @@ export function apply(ctx, config = {}) {
                   )
                 : {},
             tags: Array.isArray(event.tags) ? event.tags.map((tag) => String(tag).slice(0, 12)).slice(0, 5) : [],
+            ...(Array.isArray(event.evidenceIds) ? { evidenceIds: event.evidenceIds.map(String).slice(0, 3), ageEstimated: event.ageEstimated === true, source: 'distilled' } : {}),
           })
         }
         cleaned.sort((a, b) => a.age - b.age)
@@ -3160,7 +3298,7 @@ export function apply(ctx, config = {}) {
           ...(biography ?? {}),
           name: String(body.name ?? biography?.name ?? '比宝').slice(0, 20),
           fullName: String(body.fullName ?? biography?.fullName ?? '沈知遥').slice(0, 30),
-          ageNow: Math.max(cleaned.at(-1).age, Number(body.ageNow) || biography?.ageNow || 22),
+          ageNow: Math.max(cleaned.at(-1)?.age ?? 0, Number(body.ageNow) || biography?.ageNow || 22),
           oneLine: String(body.oneLine ?? biography?.oneLine ?? '').slice(0, 80),
           coreWound: String(body.coreWound ?? biography?.coreWound ?? '').slice(0, 120),
           copingStyle: String(body.copingStyle ?? biography?.copingStyle ?? '').slice(0, 120),
@@ -3313,6 +3451,8 @@ export function apply(ctx, config = {}) {
                 ...(typeof patch.apiKey === 'string' && patch.apiKey ? { apiKey: patch.apiKey } : {}),
                 ...(typeof patch.model === 'string' ? { model: patch.model } : {}),
                 ...(typeof patch.enabled === 'boolean' ? { enabled: patch.enabled } : {}),
+                ...(typeof patch.dsh === 'boolean' ? { dsh: patch.dsh } : {}),
+                ...(typeof patch.provider === 'string' ? { provider: patch.provider } : {}),
               }
             }
           }
@@ -3523,6 +3663,11 @@ export function apply(ctx, config = {}) {
     },
   ]
 
+  // 两个HTTP入口共用同一组处理器；先恢复后台目录，再接受任务操作。
+  for (const route of routes) if(route.path.startsWith('/biography/distill')) {
+    const handler=route.handler
+    route.handler=async(request)=>{await distillationJobs.ready();return handler(request)}
+  }
   for (const route of routes) {
     ctx.effect(
       () =>
@@ -3689,7 +3834,7 @@ export function apply(ctx, config = {}) {
     try {
       const response = await route.handler(request)
       const text = await response.text()
-      res.writeHead(response.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+      res.writeHead(response.status, { 'content-type': response.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end(text)
     } catch (error) {
       res.writeHead(500, { 'content-type': 'application/json' })
@@ -3720,7 +3865,7 @@ export function apply(ctx, config = {}) {
           'cache-control': 'no-store',
           ...(token ? { 'set-cookie': `bibao_ui=${consoleState.token}; Path=/; SameSite=Strict` } : {}),
         })
-        res.end(renderUiHtml())
+        res.end(url.searchParams.get('view') === 'distill' ? renderDistillHtml() : renderUiHtml())
       })
       server.on('error', (error) => {
         if (attempt < 5) {
@@ -3744,8 +3889,9 @@ export function apply(ctx, config = {}) {
 
   ctx.effect(() => {
     void startup()
-    return () => {
+    return async () => {
       stopSnow()
+      await distillationJobs.dispose().catch((error) => console.warn('[bibao] distill cleanup failed:', error?.message))
       store?.close()
       void usage.save()
       consoleState.server?.close()

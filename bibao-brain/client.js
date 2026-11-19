@@ -1740,6 +1740,7 @@ window.__ModuleLoader__.load({
       { name: 'memory', label: '双系统记忆', hint: '凌晨 03:00 造梦、把碎片写成叙事', wired: true },
       { name: 'broca', label: '语言区', hint: '把神经状态翻译成气泡与内心独白（双轨 JSON）', wired: true },
       { name: 'feedback', label: '预期悬置', hint: '已读不回时的内耗独白（超时那一刻生成）', wired: true },
+      { name: 'distill', label: '蒸馏人生', hint: '长材料的经历、人格及表达深度提取；未独立配置时继承语言区', wired: true },
     ]
 
     function SettingsTab({ snap, t, act, busy }) {
@@ -4225,6 +4226,15 @@ window.__ModuleLoader__.load({
           h(
             Card,
             { title: '人物经历（AI 生成）', hint: '填好配置 → 生成 → 审核 → 应用' },
+            h('div', { className: 'bb-inline' },
+              h('button', { type: 'button', className: 'bb-btn primary', disabled: !this.props.snap?.console?.url, onClick: () => { const url = this.props.snap?.console?.url; if (!url) return; const page = new URL(url); page.searchParams.set('view', 'distill'); window.open(page.toString(), '_blank', 'noopener') } }, '打开蒸馏工作台'),
+              h('span', { className: 'bb-muted' }, '材料、后台任务、审核结果独立分区；可关闭工作台等待'),
+            ),
+            h('details', { className: 'bb-details' },
+              h('summary', {}, '在当前页展开蒸馏工作台'),
+              h('p', { className: 'bb-muted' }, '提炼人生经历、性格、说话方式与回复习惯。先预览素材，再调用已配置模型，审核后应用。'),
+              h('iframe', { src: API + '/biography/distill/ui', title: '蒸馏人生导入与审核', loading: 'lazy', style: { width: '100%', height: '760px', border: 0, borderRadius: '10px' } }),
+            ),
             h(
               'div',
               { className: 'bb-personaGrid' },

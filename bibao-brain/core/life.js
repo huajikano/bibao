@@ -52,7 +52,7 @@ export function bootstrapLife(biography, { rng, nowMs }) {
       valence: Number(event.valence) || 0,
       salience: clamp(0.35 + 0.6 * Math.abs(Number(event.valence) || 0)),
       title: event.title,
-      narrative: event.narrative,
+      narrative: event.ageEstimated ? `发生时间不详：${event.narrative}` : event.narrative,
       tags: event.tags ?? [],
       schemaHints: event.impact ?? {},
       source: 'life',

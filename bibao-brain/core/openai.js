@@ -6,6 +6,9 @@
  */
 
 import { estimateTokens } from './usage.js'
+import { parseDirectReply } from './distill-direct-response.js'
+import { directReasoningProtocol, directGenerationOptions } from './distill-direct-options.js'
+import { DEFAULT_MODEL_TIMEOUT_MS, modelTimeout, normalizeModelAbort } from './llm-control.js'
 
 export async function chatCompletion({
   baseURL,
@@ -16,8 +19,9 @@ export async function chatCompletion({
   maxTokens = 500,
   temperature = 0.9,
   reasoningEffort = '',
+  stream = false,
   signal,
-  timeoutMs = 90_000,
+  timeoutMs = DEFAULT_MODEL_TIMEOUT_MS,
   onUsage = null,
 }) {
   if (!baseURL || !apiKey || !model) throw new Error('缺少 baseURL / apiKey / model')
@@ -26,9 +30,13 @@ export async function chatCompletion({
   // 既接受 baseURL（自动补 /chat/completions），也接受用户直接粘贴完整 URL
   const url = /\/chat\/completions$/i.test(endpoint) ? endpoint : `${endpoint}/chat/completions`
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const limit = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_MODEL_TIMEOUT_MS
+  if (signal?.aborted) throw normalizeModelAbort(signal.reason, { signal, timeoutMs: limit })
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; controller.abort(modelTimeout(limit)) }, limit)
   if (typeof timer.unref === 'function') timer.unref()
-  signal?.addEventListener?.('abort', () => controller.abort(), { once: true })
+  const cancel = () => controller.abort(signal.reason)
+  signal?.addEventListener?.('abort', cancel, { once: true })
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -42,29 +50,19 @@ export async function chatCompletion({
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        temperature,
-        max_tokens: maxTokens,
-        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-        stream: false,
+        ...directGenerationOptions({baseURL,model,reasoningEffort,temperature,maxTokens,nativeOptions:Boolean(stream)}),
+        stream: Boolean(stream),
       }),
       signal: controller.signal,
     })
     const text = await response.text()
     if (!response.ok) {
-      throw new Error(`LLM HTTP ${response.status}: ${text.slice(0, 160)}`)
+      const error = new Error(`LLM HTTP ${response.status}: ${text.split(String(apiKey)).join('[密钥已隐藏]').slice(0, 160)}`)
+      if ([400,422].includes(response.status)) error.code='LLM_REQUEST_REJECTED'
+      if ([400,422].includes(response.status) && /reasoning[_ -]?effort|unsupported.*reasoning/i.test(text)) { error.code='LLM_REASONING_UNSUPPORTED';error.message='当前端点不接受所选思考强度，请选择模型默认或该端点支持的强度' }
+      throw error
     }
-    let data = null
-    try {
-      data = JSON.parse(text)
-    } catch {
-      throw new Error(`LLM 返回非 JSON：${text.slice(0, 120)}`)
-    }
-    const message = data?.choices?.[0]?.message ?? {}
-    const content = message.content
-    let reply = typeof content === 'string' ? content : Array.isArray(content) ? content.map((part) => part?.text ?? '').join('') : ''
-    // 推理型模型有时把正文放在 reasoning_content 里，content 为 null
-    if (!reply.trim()) reply = String(message.reasoning_content ?? message.reasoning ?? '')
-    if (!reply.trim()) throw new Error('LLM 返回里既没有 content 也没有 reasoning')
+    const {reply,data} = parseDirectReply(text,{strictFinal:Boolean(stream)})
     const usage = data?.usage ?? data?.choices?.[0]?.usage ?? null
     const cacheRead =
       Number(
@@ -93,8 +91,11 @@ export async function chatCompletion({
       /* 统计失败不影响回复 */
     }
     return reply
+  } catch (error) {
+    throw normalizeModelAbort(error, { signal, timedOut, timeoutMs: limit })
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener?.('abort', cancel)
   }
 }
 
@@ -102,6 +103,7 @@ export async function chatCompletion({
 export function createDirectLlm(config) {
   return {
     direct: true,
+    reasoningProtocol: directReasoningProtocol(config),
     async *stream(options) {
       const user = (options.messages ?? [])
         .map((message) =>
@@ -118,8 +120,11 @@ export function createDirectLlm(config) {
         user,
         maxTokens: options.maxTokens ?? 500,
         reasoningEffort: options.reasoningEffort,
+        stream: options.streaming === true,
         temperature: options.temperature ?? 0.9,
         signal: options.signal,
+        // 此字段只属于本地直连适配器；蒸馏调用把自己的阶段时限传到底层。
+        timeoutMs: options.timeoutMs ?? config.timeoutMs,
         onUsage: config.onUsage,
       })
       yield { type: 'text-delta', index: 0, text }

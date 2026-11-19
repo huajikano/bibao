@@ -144,7 +144,7 @@ export class BibaoBrain {
       selfReview: growth?.selfReview !== false,
       life: growth?.life !== false,
     }
-    this.selfModel = SelfModel.fromJSON({})
+    this.selfModel = SelfModel.fromJSON({ style: biography?.personality?.style })
     this.selfModel.narrative = String(biography?.oneLine ?? '').slice(0, 120)
     this.threads = new ThreadMemory()
     this.life = new LifeStream({ seed: this.seed })
@@ -536,11 +536,12 @@ export class BibaoBrain {
         valence: event.valence,
         salience: Math.max(0.3, event.arousal),
         title: event.title,
-        narrative: event.narrative,
+        narrative: event.ageEstimated ? `发生时间不详：${event.narrative}` : event.narrative,
         tags: event.tags ?? [],
         entityId: null,
         entityName: null,
-        source: 'ai',
+        force: Boolean(persona.distillation),
+        source: persona.distillation ? 'distilled' : 'ai',
       })
       if (episode) {
         titles.add(event.title)
@@ -564,6 +565,15 @@ export class BibaoBrain {
       }
     }
     return { added, relations: (persona.relations ?? []).length }
+  }
+
+  /** 用户审核导入的表达倾向；不改激素、关系、路由、核心信念或既有复盘证据。 */
+  applyPersonalityProfile(persona = {}) {
+    const style = persona.personality?.style ?? {}
+    for (const key of ['warmth', 'playfulness', 'directness', 'verbosity', 'vulnerability', 'initiative']) {
+      if (typeof style[key] === 'number' && Number.isFinite(style[key])) this.selfModel.style[key] = clamp(style[key], 0, 1)
+    }
+    this.selfModel.narrative = String(persona.oneLine ?? this.selfModel.narrative).slice(0, 120)
   }
 
   /** 现在是睡着还是醒着（能被戳醒）。 */
@@ -1901,7 +1911,7 @@ export class BibaoBrain {
       ...brain.growth,
       ...(json.growth && typeof json.growth === 'object' ? { selfReview: json.growth.selfReview !== false, life: json.growth.life !== false } : {}),
     }
-    brain.selfModel = SelfModel.fromJSON(json.self)
+    brain.selfModel = SelfModel.fromJSON(json.self ?? { style: biography?.personality?.style })
     if (!brain.selfModel.narrative) brain.selfModel.narrative = String(brain.biography?.oneLine ?? '').slice(0, 120)
     brain.threads = ThreadMemory.fromJSON(json.threads)
     brain.outreach = { lastAt: 0, dayKey: '', count: 0, lastTargetId: '', lastText: '', ...(json.outreach ?? {}) }
