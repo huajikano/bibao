@@ -15,6 +15,27 @@ import { normalizeReasoningEffort } from './distill-reasoning.js'
 const clean = (value, max = 200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const comparable = (value) => String(value ?? '').replace(/\s+/g, '').toLowerCase()
 const abortError = () => { const error=modelCancelled();error.message='已停止蒸馏';return error }
+const nonRetryableProviderCodes = new Set([
+  'NO_ADAPTER', 'UNKNOWN_MODEL', 'MISSING_CREDENTIAL', 'INVALID_CONFIG', 'UNSUPPORTED_REASONING_EFFORT',
+])
+
+function streamFailure(reason) {
+  const failure = reason.failure
+  const status = Number(failure?.status)
+  const code = safeDistillError(failure?.code)
+  const details = [code, status >= 100 && status <= 599 ? `HTTP ${status}` : ''].filter(Boolean)
+  const aborted = reason.kind === 'aborted'
+  const error = aborted ? upstreamAborted() : new Error('上游模型响应失败')
+  const message = safeDistillError(failure?.message)
+  if (message || details.length) {
+    error.message += message ? `：${message}` : ''
+    if (details.length) error.message += `（${details.join(' · ')}）`
+  }
+  if (!aborted) error.code = code || 'LLM_UPSTREAM_ERROR'
+  error.status = status >= 100 && status <= 599 ? status : undefined
+  error.fatal = nonRetryableProviderCodes.has(code) || (status >= 400 && status < 500 && status !== 429)
+  return error
+}
 
 async function callJson(connection, system, user, { signal, maxTokens = 3600, timeoutMs = DISTILL_STAGE_TIMEOUT_MS, onWaiting = null, reasoningEffort = '' } = {}) {
   if (signal?.aborted) throw abortError()
@@ -40,9 +61,14 @@ async function callJson(connection, system, user, { signal, maxTokens = 3600, ti
         if(controller.signal.aborted)throw normalizeModelAbort(controller.signal.reason,{signal:controller.signal,timeoutMs:limit})
         if(chunk.type==='text-delta')raw+=chunk.text
         if(raw.length>100000)throw new Error('模型响应过长')
-        if(chunk.type==='finish'&&chunk.reason?.kind==='aborted')throw upstreamAborted()
-        if(chunk.type==='finish'&&chunk.reason?.kind==='max-tokens'){const error=new Error('模型输出达到生成上限，请提高生成预算或降低思考强度后继续');error.code='LLM_OUTPUT_LIMIT';throw error}
-        if(chunk.type==='finish'&&chunk.reason?.kind==='error')throw new Error('上游模型响应失败，请查看模型连接和参数')
+        if (chunk.type !== 'finish') continue
+        const reason = chunk.reason
+        if (reason?.kind === 'aborted' || reason?.kind === 'error') throw streamFailure(reason)
+        if (reason?.kind === 'max-tokens') {
+          const error = new Error('模型输出达到生成上限，请提高生成预算或降低思考强度后继续')
+          error.code = 'LLM_OUTPUT_LIMIT'
+          throw error
+        }
       }
       return raw
     })()
@@ -90,11 +116,26 @@ export async function distillPersona(parsed, options, connection, { signal, onPr
         if (signal?.aborted) throw error
         previousFailure = safeDistillError(error?.message ?? error)
         previousWasFormatIssue = Boolean(error?.diagnostic)
-        const diagnostic = {...(error?.diagnostic ?? {}),phase,stageKey:key,attempt:attempt+1,reason:previousFailure,code:error?.code??null,timeoutMs:error?.timeoutMs??null,elapsedMs:error?.elapsedMs??null,stageBudgetMs:stageTimeout,build:DISTILL_BUILD}
-        if (attempt === 2 || ['LLM_TIMEOUT','LLM_CANCELLED','LLM_REASONING_UNSUPPORTED','LLM_REQUEST_REJECTED','LLM_OUTPUT_LIMIT','DISTILL_STORAGE_ERROR'].includes(error?.code)) {
+        const diagnostic = {
+          ...error?.diagnostic,
+          phase,
+          stageKey: key,
+          attempt: attempt + 1,
+          reason: previousFailure,
+          code: error?.code ?? null,
+          status: error?.status ?? null,
+          fatal: Boolean(error?.fatal),
+          timeoutMs: error?.timeoutMs ?? null,
+          elapsedMs: error?.elapsedMs ?? null,
+          stageBudgetMs: stageTimeout,
+          build: DISTILL_BUILD,
+        }
+        if (attempt === 2 || error?.fatal || ['LLM_TIMEOUT','LLM_CANCELLED','LLM_REASONING_UNSUPPORTED','LLM_REQUEST_REJECTED','LLM_OUTPUT_LIMIT','DISTILL_STORAGE_ERROR'].includes(error?.code)) {
           const failed = new Error((labels[phase] ?? phase) + '阶段失败：' + previousFailure)
           failed.diagnostic = diagnostic
           failed.code = error?.code
+          failed.status = error?.status
+          failed.fatal = Boolean(error?.fatal)
           throw failed
         }
         onProgress({phase,done,total,message:'本阶段响应失败，自动重试 ' + (attempt+1) + '/2。原因：' + previousFailure + '；已完成分段不会重复调用',diagnostic})

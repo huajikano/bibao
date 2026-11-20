@@ -74,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.14.1`](https://github.com/huajikano/bibao/releases/tag/v0.14.1) | 蒸馏可读取自定义供应商已保存的模型，失败时显示上游错误码与 HTTP 状态 |
 | [`v0.14.0`](https://github.com/huajikano/bibao/releases/tag/v0.14.0) | 蒸馏人生工作台：长材料分片导入、人物证据与表达分析、后台任务及跨进程恢复、思考设置与流式响应兼容；修复 ZCode 等无设置命名空间来源的模型列表空白，保留 0.13.0 既有修复 |
 | [`v0.13.0`](https://github.com/huajikano/bibao/releases/tag/v0.13.0) | 拟人表达重做：8 类语用动作识别 + 动作路由权限收归状态机；回复时限自适应与熔断、模型跑题换本地、隐私边界（不主动讲自己的生活、不拿难堪换亲近）、日期时间直接照生物钟答、上下文窗口扩到 2 小时；成长冒烟 97 项 |
 | [`v0.12.3`](https://github.com/huajikano/bibao/releases/tag/v0.12.3) | 视觉测试图改为 64px（兼容最小分辨率限制），未启用时给明确提示；视觉独立端点/Key 已可用 |

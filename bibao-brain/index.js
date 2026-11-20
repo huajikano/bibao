@@ -431,6 +431,15 @@ export function apply(ctx, config = {}) {
     return { llm: null, provider: '', model: '', source: 'local' }
   }
 
+  function assertDistillReady(model) {
+    if (!model.source.startsWith('dsh:')) return
+    const dsh = ctx.get('llm')
+    if (typeof dsh?.listProviders !== 'function') return
+    if (!dsh.listProviders().some((provider) => provider.id === model.provider)) {
+      throw new Error(`DSH 来源「${model.provider}」当前未注册，请在 DSH 模型设置中检查该来源是否已启用。`)
+    }
+  }
+
   function llmNow() {
     const llms = {}
     for (const name of LOGICS) llms[name] = resolveLogic(name)
@@ -2519,9 +2528,9 @@ export function apply(ctx, config = {}) {
         try {
           return json(await readDshModelCatalog(ctx.get('llm'), {
             provider: new URL(request.url).searchParams.get('provider') || '',
-            signal: request.signal,
+            settings: ctx.get('settings'),
           }))
-        } catch (error) { return fail('读取 DSH 模型目录失败：' + String(error?.message ?? error).slice(0, 120), 502) }
+        } catch { return fail('读取 DSH 模型目录失败，请刷新后重试。', 502) }
       },
     },
     {
@@ -2546,7 +2555,19 @@ export function apply(ctx, config = {}) {
     },
     {
       path: '/biography/distill/resume', methods: ['POST'],
-      handler: async (request) => { await boot();const body=await readBody(request);try{const model=llmNow().distill;const job=distillationJobs.get(body.jobId);const effort=await validateReasoningEffort(body.reasoningEffort??job.reasoningEffort,model,ctx.get('llm'));return json(await distillationJobs.resume(body.jobId,model,{reasoningEffort:effort}),202)}catch(error){return fail(error.message,400)} },
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        try {
+          const job = distillationJobs.get(body.jobId)
+          const model = resolveLogic('distill')
+          assertDistillReady(model)
+          const effort = await validateReasoningEffort(body.reasoningEffort ?? job.reasoningEffort, model, ctx.get('llm'))
+          return json(await distillationJobs.resume(body.jobId, model, { reasoningEffort: effort }), 202)
+        } catch (error) {
+          return fail(error.message, 400)
+        }
+      },
     },
     {
       path: '/biography/distill/clear', methods: ['POST'],
@@ -2565,8 +2586,27 @@ export function apply(ctx, config = {}) {
       handler: async (request) => {
         await boot()
         const body = await readBody(request)
-        try { const model=llmNow().distill;const effort=await validateReasoningEffort(body.reasoningEffort,model,ctx.get('llm'));const result=distillationJobs.start(body.importId,{target:body.target,aliases:body.aliases,seed:body.seed,mode:body.mode,analysisChars:body.analysisChars,chunkChars:body.chunkChars,maxEvents:body.maxEvents,maxTokens:body.maxTokens,timeoutMs:body.timeoutMs,reasoningEffort:effort},model);await distillationJobs.waitAccepted(result.jobId);return json(result,202) }
-        catch (error) { return fail(error.message, 400) }
+        try {
+          const model = resolveLogic('distill')
+          assertDistillReady(model)
+          const effort = await validateReasoningEffort(body.reasoningEffort, model, ctx.get('llm'))
+          const result = distillationJobs.start(body.importId, {
+            target: body.target,
+            aliases: body.aliases,
+            seed: body.seed,
+            mode: body.mode,
+            analysisChars: body.analysisChars,
+            chunkChars: body.chunkChars,
+            maxEvents: body.maxEvents,
+            maxTokens: body.maxTokens,
+            timeoutMs: body.timeoutMs,
+            reasoningEffort: effort,
+          }, model)
+          await distillationJobs.waitAccepted(result.jobId)
+          return json(result, 202)
+        } catch (error) {
+          return fail(error.message, 400)
+        }
       },
     },
     {

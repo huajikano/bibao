@@ -22,7 +22,7 @@ return String.raw`<!doctype html>
 </div></section></div>
 <div><section class="card"><div class="cardhead"><h2><span class="step">2</span>模型与思考</h2><button id="refreshModel" disabled>刷新模型</button></div><p id="modelInfo" class="muted notice">正在读取模型配置…</p><div class="grid section"><label>思考强度<select id="reasoningEffort" disabled><option value="">跟随模型默认</option></select></label><label>阶段等待上限<select id="stageTimeout"><option value="300000">5分钟</option><option value="600000" selected>10分钟</option><option value="1200000">20分钟</option></select></label></div><p id="reasoningNote" class="muted notice" style="margin-top:8px">将实际传递所选参数，不会仅改变显示。</p>
 <div class="grid section"><label>模型来源<select id="modelSource"><option value="current">按比宝设置（直连或继承）</option><option value="dsh">DSH 已保存的模型</option></select></label></div>
-<div id="dshModelPicker" hidden><div class="grid"><label>模型来源（DSH 目录）<select id="dshProvider"></select></label><label>模型<select id="dshModel"></select></label></div><div class="row" style="margin-top:8px"><button id="saveDshModel" class="primary">保存并使用</button><span id="dshModelNote" class="muted notice"></span></div><p class="muted">保存后蒸馏经 DSH 的模型目录调用与计量，不需要在比宝里另存密钥。</p></div><details class="section"><summary>生成预算</summary><label>每阶段最大生成Token<select id="outputTokens"><option value="3000">3,000</option><option value="4000">4,000</option><option value="6000">6,000</option><option value="12000" selected>12,000</option><option value="24000">24,000</option></select></label><p class="muted">高思考强度可能需要更多时间和生成预算；上限须在所用模型支持范围内。模型地址和密钥在比宝设置中配置。</p></details></section>
+<div id="dshModelPicker" hidden><div class="grid"><label>模型来源（DSH 目录）<select id="dshProvider"></select></label><label>模型<select id="dshModel"></select></label><label id="dshManualField" hidden>已配置的模型 ID<input id="dshModelManual" autocomplete="off"></label></div><div class="row" style="margin-top:8px"><button id="saveDshModel" class="primary">保存并使用</button><span id="dshModelNote" class="muted notice"></span></div><p class="muted">保存后蒸馏经 DSH 的模型目录调用与计量，不需要在比宝里另存密钥。</p></div><details class="section"><summary>生成预算</summary><label>每阶段最大生成Token<select id="outputTokens"><option value="3000">3,000</option><option value="4000">4,000</option><option value="6000">6,000</option><option value="12000" selected>12,000</option><option value="24000">24,000</option></select></label><p class="muted">高思考强度可能需要更多时间和生成预算；上限须在所用模型支持范围内。模型地址和密钥在比宝设置中配置。</p></details></section>
 <section class="card"><div class="cardhead"><h2><span class="step">3</span>人物与范围</h2></div><div id="previewEmpty" class="empty">先在左侧上传并解析材料，再选择人物。</div><div id="previewCard" hidden><div class="stack">
 <div id="chatPicker" hidden><label>搜索昵称 / 账号 / 历史昵称<input id="personSearch" type="search" placeholder="输入关键字筛选"></label><label>选择发送者<select id="targetSelect" size="7" aria-label="选择要蒸馏的聊天发送者"></select></label><p id="peopleCount" class="muted"></p></div>
 <div id="novelPicker" hidden><div class="grid"><label>角色名<input id="targetName" placeholder="正文实际出现的名字"></label><label>别名 / 称呼<input id="aliases" placeholder="逗号分隔多个称呼"></label></div><details><summary>从对白线索中选择候选</summary><select id="novelCandidates" size="5" aria-label="小说人物候选"></select><p class="muted">候选不一定完整，可手动填写人物名。</p></details></div>
@@ -174,18 +174,50 @@ async function openDshPicker(provider='',model=''){
   await loadDshModels(model)
  }catch(error){$('dshModelNote').textContent='读取 DSH 模型目录失败：'+error.message}
 }
-async function loadDshModels(model=''){
- const provider=$('dshProvider').value;$('dshModel').replaceChildren();$('dshModelNote').textContent='正在读取模型列表…'
- try{const data=await api('/biography/distill/models?provider='+encodeURIComponent(provider));const models=data.models||[];if(!models.length){$('dshModelNote').textContent=data.note||'该来源没有返回模型列表';return}
-  for(const row of models){const option=document.createElement('option');option.value=row.id;option.textContent=row.name&&row.name!==row.id?row.name+'（'+row.id+'）':row.id;$('dshModel').append(option)}
-  const ids=models.map(row=>row.id);$('dshModel').value=ids.includes(model)?model:ids[0];$('dshModelNote').textContent=data.note||''}
- catch(error){$('dshModelNote').textContent='读取模型列表失败：'+error.message}
+let modelListRequest = 0
+async function loadDshModels(model='') {
+ const request = ++modelListRequest
+ const provider = $('dshProvider').value
+ const select = $('dshModel')
+ const manualField = $('dshManualField')
+ const manualInput = $('dshModelManual')
+ select.replaceChildren()
+ select.disabled = true
+ manualField.hidden = true
+ manualInput.value = ''
+ $('dshModelNote').textContent = '正在读取模型列表…'
+ try {
+  const data = await api('/biography/distill/models?provider=' + encodeURIComponent(provider))
+  if (request !== modelListRequest) return
+  const models = data.models || []
+  for (const row of models) {
+   const option = document.createElement('option')
+   option.value = row.id
+   option.textContent = row.name && row.name !== row.id ? row.name + '（' + row.id + '）' : row.id
+   select.append(option)
+  }
+  if (models.length) {
+   select.disabled = false
+   select.value = models.some((row) => row.id === model) ? model : models[0].id
+  } else if (data.manual) {
+   manualField.hidden = false
+   manualInput.value = model
+  }
+  $('dshModelNote').textContent = data.note || ''
+ } catch (error) {
+  if (request === modelListRequest) $('dshModelNote').textContent = '读取模型列表失败：' + error.message
+ }
 }
 $('modelSource').onchange=()=>{const value=$('modelSource').value;if(value==='dsh')void openDshPicker(modelConfig&&String(modelConfig.source||'').startsWith('dsh:')?modelConfig.source.slice(4):'',modelConfig?.model||'');else{$('dshModelPicker').hidden=true;$('dshModelNote').textContent=''}}
 $('dshProvider').onchange=()=>void loadDshModels()
 $('saveDshModel').onclick=async()=>{
- const provider=$('dshProvider').value,model=$('dshModel').value
- if(!provider||!model){$('dshModelNote').textContent='请先选择模型来源和模型';return}
+ const provider = $('dshProvider').value
+ const model = $('dshManualField').hidden ? $('dshModel').value : $('dshModelManual').value.trim()
+ if (!provider || !model) { $('dshModelNote').textContent = '请选择供应商和模型，或填写已配置的模型 ID'; return }
+ if (!dshProviders?.some((row) => row.provider === provider && row.active)) {
+  $('dshModelNote').textContent = '请先在 DSH 中启用该供应商'
+  return
+ }
  $('saveDshModel').disabled=true
  try{
   await api('/settings',{llm:{profiles:{distill:{enabled:true,dsh:true,provider,model}}}});dshProviders=null

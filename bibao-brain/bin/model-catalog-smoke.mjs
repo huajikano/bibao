@@ -44,22 +44,28 @@ await check('空目录保留登录/禁用含义，不伪造或绕过模型开关
   assert.deepEqual(result.models, [])
   assert.match(result.note, /登录状态和模型开关/)
 })
-await check('读取失败返回可见提示而非无解释的空白', async () => {
+await check('适配器读取失败后允许填写已配置的模型 ID', async () => {
   const result = await readDshModelCatalog({ listProviders: () => registered, listModels: async () => { throw new Error('adapter unavailable') } }, { provider: 'zcode' })
   assert.deepEqual(result.models, [])
-  assert.match(result.note, /adapter unavailable/)
+  assert.equal(result.manual, true)
+  assert.match(result.note, /已在 DSH 中配置的模型 ID/)
 })
-await check('兼容可配置来源发现并传递取消信号', async () => {
-  const controller = new AbortController()
+await check('读取失败时按供应商的设置路径读取本地配置，并只返回展示字段', async () => {
   const result = await readDshModelCatalog({
-    listProviders: () => [],
-    listConfigurableProviders: () => [{ provider: 'saved', settingsNs: 'llm.saved' }],
-    discoverModels: async (namespace, request, signal) => {
-      assert.equal(namespace, 'llm.saved'); assert.equal(request.provider, 'saved'); assert.equal(signal, controller.signal)
-      return [{ id: 'model-a' }]
-    },
-  }, { provider: 'saved', signal: controller.signal })
-  assert.deepEqual(result.models, [{ id: 'model-a', name: 'model-a' }])
+    listProviders: () => [{ id: 'custom' }],
+    listConfigurableProviders: () => [{ provider: 'custom', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'custom'] }],
+    listModels: async () => { throw new Error('adapter unavailable') },
+    discoverModels: async () => { assert.fail('must not probe a draft') },
+  }, { provider: 'custom', settings: { describe(options) {
+    assert.deepEqual(options, { redactSecrets: true })
+    return [{ ns: 'llm-pi-ai', value: { providers: {
+      custom: { models: [{ id: 'model-a', name: 'Model A', apiKey: 'fixture-secret' }, 'model-b'] },
+      other: { models: ['other-model'] },
+    } } }]
+  } } })
+  assert.deepEqual(result.models, [{ id: 'model-a', name: 'Model A' }, { id: 'model-b', name: 'model-b' }])
+  assert.match(result.note, /已保存的模型/)
+  assert.doesNotMatch(JSON.stringify(result), /fixture-secret|other-model/)
 })
 await check('未配置来源与未知来源都有明确提示', async () => {
   const service = { listProviders: () => [], listConfigurableProviders: () => [{ provider: 'unconfigured', settingsNs: '' }] }

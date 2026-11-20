@@ -4,19 +4,25 @@ const asArray = (value) => Array.isArray(value) ? value : []
 function modelRows(rows) {
   const seen = new Set()
   return asArray(rows).flatMap((row) => {
-    const id = typeof row?.id === 'string' ? row.id.trim() : ''
+    const value = typeof row === 'string' ? row : row?.id
+    const id = typeof value === 'string' ? value.trim() : ''
     if (!id || seen.has(id)) return []
     seen.add(id)
     return [{ id, name: typeof row?.name === 'string' && row.name ? row.name : id }]
   }).slice(0, 200)
 }
 
-/**
- * Registered adapters own their saved model catalogs. Settings discovery is
- * only a compatibility path for configurable sources without listModels.
- * In particular, ZCode does not need a settings namespace to list its models.
- */
-export async function readDshModelCatalog(dsh, { provider = '', signal } = {}) {
+/** Read the configured model IDs at the exact provider path reported by DSH. */
+function savedModels(settings, entry) {
+  if (!entry.settingsNs || typeof settings?.describe !== 'function') return []
+  const sections = asArray(settings.describe({ redactSecrets: true }))
+  let profile = sections.find((section) => section?.ns === entry.settingsNs)?.value
+  for (const key of entry.settingsPath) profile = profile?.[key]
+  return modelRows(profile?.models)
+}
+
+/** Registered adapters own the available models, including ZCode's model switches. */
+export async function readDshModelCatalog(dsh, { provider = '', settings } = {}) {
   if (!dsh || typeof dsh.listProviders !== 'function') {
     return { providers: [], models: [], note: '当前 DSH 未提供模型目录' }
   }
@@ -47,21 +53,23 @@ export async function readDshModelCatalog(dsh, { provider = '', signal } = {}) {
   if (!provider) return { providers }
   const found = providers.find((row) => row.provider === provider)
   if (!found) return { providers, models: [], note: '目录中没有这个模型来源' }
-  try {
-    // An empty registered catalog can reflect login or model-switch state;
-    // do not replace it with an unfiltered discovery response.
-    if (found.active && typeof dsh.listModels === 'function') {
+  if (!found.active) return { providers, models: [], note: '该来源未配置完成，请先在 DSH 中启用。' }
+
+  if (typeof dsh.listModels === 'function') {
+    try {
+      // 成功返回的空目录仍有含义，可能反映登录状态或模型开关。
       const models = modelRows(await dsh.listModels(provider))
       return { providers, models, note: models.length ? '' : '该来源当前没有可用模型，请检查登录状态和模型开关' }
+    } catch {
+      // 兼容无法读取目录的适配器，继续读取已保存的配置。
     }
-    if (found.settingsNs && typeof dsh.discoverModels === 'function') {
-      const models = modelRows(await dsh.discoverModels(found.settingsNs, { provider }, signal))
-      return { providers, models, note: models.length ? '' : '该来源没有返回模型列表，请检查模型配置' }
-    }
-    return { providers, models: [], note: found.active
-      ? '当前 DSH 未提供读取该来源已注册模型列表的接口'
-      : '该来源未配置完成，暂无可用模型' }
-  } catch (error) {
-    return { providers, models: [], note: '读取该来源的模型列表失败：' + String(error?.message ?? error).slice(0, 120) }
   }
+
+  try {
+    const models = savedModels(settings, found)
+    if (models.length) return { providers, models, note: '适配器目录暂不可用，此处显示 DSH 中已保存的模型。' }
+  } catch {
+    // 设置服务可能尚未就绪。只展示诊断提示，避免把配置异常回传给浏览器。
+  }
+  return { providers, models: [], manual: true, note: '无法读取该来源的模型目录，可填写已在 DSH 中配置的模型 ID。' }
 }

@@ -70,6 +70,25 @@ check('时间不详带入运行时记忆',()=>assert.match(brain.memory.episodes
 mode='bad';await assert.rejects(()=>distillPersona(parsed,{target:'100000001'},connection),/JSON/);mode='normal';passed++;console.log('PASS 模型错误不退回随机模板')
 await assert.rejects(()=>distillPersona(parsed,{target:'100000001'},{}),/模型/);passed++;console.log('PASS 无模型明确报错')
 mode='hang';await assert.rejects(()=>distillPersona(parsed,{target:'100000001'},connection,{timeoutMs:10}),/时限/);mode='normal';passed++;console.log('PASS 模型卡住受时限约束')
+let upstreamCalls = 0
+const invalidRoute = {
+  provider: 'custom',
+  model: 'fixture-model',
+  llm: { async *stream() {
+    upstreamCalls++
+    yield { type: 'finish', reason: { kind: 'error', failure: {
+      message: 'Model fixture-model is not enabled for this route', code: 'MODEL_NOT_FOUND', status: 404,
+    } } }
+  } },
+}
+await assert.rejects(() => distillPersona(parsed, { target: '100000001' }, invalidRoute, { timeoutMs: 500 }), (error) => {
+  assert.match(error.message, /fixture-model is not enabled/)
+  assert.match(error.message, /MODEL_NOT_FOUND · HTTP 404/)
+  assert.equal(error.diagnostic.attempt, 1)
+  assert.equal(error.diagnostic.status, 404)
+  return true
+})
+check('终止事件中的上游错误被保留，404 不重复提交阶段', () => assert.equal(upstreamCalls, 1))
 const jobs=new DistillationJobs(), uploaded=jobs.preview(sources)
 mode='hang';const job=jobs.start(uploaded.importId,{target:'100000001'},connection)
 check('并行重复任务受限',()=>assert.throws(()=>jobs.start(uploaded.importId,{target:'100000001'},connection),/正在运行/))
