@@ -860,7 +860,9 @@ export class BibaoBrain {
    * 脑机接口：一条外部感知（看到的画面 / 听到的声音 / 闻到的气味…）。
    * 它不进社交账本，也不会生成回话，只影响工作空间、记忆和情绪。
    */
-  perceiveSense({ channel = 'vision', text = '', intensity = 0.6 } = {}) {
+  perceiveSense({ channel = 'vision', text = '', intensity = 0.6, source = 'manual' } = {}) {
+    // 自动采集只进入已“接入”的通道；手动投喂永远可用。
+    if (source === 'auto' && !this.senses.isEnabled(channel)) return { ok: false, reason: 'channel-disabled', channel }
     this.sync()
     const now = this.simMs
     const meta = SENSE_CHANNELS.find((item) => item.key === channel)

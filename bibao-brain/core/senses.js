@@ -49,6 +49,11 @@ export class SensoryCortex {
     return channel
   }
 
+  /** 自动采集只写入已接入的通道；手动投喂不受此限制。 */
+  isEnabled(key) {
+    return Boolean(this.channels[key]?.enabled)
+  }
+
   snapshot() {
     return SENSE_CHANNELS.map((meta) => ({
       ...meta,

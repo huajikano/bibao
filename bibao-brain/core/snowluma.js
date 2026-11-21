@@ -25,6 +25,32 @@ export function wsUrlWithToken(url, token) {
   }
 }
 
+function unescapeCq(value) {
+  return value.replace(/&#91;|&#93;|&#44;|&amp;/g, entity => ({ '&#91;': '[', '&#93;': ']', '&#44;': ',', '&amp;': '&' })[entity])
+}
+
+function messageSegments(message) {
+  if (Array.isArray(message)) return message
+  if (typeof message !== 'string') return []
+  const segments = []
+  let offset = 0
+  const addText = (text) => {
+    if (text) segments.push({ type: 'text', data: { text: unescapeCq(text) } })
+  }
+  for (const code of message.matchAll(/\[CQ:([a-z_]+)(?:,([^\[\]]{0,8192}))?\]/g)) {
+    addText(message.slice(offset, code.index))
+    offset = code.index + code[0].length
+    const data = Object.create(null)
+    for (const pair of (code[2] ?? '').split(',')) {
+      const equals = pair.indexOf('=')
+      if (equals > 0) data[pair.slice(0, equals)] = unescapeCq(pair.slice(equals + 1))
+    }
+    segments.push({ type: code[1], data })
+  }
+  addText(message.slice(offset))
+  return segments
+}
+
 export class SnowlumaBridge {
   constructor({
     httpBase = 'http://127.0.0.1:3000',
@@ -51,7 +77,7 @@ export class SnowlumaBridge {
     this.stats = { events: 0, messages: 0, sent: 0, deleted: 0, errors: 0, lastEventAt: 0 }
   }
 
-  async call(action, params = {}) {
+  async call(action, params = {}, timeoutMs) {
     const response = await fetch(`${this.httpBase}/${action}`, {
       method: 'POST',
       headers: {
@@ -59,6 +85,7 @@ export class SnowlumaBridge {
         ...(this.httpToken ? { authorization: `Bearer ${this.httpToken}` } : {}),
       },
       body: JSON.stringify(params),
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     })
     const text = await response.text()
     let data = null
@@ -67,7 +94,7 @@ export class SnowlumaBridge {
     } catch {
       throw new Error(`snowluma ${action}: 非 JSON 响应（HTTP ${response.status}）`)
     }
-    if (!response.ok || (data && data.status === 'failed')) {
+    if (!response.ok || data?.status === 'failed' || (data?.retcode != null && Number(data.retcode) !== 0)) {
       throw new Error(`snowluma ${action} 失败：${data?.message ?? data?.wording ?? response.status}`)
     }
     return data
@@ -158,15 +185,24 @@ export class SnowlumaBridge {
     this.socket = null
   }
 
-  /** OneBot 消息段（array 格式）→ 纯文本。 */
-  /** 取出所有图片段的 url（OneBot 里可能是 http、file:// 或本地路径）。 */
+  /** Preserve the OneBot fields that distinguish custom emoji from photos. */
   static imagesOf(message) {
     if (!Array.isArray(message)) return []
-    return message
-      .filter((segment) => segment?.type === 'image')
-      .map((segment) => String(segment?.data?.url ?? segment?.data?.file ?? ''))
-      .filter((url) => url && (url.startsWith('http') || url.startsWith('file')))
-      .slice(0, 3)
+    const images = []
+    for (const segment of message) {
+      if (!['image', 'mface'].includes(segment?.type)) continue
+      const data = segment.data ?? {}
+      if (data.type === 'flash') continue
+      const summary = typeof data.summary === 'string' ? data.summary.trim().slice(0, 64) : ''
+      const emojiId = typeof data.emoji_id === 'string' && /^[a-f0-9]{32}$/i.test(data.emoji_id) ? data.emoji_id : ''
+      const marketUrl = emojiId ? `https://gxh.vip.qq.com/club/item/parcel/item/${emojiId.slice(0, 2)}/${emojiId}/raw300.gif` : ''
+      const url = [data.url, data.file, marketUrl].find((value) => typeof value === 'string' && value.length <= 4096 && /^https?:\/\//i.test(value)) ?? ''
+      const fileId = [data.file_id, data.file].find((value) => typeof value === 'string' && /^[\w.+=-]{1,200}$/.test(value) && !value.includes('..')) ?? ''
+      const marked = segment.type === 'mface' || Boolean(emojiId) || String(data.sub_type ?? data.subType) === '1' || /^\[(?:动画表情|自定义表情|表情包)\]$/.test(summary)
+      images.push({ url, fileId, marked, summary })
+      if (images.length >= 3) break
+    }
+    return images
   }
 
   static textOf(message) {
@@ -177,7 +213,7 @@ export class SnowlumaBridge {
         if (!segment || typeof segment !== 'object') return ''
         if (segment.type === 'text') return segment.data?.text ?? ''
         if (segment.type === 'at') return `@${segment.data?.qq ?? ''}`
-        if (segment.type === 'face') return '[表情]'
+        if (segment.type === 'face' || segment.type === 'mface') return '[表情]'
         if (segment.type === 'image') return '[图片]'
         if (segment.type === 'reply') return ''
         return ''
@@ -187,16 +223,17 @@ export class SnowlumaBridge {
 
   /** 统一事件形状，供 Host 判断。 */
   static normalize(event, selfId) {
-    if (!event || event.post_type !== 'message') return null
+    if (!event || event.post_type !== 'message' || !['group', 'private'].includes(event.message_type)) return null
     const senderId = String(event.user_id ?? '')
     if (!senderId || senderId === String(selfId)) return null
     const senderName =
       event.sender?.card || event.sender?.nickname || event.sender?.name || senderId
-    const images = SnowlumaBridge.imagesOf(event.message)
-    const text = SnowlumaBridge.textOf(event.message).trim()
-    // 只有图片、没有文字的消息也要进来：她要能看见
+    const message = messageSegments(event.message)
+    const images = SnowlumaBridge.imagesOf(message)
+    const text = SnowlumaBridge.textOf(message).trim()
     if (!text && images.length === 0) return null
     const group = event.message_type === 'group'
+    if (group && !event.group_id) return null
     return {
       kind: group ? 'group' : 'private',
       groupId: group ? String(event.group_id ?? '') : '',
@@ -205,9 +242,7 @@ export class SnowlumaBridge {
       senderName,
       text: text || (images.length ? '[图片]' : ''),
       images,
-      atMe: group && Array.isArray(event.message)
-        ? event.message.some((segment) => segment?.type === 'at' && String(segment?.data?.qq ?? '') === String(selfId))
-        : false,
+      atMe: group && message.some((segment) => segment?.type === 'at' && String(segment?.data?.qq ?? '') === String(selfId)),
       messageId: event.message_id,
       at: Number(event.time ?? 0) * 1000 || Date.now(),
     }

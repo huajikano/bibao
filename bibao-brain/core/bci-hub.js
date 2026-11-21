@@ -93,18 +93,59 @@ export class BciHub {
     return [...this.adapters.values()].map((adapter) => this._snapshot(adapter))
   }
 
-  /** 只读感知：任何适配器都可以，不经过动作策略。 */
-  async sense(id, payload = {}) {
+  /** 只读感知：任何适配器都可以，不经过动作策略；超时或取消不会拖住请求。 */
+  async sense(id, payload = {}, { timeoutMs = 15_000, signal } = {}) {
     const adapter = this.get(id)
     if (!adapter) return { ok: false, reason: 'unknown-adapter' }
     if (!adapter.sense) return { ok: false, reason: 'sense-unsupported' }
+    const controller = new AbortController()
+    let timer
+    let onAbort
     try {
-      const data = await adapter.sense(payload)
+      const limit = Math.max(100, Math.min(90_000, Number(timeoutMs) || 15_000))
+      const data = await Promise.race([
+        Promise.resolve().then(() => adapter.sense(payload, { signal: controller.signal })),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error('sense timeout')
+            error.code = 'BCI_TIMEOUT'
+            controller.abort(error)
+            reject(error)
+          }, limit)
+          if (signal) {
+            onAbort = () => {
+              controller.abort(signal.reason)
+              const error = new Error('sense aborted')
+              error.code = 'BCI_ABORTED'
+              reject(error)
+            }
+            if (signal.aborted) onAbort()
+            else signal.addEventListener('abort', onAbort, { once: true })
+          }
+        }),
+      ])
       this._audit({ kind: 'sense', adapter: adapter.id, ok: true })
-      return { ok: true, adapter: adapter.id, data }
+      return {
+        ok: true,
+        adapter: adapter.id,
+        channel: String(adapter.meta?.channel ?? ''),
+        capabilities: adapter.capabilities.slice(),
+        data,
+      }
     } catch (error) {
-      this._audit({ kind: 'sense', adapter: adapter.id, ok: false, error: String(error?.message ?? error).slice(0, 120) })
-      return { ok: false, adapter: adapter.id, reason: 'sense-failed', error: String(error?.message ?? error).slice(0, 120) }
+      const timeout = error?.code === 'BCI_TIMEOUT'
+      const aborted = error?.code === 'BCI_ABORTED'
+      this._audit({ kind: 'sense', adapter: adapter.id, ok: false, reason: timeout ? 'timeout' : aborted ? 'aborted' : 'failed' })
+      return {
+        ok: false,
+        adapter: adapter.id,
+        channel: String(adapter.meta?.channel ?? ''),
+        reason: timeout ? 'sense-timeout' : aborted ? 'sense-aborted' : 'sense-failed',
+        error: timeout ? `适配器 ${adapter.id} 超过 ${Math.round(timeoutMs / 1000)} 秒没有返回` : String(error?.message ?? error).slice(0, 120),
+      }
+    } finally {
+      clearTimeout(timer)
+      if (signal && onAbort) signal.removeEventListener('abort', onAbort)
     }
   }
 
@@ -191,7 +232,7 @@ export function tftAdapter(tft) {
     capabilities: [CAPABILITIES.SENSE_STATE],
     readOnly: true,
     sense: () => (typeof tft?.snapshot === 'function' ? tft.snapshot() : null),
-    meta: { mode: 'read-only', note: '只读游戏状态，不碰键鼠' },
+    meta: { mode: 'read-only', channel: '', note: '只读游戏状态，不碰键鼠' },
   }
 }
 
@@ -202,8 +243,8 @@ export function screenVisionAdapter(describe) {
     kind: 'vision',
     capabilities: [CAPABILITIES.SENSE_VISION],
     readOnly: true,
-    sense: async (payload = {}) => (typeof describe === 'function' ? describe(payload) : null),
-    meta: { mode: 'read-only' },
+    sense: async (payload = {}, { signal } = {}) => (typeof describe === 'function' ? describe(payload, { signal }) : null),
+    meta: { mode: 'read-only', channel: 'vision', note: '外部给图或由采集器截屏后交给视觉模型' },
   }
 }
 
@@ -224,7 +265,7 @@ export function handsAdapter(actions = {}) {
       if (typeof handler !== 'function') throw new Error(`no handler for ${type}`)
       return handler(action)
     },
-    meta: { mode: 'actuation', note: '默认禁用；需要在 policy 里显式打开 actuation' },
+    meta: { mode: 'actuation', channel: '', note: '默认禁用；需要在 policy 里显式打开 actuation' },
   }
 }
 
@@ -244,7 +285,7 @@ export function knowledgeAdapter({ read = null, enabled = () => true } = {}) {
       if (typeof read !== 'function') return { disabled: true, results: [], prompt: '' }
       return read(payload)
     },
-    meta: { mode: 'read-only', note: '从导入的知识库里检索，像回忆一样进入语言区' },
+    meta: { mode: 'read-only', channel: '', note: '从导入的知识库里检索，像回忆一样进入语言区' },
   }
 }
 
@@ -256,6 +297,6 @@ export function biometricAdapter({ id = 'eeg', label = '脑电', read = null } =
     capabilities: [CAPABILITIES.SENSE_BIOMETRIC],
     readOnly: true,
     sense: async (payload = {}) => (typeof read === 'function' ? read(payload) : null),
-    meta: { mode: 'read-only', note: '预留：EEG / 眼动 / 心率等只读通道' },
+    meta: { mode: 'read-only', channel: '', note: '预留：EEG / 眼动 / 心率等只读通道' },
   }
 }

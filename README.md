@@ -74,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.15.0`](https://github.com/huajikano/bibao/releases/tag/v0.15.0) | BCI 感知回灌、自动本体感觉/内感受/屏幕视觉；QQ 表情包真实收藏与确认发送；界面加载、输入法与线程滚动修复 |
 | [`v0.14.1`](https://github.com/huajikano/bibao/releases/tag/v0.14.1) | 蒸馏可读取自定义供应商已保存的模型，失败时显示上游错误码与 HTTP 状态 |
 | [`v0.14.0`](https://github.com/huajikano/bibao/releases/tag/v0.14.0) | 蒸馏人生工作台：长材料分片导入、人物证据与表达分析、后台任务及跨进程恢复、思考设置与流式响应兼容；修复 ZCode 等无设置命名空间来源的模型列表空白，保留 0.13.0 既有修复 |
 | [`v0.13.0`](https://github.com/huajikano/bibao/releases/tag/v0.13.0) | 拟人表达重做：8 类语用动作识别 + 动作路由权限收归状态机；回复时限自适应与熔断、模型跑题换本地、隐私边界（不主动讲自己的生活、不拿难堪换亲近）、日期时间直接照生物钟答、上下文窗口扩到 2 小时；成长冒烟 97 项 |
@@ -112,7 +113,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 - 成长层：人格一致的动态提示词、自我复盘（证据 → 经验 → 六维说话倾向）、生活流、模糊记忆
 - 关系层：对话线程（没聊完的事会留一条线、两天后放下）、默认关闭的主动私聊分享
 - 记忆：SQLite 情景层 + 软删除归档 + 语义事实层（带出处、会过期、会被新说法推翻）
-- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；新增可开关的知识库检索接口（像翻书，不是整篇 RAG）
+- 多脑机接口：`core/bci-hub.js` 统一适配器、只读/动作策略、限频与审计；本体感觉、内感受和屏幕视觉已接自动采样，屏幕截屏默认关闭，真实 EEG/听觉/嗅觉仍待设备或采集器
 - 主人面板：设置主人 QQ 与长期要求；要求会作为“答应过的事”进入提示词，不是每句话的命令
 - 生活流：按天、周末、每日主题和空档变化，打开面板/跨天也会生成新一天，不再等聊天才翻页
 - 模型：直连支持完整 `/chat/completions` URL 和无 `provider/` 前缀的模型名（如 `spark-x2.6`）

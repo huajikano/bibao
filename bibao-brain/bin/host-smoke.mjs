@@ -95,6 +95,44 @@ const bci = await call('GET', '/bci')
 check('GET /bci', bci.status === 200 && (bci.data.adapters ?? []).length >= 3, (bci.data.adapters ?? []).map((item) => item.id).join(','))
 const bciSense = await call('POST', '/bci/sense', { adapter: 'tft' })
 check('POST /bci/sense', bciSense.status === 200 && bciSense.data.ok === true, JSON.stringify(bciSense.data.data ?? bciSense.data.reason))
+const bciCatalog = await call('GET', '/bci')
+check(
+  'BCI 目录标注自动采样和屏幕权限',
+  bciCatalog.data.adapters?.some((item) => item.id === 'system' && item.automatic) &&
+    bciCatalog.data.adapters?.some((item) => item.id === 'interoception' && item.automatic) &&
+    bciCatalog.data.adapters?.find((item) => item.id === 'screen')?.screenCaptureEnabled === false,
+  JSON.stringify(bciCatalog.data.adapters?.map((item) => [item.id, item.automatic, item.screenCaptureEnabled])),
+)
+const screenOn = await call('POST', '/settings', { autoSense: { screenCaptureEnabled: true } })
+const bciScreenOn = await call('GET', '/bci')
+check(
+  '屏幕截屏权限可单独开启并写入状态',
+  screenOn.status === 200 && bciScreenOn.data.autoSense?.screenCaptureEnabled === true,
+  JSON.stringify(bciScreenOn.data.autoSense ?? null),
+)
+await call('POST', '/settings', { autoSense: { screenCaptureEnabled: false } })
+await call('POST', '/senses', { toggle: true, channel: 'interoception', enabled: true })
+const interoSense = await call('POST', '/bci/sense', { adapter: 'interoception' })
+check(
+  'BCI 适配器读数会进入感官皮层',
+  interoSense.data.ok === true && interoSense.data.perception?.ok === true && interoSense.data.perception?.channel === 'interoception',
+  JSON.stringify(interoSense.data.perception ?? interoSense.data.reason),
+)
+await new Promise((resolve) => setTimeout(resolve, 250))
+const bciAfterToggle = await call('GET', '/bci')
+check(
+  '开启感官通道会触发一次自动采样',
+  bciAfterToggle.data.audit?.some((item) => item.kind === 'sense' && item.adapter === 'interoception' && item.ok === true),
+  JSON.stringify(bciAfterToggle.data.audit?.slice(-3)),
+)
+await call('POST', '/senses', { toggle: true, channel: 'interoception', enabled: false })
+const autoBlocked = await call('POST', '/bci/sense', { adapter: 'interoception', source: 'auto' })
+check(
+  '自动 BCI 采样遵守通道接入开关',
+  autoBlocked.data.ok === true && autoBlocked.data.perception?.reason === 'channel-disabled',
+  JSON.stringify(autoBlocked.data.perception ?? autoBlocked.data.reason),
+)
+await call('POST', '/senses', { toggle: true, channel: 'interoception', enabled: true })
 
 const sandbox = await call('POST', '/sandbox/run', {})
 check('POST /sandbox/run', sandbox.data.gate?.allPassed === true, `${sandbox.data.gate?.passed}/${sandbox.data.gate?.total}`)

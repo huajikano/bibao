@@ -373,6 +373,10 @@ window.__ModuleLoader__.load({
         const reader = new FileReader()
         reader.onerror = () => reject(new Error('读取图片失败'))
         reader.onload = () => {
+          if (file.type === 'image/gif') {
+            if (file.size > 1400000) return reject(new Error('动图超过 1.4 MB，请压缩后导入'))
+            return resolve(String(reader.result ?? ''))
+          }
           const img = new Image()
           img.onerror = () => reject(new Error('不是浏览器能识别的图片'))
           img.onload = () => {
@@ -2381,6 +2385,7 @@ window.__ModuleLoader__.load({
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
+            stickers: snow.stickers !== false,
             pokeReact: snow.pokeReact !== false,
             pokeReply: snow.pokeReply !== false,
             pokeBack: snow.pokeBack === true,
@@ -2777,6 +2782,9 @@ window.__ModuleLoader__.load({
           asId: 'owner',
           memTier: 'all',
           memData: null,
+          memError: '',
+          memLoading: false,
+          loadError: '',
           recall: null,
           group: null,
           groupDraft: '',
@@ -2792,6 +2800,7 @@ window.__ModuleLoader__.load({
           form: null,
         }
         this.timers = []
+        this.followThread = true
         this.load = this.load.bind(this)
         this.act = this.act.bind(this)
         this.flash = this.flash.bind(this)
@@ -2818,13 +2827,24 @@ window.__ModuleLoader__.load({
       componentDidMount() {
         this.alive = true
         this.load()
-        this.timer = setInterval(this.load, 4000)
+        this.timer = setInterval(() => {
+          if (!this.stateRequest && !document.hidden) void this.load()
+        }, 4000)
       }
 
       componentWillUnmount() {
         this.alive = false
         clearInterval(this.timer)
+        clearTimeout(this.toastTimer)
+        this.stateRequest?.abort()
+        this.memoryRequest?.abort()
         for (const timer of this.timers) clearTimeout(timer)
+      }
+
+      componentDidUpdate(_props, previous) {
+        if (this.thread && this.followThread && (previous.tab !== this.state.tab || previous.messages !== this.state.messages || previous.typing !== this.state.typing)) {
+          this.thread.scrollTop = this.thread.scrollHeight
+        }
       }
 
       t() {
@@ -2832,35 +2852,43 @@ window.__ModuleLoader__.load({
       }
 
       async load() {
+        this.stateRequest?.abort()
+        const controller = new AbortController()
+        this.stateRequest = controller
         try {
-          const snap = await request('/state')
-          if (!this.alive) return
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)])
+          const snap = await request('/state', { signal })
+          if (!this.alive || controller.signal.aborted) return
+          if (!snap?.identity || !snap.clock || !Array.isArray(snap.neuro?.hormones) || !snap.workspace || !snap.memory) throw new Error('脑状态响应不完整')
           const first = !this.state.snap
-          this.setState({ snap, error: '' })
+          this.setState({ snap, loadError: '' })
           if (first) this.syncForm(snap)
           if (first && this.state.tab === 'groups') this.loadGroups()
         } catch (error) {
-          if (this.alive) this.setState({ error: `${this.t()('failedLoad')}：${error.message}` })
+          if (this.alive && !controller.signal.aborted) this.setState({ loadError: error.message })
+        } finally {
+          if (this.stateRequest === controller) this.stateRequest = null
         }
       }
 
       async act(path, body) {
-        this.setState({ busy: true })
+        this.setState({ busy: true, error: '' })
         try {
-          const data = await request(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+          await request(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+          if (!this.alive) return
           await this.load()
-          this.flash(path === '/tick' ? '生物钟已推进' : path === '/sleep' ? '睡眠归纳完成' : '完成')
-          if (data?.snapshot) this.setState({ snap: data.snapshot })
+          if (this.alive) this.flash(path === '/tick' ? '生物钟已推进' : path === '/sleep' ? '睡眠归纳完成' : '完成')
         } catch (error) {
-          this.setState({ error: error.message })
+          if (this.alive) this.setState({ error: error.message })
         } finally {
-          this.setState({ busy: false })
+          if (this.alive) this.setState({ busy: false })
         }
       }
 
       flash(message) {
+        clearTimeout(this.toastTimer)
         this.setState({ toast: message })
-        setTimeout(() => this.alive && this.setState({ toast: '' }), 2400)
+        this.toastTimer = setTimeout(() => this.alive && this.setState({ toast: '' }), 2400)
       }
 
       syncForm(snap) {
@@ -2885,6 +2913,7 @@ window.__ModuleLoader__.load({
             allowPrivate: Boolean(snow.allowPrivate),
             sendEnabled: Boolean(snow.sendEnabled),
             recallEnabled: Boolean(snow.recallEnabled),
+            stickers: snow.stickers !== false,
             pokeReact: snow.pokeReact !== false,
             pokeReply: snow.pokeReply !== false,
             pokeBack: snow.pokeBack === true,
@@ -2916,6 +2945,7 @@ window.__ModuleLoader__.load({
         const asId = this.state.asId
         const owner = (this.state.snap?.social ?? []).find((item) => item.id === asId)
         const id = `m${Date.now()}`
+        this.followThread = true
         this.setState((prev) => ({
           draft: '',
           typing: true,
@@ -2926,6 +2956,7 @@ window.__ModuleLoader__.load({
             method: 'POST',
             body: JSON.stringify({ text, entityId: asId, entityName: owner?.name ?? '你' }),
           })
+          if (!this.alive) return
           const result = data.result
           if (!result.ignited) {
             this.setState((prev) => ({
@@ -2980,16 +3011,24 @@ window.__ModuleLoader__.load({
             this.timers.push(timer)
           })
         } catch (error) {
-          this.setState({ typing: false, error: error.message })
+          if (this.alive) this.setState((previous) => ({ typing: false, error: error.message, draft: previous.draft || text }))
         }
       }
 
       async loadMemory(tier = this.state.memTier) {
+        this.memoryRequest?.abort()
+        const controller = new AbortController()
+        this.memoryRequest = controller
+        this.setState({ memTier: tier, memData: null, memLoading: true, memError: '' })
         try {
-          const data = await request(`/memory?tier=${tier}&limit=60`)
-          if (this.alive) this.setState({ memData: data, memTier: tier })
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)])
+          const data = await request(`/memory?tier=${tier}&limit=60`, { signal })
+          if (!Array.isArray(data?.items)) throw new Error('记忆响应不完整')
+          if (this.alive && !controller.signal.aborted) this.setState({ memData: data, memLoading: false })
         } catch (error) {
-          if (this.alive) this.setState({ error: error.message })
+          if (this.alive && !controller.signal.aborted) this.setState({ memError: error.message, memLoading: false })
+        } finally {
+          if (this.memoryRequest === controller) this.memoryRequest = null
         }
       }
 
@@ -3230,7 +3269,7 @@ window.__ModuleLoader__.load({
           this.syncForm(data.snapshot)
           if (tuningSnapshot?.tuning) {
             this.setState((prev) => ({
-              form: { ...prev.form, tuning: { ...prev.tuning, ...tuningSnapshot.tuning } },
+              form: { ...prev.form, tuning: { ...prev.form.tuning, ...tuningSnapshot.tuning } },
             }))
           }
         } catch (error) {
@@ -3279,7 +3318,15 @@ window.__ModuleLoader__.load({
             ),
             h(
               'div',
-              { className: 'bb-thread' },
+              {
+                className: 'bb-thread',
+                role: 'log',
+                'aria-label': t('talkTitle'),
+                ref: (node) => { this.thread = node },
+                onScroll: ({ currentTarget: node }) => {
+                  this.followThread = node.scrollHeight - node.clientHeight - node.scrollTop < 40
+                },
+              },
               messages.length
                 ? messages.map((message) =>
                     h(
@@ -3323,7 +3370,7 @@ window.__ModuleLoader__.load({
                 placeholder: t('placeholder'),
                 onChange: (event) => this.setState({ draft: event.target.value }),
                 onKeyDown: (event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent?.isComposing && event.keyCode !== 229) {
                     event.preventDefault()
                     this.sendTalk()
                   }
@@ -3340,7 +3387,7 @@ window.__ModuleLoader__.load({
       }
 
       renderMemory(t) {
-        const { memData, memTier, recall, busy } = this.state
+        const { memData, memTier, memError, memLoading, recall, busy } = this.state
         const items = memData?.items ?? []
         return h(
           'div',
@@ -3373,8 +3420,10 @@ window.__ModuleLoader__.load({
               : null,
             h(
               'div',
-              { className: 'bb-memList' },
-              items.length
+              { className: 'bb-memList', 'aria-busy': memLoading },
+              memLoading ? h('p', { className: 'bb-muted', role: 'status' }, t('waking'))
+                : memError ? h('div', { className: 'bb-inline' }, h('span', { role: 'alert', className: 'bb-error' }, memError), h('button', { type: 'button', className: 'bb-btn', onClick: () => this.loadMemory() }, t('retry')))
+                : items.length
                 ? items.map((item) =>
                     h(
                       'div',
@@ -3408,7 +3457,7 @@ window.__ModuleLoader__.load({
                                   body: JSON.stringify({ memoryId: item.id }),
                                 })
                                 this.setState({ recall: data.result, snap: data.snapshot })
-                                this.loadMemory(memTier)
+                                this.loadMemory()
                               } catch (error) {
                                 this.setState({ recall: { ok: false, message: error.message } })
                               }
@@ -3545,7 +3594,7 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'bb-compose' },
-                h('input', { className: 'bb-input', value: this.state.groupDraft, placeholder: t('feed'), onChange: (e) => this.setState({ groupDraft: e.target.value }), onKeyDown: (e) => e.key === 'Enter' && this.feedGroup() }),
+                h('input', { className: 'bb-input', value: this.state.groupDraft, placeholder: t('feed'), onChange: (e) => this.setState({ groupDraft: e.target.value }), onKeyDown: (e) => e.key === 'Enter' && !e.nativeEvent?.isComposing && e.keyCode !== 229 && this.feedGroup() }),
                 h('button', { type: 'button', className: 'bb-btn primary', onClick: this.feedGroup }, t('send')),
               ),
             ),
@@ -3723,6 +3772,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'bb-inline bb-inline--wrap' },
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.sendEnabled, onChange: (e) => this.setField({ sendEnabled: e.target.checked }) }), '允许真的发到 QQ'),
               h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.allowPrivate, onChange: (e) => this.setField({ allowPrivate: e.target.checked }) }), '允许私聊'),
+              h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: form.stickers, onChange: (event) => this.setField({ stickers: event.target.checked }) }), '自动收藏和使用表情包'),
               snow.connected ? h(Chip, { children: `已连接 · ${snow.selfName || snow.selfId}`, tone: 'good' }) : h(Chip, { children: '未连接', tone: 'bad' }),
               h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.testWs() }, '测试 WS'),
             ),
@@ -3787,17 +3837,17 @@ window.__ModuleLoader__.load({
 
       render() {
         const t = this.t()
-        const { snap, tab, error, toast } = this.state
+        const { snap, tab, error, loadError, toast } = this.state
         if (!snap) {
           return h(
             'div',
-            { className: 'bb-panel' },
+            { className: 'bb-panel bb-mind' },
             h(
               'div',
               { className: 'bb-empty' },
               h('div', { className: 'bb-emptyMark' }, h(BibaoIcon, { size: 34 })),
-              h('p', { className: 'bb-emptyTitle' }, error ? t('failedLoad') : t('waking')),
-              error ? h('pre', { className: 'bb-pre' }, error) : null,
+              h('p', { className: 'bb-emptyTitle' }, loadError ? t('failedLoad') : t('waking')),
+              loadError ? h('pre', { className: 'bb-pre', role: 'alert' }, loadError) : null,
               h('button', { type: 'button', className: 'bb-btn', onClick: this.load }, t('retry')),
             ),
           )
@@ -3817,7 +3867,7 @@ window.__ModuleLoader__.load({
         ]
         return h(
           'div',
-          { className: 'bb-panel' },
+          { className: 'bb-panel bb-mind' },
           h(
             'header',
             { className: 'bb-head' },
@@ -3843,7 +3893,8 @@ window.__ModuleLoader__.load({
                 : null,
             ),
           ),
-          error ? h('div', { className: 'bb-error' }, error) : null,
+          loadError ? h('div', { className: 'bb-inline' }, h('div', { className: 'bb-error', role: 'alert' }, t('failedLoad') + ' · ' + loadError), h('button', { type: 'button', className: 'bb-btn', onClick: this.load }, t('retry'))) : null,
+          error ? h('div', { className: 'bb-inline' }, h('div', { className: 'bb-error', role: 'alert' }, error), h('button', { type: 'button', className: 'bb-btn', onClick: () => this.setState({ error: '' }) }, t('close'))) : null,
           h(
             'nav',
             { className: 'bb-tabs', role: 'tablist' },
@@ -3858,7 +3909,7 @@ window.__ModuleLoader__.load({
                   className: `bb-tab${tab === key ? ' is-active' : ''}`,
                   onClick: () => {
                     this.setState({ tab: key })
-                    if (key === 'memory' && !this.state.memData) this.loadMemory()
+                    if (key === 'memory' && !this.state.memData && !this.state.memLoading) this.loadMemory()
                     if (key === 'groups') this.loadGroups()
                     if (key === 'settings' && !this.state.bio) this.loadBio()
                   },
@@ -3902,6 +3953,8 @@ window.__ModuleLoader__.load({
           busy: false,
           editingId: '',
           draftGist: '',
+          draftMood: '日常',
+          activity: null,
         }
         this.load = this.load.bind(this)
         this.remove = this.remove.bind(this)
@@ -3910,7 +3963,7 @@ window.__ModuleLoader__.load({
       }
 
       startEdit(item) {
-        this.setState({ editingId: item.id, draftGist: item.gist ?? '' })
+        this.setState({ editingId: item.id, draftGist: item.gist ?? '', draftMood: item.mood || '日常' })
       }
 
       async saveEdit(item) {
@@ -3918,7 +3971,7 @@ window.__ModuleLoader__.load({
         try {
           await request('/stickers', {
             method: 'POST',
-            body: JSON.stringify({ update: { id: item.id, gist: this.state.draftGist } }),
+            body: JSON.stringify({ update: { id: item.id, gist: this.state.draftGist, mood: this.state.draftMood } }),
           })
           this.setState({ busy: false, editingId: '', note: '描述已更新' })
           await this.load()
@@ -3944,6 +3997,7 @@ window.__ModuleLoader__.load({
           if (this.alive) {
             this.setState({
               items: data.items ?? [],
+              activity: data.activity ?? null,
               stats: data.stats ?? { count: 0, used: 0, byCategory: { common: 0, default: 0, dusty: 0 } },
             })
           }
@@ -4019,7 +4073,7 @@ window.__ModuleLoader__.load({
       }
 
       render() {
-        const { items, stats, filter, note, busy, editingId, draftGist } = this.state
+        const { items, stats, filter, note, busy, editingId, draftGist, draftMood, activity } = this.state
         const counts = stats.byCategory ?? { common: 0, default: 0, dusty: 0 }
         const visible = filter === 'all' ? items : items.filter((item) => (item.category ?? 'default') === filter)
         return h(
@@ -4028,7 +4082,17 @@ window.__ModuleLoader__.load({
             title: '表情包收藏',
             hint: `共 ${stats.count} 张 · 常用 ${counts.common ?? 0} · 默认 ${counts.default ?? 0} · 吃灰 ${counts.dusty ?? 0}`,
           },
-          note ? h('div', { className: 'bb-chip good' }, note) : null,
+          activity ? h('div', { className: 'bb-muted', role: 'status' },
+            h('div', {}, activity.connected
+              ? activity.enabled ? '自动收藏已开启' : '自动收藏已关闭'
+              : 'QQ 未连接，请在「设置」检查 SnowLuma'),
+            h('div', {}, '本次运行收到 ' + activity.received + ' 张候选，收藏 ' + activity.saved + ' 张，发送 ' + activity.sent + ' 张'),
+            activity.enabled && !activity.sources ? h('div', {}, '添加白名单群或启用私聊后可收藏') : null,
+            !activity.sendEnabled ? h('div', {}, '当前是只读观察，可收藏表情包。') : null,
+            activity.lastCollectError ? h('div', { className: 'bb-error' }, activity.lastCollectError) : null,
+            activity.lastSendError ? h('div', { className: 'bb-error' }, activity.lastSendError) : null,
+          ) : null,
+          note ? h('div', { className: 'bb-muted', role: 'status' }, note) : null,
           h(
             'div',
             { className: 'bb-inline bb-inline--wrap' },
@@ -4058,10 +4122,11 @@ window.__ModuleLoader__.load({
                 accept: 'image/*',
                 multiple: true,
                 style: { display: 'none' },
+                disabled: busy,
                 onChange: (event) => this.importFiles(event),
               }),
             ),
-            h('span', { className: 'bb-muted' }, '一次最多 10 张，自动让视觉模型写梗概和情绪'),
+            h('span', { className: 'bb-muted' }, activity?.vision ? '一次最多 10 张，视觉可补充描述' : '一次最多 10 张，导入后可补充描述和情绪'),
           ),
           visible.length
             ? h(
@@ -4082,11 +4147,16 @@ window.__ModuleLoader__.load({
                             maxLength: 30,
                             onChange: (event) => this.setState({ draftGist: event.target.value }),
                             onKeyDown: (event) => {
-                              if (event.key === 'Enter') this.saveEdit(item)
+                              if (event.key === 'Enter' && !event.nativeEvent?.isComposing && event.keyCode !== 229) this.saveEdit(item)
                               if (event.key === 'Escape') this.setState({ editingId: '', draftGist: '' })
                             },
                           })
                         : h('div', { className: 'bb-stickerGist' }, item.gist || '（没有描述）'),
+                      editingId === item.id ? h('select', {
+                        className: 'bb-select', 'aria-label': '表情情绪', value: draftMood,
+                        onChange: (event) => this.setState({ draftMood: event.target.value }),
+                      }, ['日常', '笑', '无语', '安慰', '生气', '可爱'].map(mood => h('option', { key: mood, value: mood }, mood))) : null,
+                      item.privateOnly ? h('div', { className: 'bb-muted' }, '仅原私聊') : null,
                       h(
                         'div',
                         { className: 'bb-inline' },
@@ -4124,13 +4194,13 @@ window.__ModuleLoader__.load({
                               h('button', { key: 'cancel', type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.setState({ editingId: '', draftGist: '' }) }, '取消'),
                             ]
                           : h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.startEdit(item) }, '改描述'),
-                        h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.send(item) }, '发一张'),
+                        h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy || item.privateOnly || (activity && !activity.manualAvailable), title: '发送到首个白名单焦点群', onClick: () => this.send(item) }, '发到群里'),
                         h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: busy, onClick: () => this.remove(item) }, '删掉'),
                       ),
                     ),
                   ),
               )
-            : h('div', { className: 'bb-muted' }, items.length ? '这个分类下还没有表情包。' : '还没有收藏。等群里有人发有趣的表情包，她会自己收起来。'),
+            : h('div', { className: 'bb-muted' }, items.length ? '这个分类下还没有表情包。' : '收藏夹为空。QQ 接通后可从白名单焦点群收集，也可以先导入。'),
         )
       }
     }
@@ -4233,7 +4303,7 @@ window.__ModuleLoader__.load({
             h('details', { className: 'bb-details' },
               h('summary', {}, '在当前页展开蒸馏工作台'),
               h('p', { className: 'bb-muted' }, '提炼人生经历、性格、说话方式与回复习惯。先预览素材，再调用已配置模型，审核后应用。'),
-              h('iframe', { src: API + '/biography/distill/ui', title: '蒸馏人生导入与审核', loading: 'lazy', style: { width: '100%', height: '760px', border: 0, borderRadius: '10px' } }),
+              h('iframe', { src: API + '/biography/distill/ui', title: '蒸馏人生导入与审核', loading: 'lazy', className: 'bb-workspaceFrame' }),
             ),
             h(
               'div',
@@ -4931,6 +5001,9 @@ class FriendsPanel extends React.Component {
           knowledgeDir: '',
           knowledgeQuery: '',
           knowledgeResult: null,
+          bciAutomation: null,
+          screenCaptureBusy: false,
+          screenNote: '',
         }
         this.load = this.load.bind(this)
         this.feed = this.feed.bind(this)
@@ -4953,8 +5026,11 @@ class FriendsPanel extends React.Component {
       async load() {
         try {
           const data = await request('/senses')
-          const state = await request('/state')
-          const knowledge = await request('/knowledge').catch(() => null)
+          const [state, knowledge, bci] = await Promise.all([
+            request('/state'),
+            request('/knowledge').catch(() => null),
+            request('/bci').catch(() => null),
+          ])
           if (!this.alive) return
           const vision = state.vision ?? null
           this.setState({
@@ -4965,14 +5041,16 @@ class FriendsPanel extends React.Component {
               this.state.visionDraft ??
               (vision
                 ? {
-                    enabled: vision.enabled,
-                    baseURL: vision.baseURL ?? '',
-                    apiKey: '',
-                    model: vision.model,
-                    maxPerHour: vision.maxPerHour,
-                  }
-                : null),
+                  enabled: vision.enabled,
+                  baseURL: vision.baseURL ?? '',
+                  apiKey: '',
+                  model: vision.model,
+                  maxPerHour: vision.maxPerHour,
+                  screenCaptureEnabled: state.bciAutomation?.screenCaptureEnabled === true,
+                }
+              : null),
             knowledge,
+            bciAutomation: { screenCaptureEnabled: state.bciAutomation?.screenCaptureEnabled === true, ...(bci ?? {}) },
             knowledgeDir: this.state.knowledgeDir || knowledge?.settings?.dir || knowledge?.status?.dir || '',
             error: '',
           })
@@ -5019,15 +5097,75 @@ class FriendsPanel extends React.Component {
         }
       }
 
+      async sampleAdapter(channel) {
+        const adapters = { system: 'system', interoception: 'interoception', vision: 'screen' }
+        const adapter = adapters[channel.key]
+        if (!adapter || this.state.screenCaptureBusy) return
+        if (channel.key === 'vision' && !this.state.visionDraft?.screenCaptureEnabled) {
+          this.setState({ screenNote: '请先明确开启自动截屏权限。' })
+          return
+        }
+        this.setState({ screenCaptureBusy: true, screenNote: channel.key === 'vision' ? '正在截屏并发送给视觉模型…' : '正在读取本机状态…' })
+        try {
+          const result = await request('/bci/sense', {
+            method: 'POST',
+            body: JSON.stringify({ adapter, source: 'auto', timeoutMs: channel.key === 'vision' ? 45000 : 12000, payload: { automatic: true } }),
+          })
+          this.setState({ screenNote: result.ok
+            ? result.perception?.ok ? `${channel.label}已进入意识与记忆` : result.perception?.reason === 'duplicate-suppressed' ? '相同信号近期已记录，本次略过' : result.data?.notable === false ? '状态平稳，没有强制写入感知' : '采样完成'
+            : result.error || '采样失败' })
+          await this.load()
+        } catch (error) {
+          this.setState({ screenNote: `采样失败：${error.message}` })
+        } finally {
+          if (this.alive) this.setState({ screenCaptureBusy: false })
+        }
+      }
+
       async saveVision() {
         const draft = this.state.visionDraft
         if (!draft) return
         this.setState({ note: '保存视觉配置…' })
+        const { screenCaptureEnabled, ...vision } = draft
         try {
-          const data = await request('/settings', { method: 'POST', body: JSON.stringify({ vision: draft }) })
-          this.setState({ note: '视觉配置已保存', vision: data.snapshot?.vision ?? this.state.vision })
+          await request('/settings', { method: 'POST', body: JSON.stringify({ vision, autoSense: { screenCaptureEnabled: screenCaptureEnabled === true } }) })
+          const data = await request('/state')
+          this.setState({ note: '视觉配置已保存；自动桌面采集' + (screenCaptureEnabled ? '已启用' : '已关闭'), vision: data.vision ?? this.state.vision })
         } catch (error) {
           this.setState({ note: `保存失败：${error.message}` })
+        }
+      }
+
+      async captureScreenOnce() {
+        if (this.state.screenCaptureBusy) return
+        this.setState({ screenCaptureBusy: true, screenNote: '截图并分析中…' })
+        try {
+          const result = await request('/bci/sense', {
+            method: 'POST',
+            body: JSON.stringify({ adapter: 'screen', source: 'auto', timeoutMs: 45000, payload: { automatic: true } }),
+          })
+          this.setState({ screenNote: result.ok
+            ? result.perception?.ok ? '屏幕感知已进入意识与记忆' : result.perception?.reason === 'channel-disabled' ? '请先打开上方「视觉」通道' : result.perception?.reason === 'duplicate-suppressed' ? '刚采过相同画面，已抑制重复记录' : '已完成采样'
+            : result.error || '屏幕采样失败' })
+          await this.load()
+        } catch (error) {
+          this.setState({ screenNote: '截图失败：' + error.message })
+        } finally {
+          if (this.alive) this.setState({ screenCaptureBusy: false })
+        }
+      }
+
+      async toggleScreenCapture(enabled) {
+        const current = this.state.visionDraft
+        if (!current) return
+        const next = { ...current, screenCaptureEnabled: enabled }
+        this.setState({ visionDraft: next, screenNote: '保存屏幕隐私设置…' })
+        try {
+          await request('/settings', { method: 'POST', body: JSON.stringify({ autoSense: { screenCaptureEnabled: enabled } }) })
+          this.setState({ screenNote: enabled ? '已允许每 10 分钟本地截屏一次；关闭后立即停止' : '自动截屏已关闭' })
+          await this.load()
+        } catch (error) {
+          this.setState({ visionDraft: current, screenNote: '保存失败：' + error.message })
         }
       }
 
@@ -5112,7 +5250,7 @@ class FriendsPanel extends React.Component {
 
       render() {
         const t = typeof this.props.t === 'function' ? this.props.t : (key) => key
-        const { channels, recent, drafts, levels, error, note, knowledge, knowledgeDir, knowledgeQuery, knowledgeResult } = this.state
+        const { channels, recent, drafts, levels, error, note, knowledge, knowledgeDir, knowledgeQuery, knowledgeResult, bciAutomation, screenCaptureBusy } = this.state
         return h(
           'div',
           { className: 'bb-stack' },
@@ -5178,6 +5316,17 @@ class FriendsPanel extends React.Component {
                     }),
                     '允许她自动看群里的图',
                   ),
+                  h(
+                    'label',
+                    { className: 'bb-check' },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: this.state.visionDraft.screenCaptureEnabled === true,
+                      onChange: (event) => this.toggleScreenCapture(event.target.checked),
+                    }),
+                    '允许自动截屏（会发送给视觉模型，默认关闭）',
+                  ),
+                  this.state.screenNote ? h('div', { className: 'bb-muted', role: 'status' }, this.state.screenNote) : null,
                 )
               : h('div', { className: 'bb-muted' }, '读取中…'),
             h(
@@ -5270,7 +5419,7 @@ class FriendsPanel extends React.Component {
             h(
               'p',
               { className: 'bb-quote' },
-              '六个通道各占一个接口位。现在只有「手动投喂」是真的：一段画面、一句听到的话、一股气味，会当成一次真实知觉进入丘脑，参与点火、写记忆、改变激素。摄像头、麦克风、屏幕与浏览器的自动采集还没接，开关只记状态。',
+              '七个感官通道各有接入开关。手动投喂、QQ 群图和戳一戳都会进入丘脑、写记忆并影响激素。本体感觉、内感受和屏幕视觉已接入自动采样：前两者只在异常时进入意识，屏幕截图默认关闭且需要单独授权；听觉、嗅觉、数字视觉和真实 EEG 仍待设备或采集器。',
             ),
             h(
               'div',
@@ -5314,6 +5463,15 @@ class FriendsPanel extends React.Component {
                 channel.lastText
                   ? h('div', { className: 'bb-senseLast' }, h('span', { className: 'bb-muted' }, '最近：'), channel.lastText)
                   : h('div', { className: 'bb-muted' }, '还没有信号'),
+                ['system', 'interoception', 'vision'].includes(channel.key)
+                  ? h('div', { className: 'bb-inline bb-inline--wrap' },
+                    h('span', { className: 'bb-muted' }, channel.enabled ? (bciAutomation?.adapters?.find(adapter => adapter.meta?.channel === channel.key)?.automatic || channel.key !== 'vision' ? '自动采样已接入' : '自动截屏已关闭') : '通道关闭'),
+                    h('button', {
+                      type: 'button', className: 'bb-btn bb-btn--tiny',
+                      disabled: !channel.enabled || screenCaptureBusy || (channel.key === 'vision' && !this.state.visionDraft?.screenCaptureEnabled),
+                      onClick: () => this.sampleAdapter(channel),
+                    }, channel.key === 'vision' ? '截屏并感知' : '现在采样'),
+                  ) : null,
                 h(
                   'div',
                   { className: 'bb-senseFeed' },
@@ -5415,13 +5573,13 @@ class FriendsPanel extends React.Component {
 .bb-friend { display: flex; flex-direction: column; gap: 6px; padding-block: 10px; border-block-end: 1px solid var(--dsw-alias-border-l1); }
 .bb-friendRow { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 8px; font-size: 11.5px; }
 .bb-friendId { font-size: 10.5px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
-.bb-personaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.bb-personaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
 .bb-personaField { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
 .bb-personaRow { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }
 .bb-personaList { display: flex; flex-direction: column; gap: 4px; max-block-size: 280px; overflow: auto; }
 .bb-tune { display: flex; flex-direction: column; gap: 6px; }
 .bb-tuneHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
-.bb-stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.bb-stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: 10px; }
 .bb-sticker {
   display: flex; flex-direction: column; gap: 4px; padding: 6px;
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px;
@@ -5441,7 +5599,7 @@ class FriendsPanel extends React.Component {
   color: var(--dsw-alias-brand-primary); font-size: 11px;
 }
 .bb-senseGlyph--big { inline-size: 30px; block-size: 30px; border-radius: 10px; font-size: 13px; }
-.bb-senseGrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.bb-senseGrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
 .bb-senseCard { display: flex; flex-direction: column; gap: 8px; }
 .bb-senseCard.is-on { box-shadow: inset 3px 0 0 var(--dsw-alias-brand-primary); }
 .bb-senseHead { display: flex; align-items: center; gap: 8px; }
@@ -5545,7 +5703,7 @@ class FriendsPanel extends React.Component {
   border-color: transparent;
 }
 .bb-stack { display: flex; flex-direction: column; gap: 14px; }
-.bb-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+.bb-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); }
 .bb-grid > .bb-card:only-child { grid-column: 1 / -1; }
 .bb-card {
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 16px;
@@ -5586,14 +5744,14 @@ class FriendsPanel extends React.Component {
 .bb-hormoneHead { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .bb-hormoneName { inline-size: 54px; flex: 0 0 auto; }
 .bb-hormoneValue { font-variant-numeric: tabular-nums; }
-.bb-hormoneTrend { font-size: 11px; color: var(--dsw-alias-label-tertiary); inline-size: 12px; text-align: center; }
+.bb-hormoneTrend { font-size: 11px; color: var(--dsw-alias-label-secondary); inline-size: 12px; text-align: center; }
 .bb-hormoneTrend.is-up { color: var(--dsw-alias-state-success-primary); }
 .bb-hormoneTrend.is-down { color: var(--dsw-alias-state-warn-primary); }
 .bb-schema { margin-block-end: 9px; }
 .bb-theta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-block-end: 10px; }
 .bb-thetaValue { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .bb-thetaParts { flex: 1 1 160px; min-inline-size: 140px; }
-.bb-slots { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)); }
+.bb-slots { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 126px), 1fr)); }
 .bb-slot {
   border: 1px dashed var(--dsw-alias-border-l1); border-radius: 12px;
   padding: 8px 9px; min-block-size: 64px; font-size: 11.5px;
@@ -5679,9 +5837,9 @@ class FriendsPanel extends React.Component {
 .bb-loop { inline-size: 100%; block-size: auto; max-block-size: 300px; display: block; }
 .bb-edge { stroke: var(--dsw-alias-border-l2); stroke-width: 1.2; stroke-dasharray: 3 4; }
 .bb-edge.is-active { stroke: var(--dsw-alias-brand-primary); stroke-dasharray: 5 5; opacity: .85; animation: bb-loop-flow 1.1s linear infinite; }
-.bb-edge.is-scanning { stroke: var(--dsw-alias-brand-secondary); stroke-dasharray: 2 7; opacity: .5; animation: bb-loop-flow 1.8s linear infinite; }
+.bb-edge.is-scanning { stroke: var(--dsw-alias-brand-primary); stroke-dasharray: 2 7; opacity: .5; animation: bb-loop-flow 1.8s linear infinite; }
 .bb-loopPulse { fill: var(--dsw-alias-brand-primary); filter: drop-shadow(0 0 4px color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent)); }
-.bb-node.is-scanning .bb-nodeShape { stroke: var(--dsw-alias-brand-secondary); stroke-width: 1.5; }
+.bb-node.is-scanning .bb-nodeShape { stroke: var(--dsw-alias-brand-primary); stroke-width: 1.5; }
 @keyframes bb-loop-flow { to { stroke-dashoffset: -20; } }
 @media (prefers-reduced-motion: reduce) {
   .bb-edge.is-active, .bb-edge.is-scanning { animation: none; }
@@ -5695,7 +5853,7 @@ class FriendsPanel extends React.Component {
 .bb-node.is-active .bb-nodeText { fill: var(--dsw-alias-label-primary); }
 .bb-nodeDot { fill: var(--dsw-alias-state-warn-primary); }
 .bb-nodeDot.is-off { fill: var(--dsw-alias-state-idle-primary); }
-.bb-groups { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-block-end: 12px; }
+.bb-groups { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); margin-block-end: 12px; }
 .bb-group {
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; padding: 8px 10px;
   cursor: pointer; background: var(--dsw-alias-bg-layer-2); font-size: 11.5px;
@@ -5715,7 +5873,7 @@ class FriendsPanel extends React.Component {
 .bb-gateCard { border: 1px solid var(--dsw-alias-border-l1); border-radius: 16px; padding: 13px 16px; background: var(--dsw-alias-bg-layer-1); }
 .bb-gateCard.is-pass { box-shadow: inset 3px 0 0 var(--dsw-alias-state-success-primary); }
 .bb-gateCard.is-fail { box-shadow: inset 3px 0 0 var(--dsw-alias-state-error-primary); }
-.bb-metrics { display: grid; gap: 4px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-block: 8px; }
+.bb-metrics { display: grid; gap: 4px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); margin-block: 8px; }
 .bb-metric { display: flex; gap: 8px; justify-content: space-between; font-size: 11.5px; border-block-end: 1px dotted var(--dsw-alias-border-l1); padding-block-end: 2px; }
 .bb-metricKey { color: var(--dsw-alias-label-secondary); }
 .bb-metricValue { text-align: end; }
@@ -5729,7 +5887,7 @@ class FriendsPanel extends React.Component {
 .bb-logicRow { padding-block: 8px; border-block-end: 1px dashed var(--dsw-alias-border-l1); }
 .bb-logicRow:last-child { border-block-end: none; }
 .bb-logicName { font-size: 12.5px; }
-.bb-logicGrid { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-block-start: 6px; }
+.bb-logicGrid { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); margin-block-start: 6px; }
 .bb-empty { display: grid; place-items: center; gap: 10px; padding: 48px 12px; color: var(--dsw-alias-label-secondary); text-align: center; }
 .bb-emptyMark {
   display: grid; place-items: center; inline-size: 58px; block-size: 58px; border-radius: 18px;
@@ -5744,6 +5902,31 @@ class FriendsPanel extends React.Component {
   color: var(--dsw-alias-bg-base); background: var(--dsw-alias-label-primary);
 }
 @keyframes bb-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.bb-mind { container: bibao / inline-size; min-block-size: 0; overflow-wrap: anywhere; }
+.bb-mind > * { flex-shrink: 0; }
+.bb-mind :where(*, *::before, *::after) { box-sizing: border-box; }
+.bb-mind :where(.bb-inline, .bb-cardHead, .bb-layerBtns, .bb-innerMeta, .bb-tuneHead) { flex-wrap: wrap; }
+.bb-mind :where(.bb-select, .bb-textarea, .bb-input, .bb-chips, .bb-chip) { max-inline-size: 100%; }
+.bb-mind .bb-chip { height: auto; min-height: 22px; white-space: normal; }
+.bb-mind .bb-heroText { flex-basis: min(100%, 220px); }
+.bb-mind .bb-chips { justify-content: flex-start; }
+.bb-mind .bb-bubble { white-space: pre-wrap; }
+.bb-mind .bb-thread { min-block-size: min(260px, 36vh); }
+.bb-mind .bb-btn.primary {
+  color: var(--dsw-alias-label-primary);
+  background: color-mix(in oklab, var(--dsw-alias-brand-primary) 18%, var(--dsw-alias-bg-layer-1));
+  border-color: var(--dsw-alias-brand-primary);
+}
+.bb-mind :where(button, summary, input, select, textarea):focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.bb-workspaceFrame { display: block; inline-size: 100%; block-size: clamp(24rem, 75dvh, 50rem); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; }
+@container bibao (max-width: 460px) {
+  .bb-mind .bb-card, .bb-mind .bb-head { padding: 11px; }
+  .bb-mind .bb-chips { margin-inline-start: 0; }
+  .bb-mind .bb-tab { padding-inline: 8px; }
+  .bb-mind .bb-field { flex-wrap: wrap; }
+  .bb-mind .bb-field > label { flex-basis: 100%; }
+  .bb-mind .bb-cardHint { text-align: start; }
+}
 @media (max-width: 720px) {
   .bb-panel { padding: 14px 12px 64px; }
   .bb-head { padding: 12px; }

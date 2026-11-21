@@ -75,11 +75,30 @@ hub.register({
 
 | 适配器 | 能力 | 状态 |
 | --- | --- | --- |
-| `tft` | `sense.state` | 只读，读云顶状态 |
-| `screen` | `sense.vision` | 只读，走现有视觉模型 |
-| `eeg` | `sense.biometric` | 只读占位，当前导出内在状态近似值，等真实设备 |
+| `tft` | `sense.state` | 只读，读云顶状态；需要外部推送 `/bci/game` |
+| `screen` | `sense.vision` | 只读，复用视觉模型；可接收外部图片，或明确授权后截屏 |
+| `system` | `sense.state` | 只读，自动采集 CPU / 内存 / 电源 / 网络 / 前台窗口；只在异常时进入意识 |
+| `interoception` | `sense.biometric` | 只读，由精力、皮质醇、心境和睡眠债生成内部体感；不是真实传感器 |
+| `eeg` | `sense.biometric` | 只读占位，真实 EEG / 心率 / 眼动设备尚未接入 |
 | `knowledge` | `sense.knowledge` | 只读，检索导入的 .md/.txt/.json；可在「感官」页开关 |
 | `hands` | `act.pointer` / `act.keyboard` | 工厂已提供，默认不注册、不打开 |
+
+## 自动采集与开关
+
+`sense()` 只负责读取；读到的内容要通过 `brain.perceiveSense()` 才会进入丘脑、工作记忆和情绪。自动采集遵守两条独立闸门：
+
+1. **通道开关**：在「感官」页把对应通道设为「接入」。关闭后，自动采样不会写入大脑；手动投喂和显式 API 读取仍可用。
+2. **屏幕权限**：`autoSense.screenCaptureEnabled` 默认 `false`。关闭时屏幕适配器不会截屏；打开后才会按间隔采集，且截图只在内存中交给视觉模型，不落盘。
+
+默认节奏：
+
+| 适配器 | 前置条件 | 间隔 | 写入条件 |
+| --- | --- | --- | --- |
+| `system` | `system` 通道接入 | 60 秒检查；同一告警 30 分钟内不重复 | 仅低电、内存不足、CPU 过高、断网或连续开机超过 72 小时 |
+| `interoception` | `interoception` 通道接入 | 5 分钟 | 仅精力低、皮质醇高、心境低或睡眠债高 |
+| `screen` | `vision` 通道接入 + 屏幕权限 + 视觉模型启用 | 默认 10 分钟，受每小时视觉上限约束 | 每次截图描述成功 |
+
+同一句体感在 30 分钟内不会重复写入。所有适配器读取都有超时：默认 15 秒，屏幕 45 秒。动作层仍为 `actuation=false`，没有 `/bci/act` 路由，Agent 不能执行键鼠动作。
 
 ## 接一个新设备
 

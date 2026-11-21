@@ -6,6 +6,23 @@
  * 视觉风格与设置页保持一致：同一套卡片 / 芯片 / 标签页。
  */
 
+// 与 DSH 设置页共用 /state 的快照结构，也兼容旧版的标量字段。
+export function consoleMetrics(state) {
+  const neuro = state.neuro ?? {}
+  const format = (value, digits) => typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—'
+  const hormones = Array.isArray(neuro.hormones) ? neuro.hormones : []
+  const hormone = (key) => format(hormones.find((item) => item?.key === key)?.value ?? neuro[key], 2)
+  return {
+    energy: format(neuro.energy, 0),
+    cortisol: hormone('cortisol'),
+    dopamine: hormone('dopamine'),
+    oxytocin: hormone('oxytocin'),
+    serotonin: hormone('serotonin'),
+    mood: neuro.moodLabel ?? neuro.mood ?? '—',
+    threshold: format(state.threshold?.value ?? state.threshold, 2),
+  }
+}
+
 export function renderUiHtml() {
   return `<!doctype html>
 <html lang="zh-CN">
@@ -17,8 +34,11 @@ export function renderUiHtml() {
 :root { color-scheme: light dark; --bg:#f7f6f3; --panel:#fff; --line:#e4e1da; --ink:#1f1d1a; --mute:#6b665e; --brand:#6C5CE7; --ok:#1f9d55; --bad:#c0392b; }
 @media (prefers-color-scheme: dark) { :root { --bg:#16151a; --panel:#1e1d24; --line:#332f3c; --ink:#ece9f2; --mute:#a9a3b5; } }
 * { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
-.wrap { max-width:1060px; margin:0 auto; padding:20px 18px 60px; display:flex; flex-direction:column; gap:14px; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; overflow-wrap:anywhere; }
+.wrap { max-width:1060px; margin:0 auto; padding:20px clamp(10px, 3vw, 18px) 44px; display:flex; flex-direction:column; gap:14px; }
+.wrap > *, .grid > *, .row > *, header > *, .card > * { min-inline-size:0; }
+:where(button, a, input, select, textarea):focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
 header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 16px; border:1px solid var(--line); border-radius:16px; background:var(--panel); }
 h1 { margin:0; font-size:18px; }
 .sub { color:var(--mute); font-size:12px; }
@@ -32,9 +52,9 @@ nav button.on { color:var(--ink); border-color:color-mix(in oklab, var(--brand) 
 .panel { display:none; flex-direction:column; gap:14px; }
 .panel.on { display:flex; }
 .card { border:1px solid var(--line); border-radius:16px; background:var(--panel); padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
-.card h2 { margin:0; font-size:13.5px; display:flex; align-items:center; gap:8px; }
+.card h2 { margin:0; font-size:13.5px; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; }
 .card h2 span { color:var(--mute); font-weight:400; font-size:11.5px; }
-.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
 .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .muted { color:var(--mute); font-size:12px; }
 label.field { display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--mute); }
@@ -42,7 +62,7 @@ input[type=text], input[type=password], input[type=number], textarea, select {
   font:inherit; font-size:13px; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:8px 10px; width:100%;
 }
 textarea { resize:vertical; min-height:64px; }
-button.btn { font:inherit; font-size:12.5px; padding:7px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.btn, a.btn { font:inherit; text-decoration:none; font-size:12.5px; padding:7px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
 button.btn.primary { border-color:color-mix(in oklab, var(--brand) 55%, transparent); background:color-mix(in oklab, var(--brand) 16%, transparent); }
 button.btn:disabled { opacity:.5; cursor:default; }
 input[type=range] { width:100%; accent-color:var(--brand); }
@@ -56,6 +76,19 @@ input[type=range] { width:100%; accent-color:var(--brand); }
 .sticker .gist { font-size:11px; color:var(--mute); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .toast { position:sticky; bottom:12px; align-self:center; padding:8px 14px; border-radius:999px; background:var(--ink); color:var(--bg); font-size:12.5px; opacity:0; transition:opacity .2s; }
 .toast.on { opacity:.92; }
+.status { margin:0; color:var(--mute); }
+.status[data-error] { color:var(--bad); }
+.item:has(> .group-actions) { flex-wrap:wrap; }
+.group-actions { display:flex; flex-wrap:wrap; gap:4px; }
+.group-actions .btn { padding-inline:8px; }
+.workspace-frame { display:block; width:100%; height:clamp(24rem, 78dvh, 55rem); border:1px solid var(--line); border-radius:10px; }
+@media (max-width:420px) {
+  header, .card { padding:12px; }
+  .chips { margin-inline-start:0; }
+  #tabs button { padding-inline:9px; }
+  .group-actions { flex-basis:100%; }
+}
+@media (prefers-reduced-motion:reduce) { .toast { transition:none; } }
 </style>
 </head>
 <body>
@@ -68,8 +101,10 @@ input[type=range] { width:100%; accent-color:var(--brand); }
     <div class="chips" id="chips"></div>
   </header>
 
-  <nav id="tabs">
-    <button data-tab="brain" class="on">脑内</button>
+  <div class="row" id="connectionStatus" role="status"><p class="status" id="connectionText">正在读取脑状态…</p><button class="btn" id="retryState" hidden>重试</button></div>
+
+  <nav id="tabs" aria-label="比宝控制台">
+    <button data-tab="brain" class="on" aria-pressed="true">脑内</button>
     <button data-tab="talk">对话</button>
     <button data-tab="memory">记忆</button>
     <button data-tab="groups">群聊</button>
@@ -125,8 +160,10 @@ input[type=range] { width:100%; accent-color:var(--brand); }
       <div class="row">
         <button class="btn primary" id="stickerImport">导入表情包</button>
         <input type="file" id="stickerFile" accept="image/*" multiple hidden />
-        <span class="muted">一次最多 10 张，自动让视觉模型写梗概和情绪</span>
+        <button class="btn" id="stickerRefresh">刷新收藏</button>
+        <span class="muted">一次最多 10 张，可导入 GIF 动图</span>
       </div>
+      <p id="stickerActivity" class="status" role="status"></p>
       <div class="stickers" id="stickerGrid"></div>
     </div>
   </section>
@@ -172,28 +209,31 @@ input[type=range] { width:100%; accent-color:var(--brand); }
       <div class="row">
         <label class="row"><input type="checkbox" id="sendEnabled" /> 允许发送</label>
         <label class="row"><input type="checkbox" id="recallEnabled" /> 允许冲动撤回</label>
-        <label class="row"><input type="checkbox" id="stickersEnabled" /> 允许发表情包</label>
+        <label class="row"><input type="checkbox" id="stickersEnabled" /> 自动收藏和使用表情包</label>
       </div>
     </div>
-    <div class="row"><button class="btn primary" id="save">保存全部</button><span class="muted" id="saveNote"></span></div>
+    <div class="row"><button class="btn primary" id="save">保存全部</button><span class="muted" id="saveNote" role="status"></span></div>
   </section>
 
   <section class="panel" id="panel-persona">
     <div class="card"><h2>人物 · 蒸馏人生</h2><p class="muted">导入小说或聊天记录，审核经历、性格和表达档案后应用。</p>
-      <iframe title="蒸馏人生导入与审核" src="/api/bibao/biography/distill/ui" loading="lazy" style="width:100%;height:820px;border:0;border-radius:10px"></iframe>
+      <div class="row"><a class="btn" href="/api/bibao/biography/distill/ui" target="_blank" rel="noopener">在新标签页打开工作台</a></div>
+      <iframe title="蒸馏人生导入与审核" src="/api/bibao/biography/distill/ui" loading="lazy" class="workspace-frame"></iframe>
     </div>
   </section>
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status"></div>
 </div>
 <script>
+${consoleMetrics.toString()}
 const token = new URL(location.href).searchParams.get('token') || '';
 const api = async (path, opts) => {
-  const url = '/api/bibao' + path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  const url = '/api/bibao' + path + (token ? (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token) : '');
   const res = await fetch(url, opts);
   const text = await res.text();
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+  try { data = text ? JSON.parse(text) : null; } catch { /* 页面或代理可能返回 HTML */ }
   if (!res.ok) throw new Error((data && (data.error || data.message)) || ('HTTP ' + res.status));
+  if (!data || typeof data !== 'object') throw new Error('服务未返回有效数据');
   return data;
 };
 const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -210,7 +250,10 @@ function toast(text) {
 
 document.querySelectorAll('#tabs button').forEach((button) => {
   button.onclick = () => {
-    document.querySelectorAll('#tabs button').forEach((other) => other.classList.toggle('on', other === button));
+    document.querySelectorAll('#tabs button').forEach((other) => {
+      other.classList.toggle('on', other === button);
+      other.setAttribute('aria-pressed', String(other === button));
+    });
     document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('on'));
     el('panel-' + button.dataset.tab).classList.add('on');
     if (button.dataset.tab === 'friends') loadFriends();
@@ -220,13 +263,19 @@ document.querySelectorAll('#tabs button').forEach((button) => {
 });
 
 let snap = null;
-function renderHeader(state) {
+let stateRequest = null;
+let savingSettings = false;
+const settingsControls = [...el('panel-settings').querySelectorAll('input, select, textarea, button')];
+function updateSettingsControls() {
+  for (const control of settingsControls) control.disabled = !snap || savingSettings;
+}
+function renderHeader(state, metrics) {
   el('name').textContent = state.identity.name;
   el('oneLine').textContent = state.identity.oneLine || '';
   el('clock').textContent = state.clock.day + ' ' + state.clock.label;
   const chips = [];
-  chips.push('<span class="chip">精力 ' + Math.round(state.neuro.energy) + '</span>');
-  chips.push('<span class="chip">皮质醇 ' + state.neuro.cortisol.toFixed(2) + '</span>');
+  chips.push('<span class="chip">精力 ' + metrics.energy + '</span>');
+  chips.push('<span class="chip">皮质醇 ' + metrics.cortisol + '</span>');
   if (state.llm && state.llm.enabled) chips.push('<span class="chip on">语言区 ' + esc(state.llm.model) + '</span>');
   else chips.push('<span class="chip bad">语言区离线</span>');
   if (state.llm && state.llm.lastError) chips.push('<span class="chip bad">语言区降级</span>');
@@ -257,17 +306,16 @@ function renderGrowth(state) {
     : '<div class="muted">还没有注册接口</div>';
 }
 
-function renderBrain(state) {
-  const n = state.neuro;
+function renderBrain(state, metrics) {
   el('neuro').innerHTML = [
-    ['精力', Math.round(n.energy) + '%'],
-    ['皮质醇', n.cortisol.toFixed(2)],
-    ['多巴胺', n.dopamine.toFixed(2)],
-    ['催产素', n.oxytocin.toFixed(2)],
-    ['血清素', n.serotonin.toFixed(2)],
-    ['心境', n.mood],
+    ['精力', metrics.energy === '—' ? '—' : metrics.energy + '%'],
+    ['皮质醇', metrics.cortisol],
+    ['多巴胺', metrics.dopamine],
+    ['催产素', metrics.oxytocin],
+    ['血清素', metrics.serotonin],
+    ['心境', metrics.mood],
   ].map((pair) => '<div class="stat"><span class="muted">' + pair[0] + '</span><span>' + esc(pair[1]) + '</span></div>').join('');
-  el('threshold').textContent = '阈值 ' + Number(state.threshold || 0).toFixed(2);
+  el('threshold').textContent = '阈值 ' + metrics.threshold;
   const slots = state.workspace.slots || [];
   el('slots').innerHTML = slots.length
     ? slots.map((slot) => '<div class="item"><span class="grow">' + esc(slot.title || slot.content || '') + '</span><span class="muted">' + Number(slot.salience || 0).toFixed(2) + '</span></div>').join('')
@@ -289,45 +337,61 @@ function renderBrain(state) {
 }
 
 async function refresh() {
+  stateRequest?.abort();
+  const controller = new AbortController();
+  stateRequest = controller;
   try {
-    const state = await api('/state');
-    snap = state;
-    renderHeader(state);
-    renderBrain(state);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]);
+    const state = await api('/state', { signal });
+    if (controller.signal.aborted) return;
+    if (!state.identity || !state.clock || !state.neuro || !state.workspace || !state.memory) throw new Error('脑状态响应不完整');
+    const metrics = consoleMetrics(state);
+    renderHeader(state, metrics);
+    renderBrain(state, metrics);
     renderGrowth(state);
     fillSettings(state);
+    snap = state;
+    el('connectionStatus').hidden = true;
   } catch (error) {
-    toast('读取失败：' + error.message);
+    if (controller.signal.aborted) return;
+    el('connectionText').textContent = (snap ? '刷新失败，仍显示上次数据：' : '脑状态读取失败：') + error.message;
+    el('connectionText').dataset.error = '';
+    el('connectionStatus').hidden = false;
+    el('retryState').hidden = false;
+  } finally {
+    if (stateRequest === controller) stateRequest = null;
+    updateSettingsControls();
   }
 }
+el('retryState').onclick = () => void refresh();
 
 function fillSettings(state) {
   const form = {
-    baseURL: (state.llmConfig && state.llmConfig.baseURL) || '',
-    model: (state.llm && state.llm.model) || '',
-    visionModel: (state.vision && state.vision.model) || '',
-    visionMax: (state.vision && state.vision.maxPerHour) || 20,
-    httpBase: (state.snow && state.snow.httpBase) || '',
-    configDir: (state.snow && state.snow.configDir) || '',
-    wsUrl: (state.snow && state.snow.wsUrl) || '',
-    allowGroups: ((state.snow && state.snow.allowGroups) || []).join(','),
+    baseURL: state.llmConfig?.baseURL ?? '',
+    model: state.llmConfig?.model ?? '',
+    visionModel: state.vision?.model ?? '',
+    visionMax: state.vision?.maxPerHour ?? 20,
+    httpBase: state.snow?.httpBase ?? '',
+    configDir: state.snow?.configDir ?? '',
+    wsUrl: state.snow?.wsUrl ?? '',
+    allowGroups: (state.snow?.allowGroups ?? []).join(','),
+    visionEnabled: Boolean(state.vision?.enabled),
+    growthSelfReview: state.growth?.selfReview !== false,
+    growthLife: state.growth?.life !== false,
+    outreachEnabled: Boolean(state.outreach?.enabled),
+    sendEnabled: Boolean(state.snow?.sendEnabled),
+    recallEnabled: Boolean(state.snow?.recallEnabled),
+    stickersEnabled: state.snow?.stickers !== false,
+    memoryStrength: state.tuning?.memoryStrength ?? 1,
+    talkativeness: state.tuning?.talkativeness ?? 1,
   };
-  for (const key of Object.keys(form)) {
+  for (const [key, value] of Object.entries(form)) {
     const node = el(key);
-    if (node && !node.dataset.dirty) node.value = form[key];
+    if (node.dataset.dirty) continue;
+    if (node.type === 'checkbox') node.checked = value;
+    else node.value = value;
   }
-  el('visionEnabled').checked = !!(state.vision && state.vision.enabled);
-  el('growthSelfReview').checked = !state.growth || state.growth.selfReview !== false;
-  el('growthLife').checked = !state.growth || state.growth.life !== false;
-  el('outreachEnabled').checked = !!(state.outreach && state.outreach.enabled);
-  el('sendEnabled').checked = !!(state.snow && state.snow.sendEnabled);
-  el('recallEnabled').checked = !!(state.snow && state.snow.recallEnabled);
-  el('stickersEnabled').checked = !state.snow || state.snow.stickers !== false;
-  if (!el('memoryStrength').dataset.dirty && state.tuning) {
-    el('memoryStrength').value = state.tuning.memoryStrength;
-    el('talkativeness').value = state.tuning.talkativeness;
-    labels();
-  }
+  labels();
 }
 
 function labels() {
@@ -345,13 +409,19 @@ function labels() {
     ? '拉满'
     : '冷却 ' + Math.round((1 - talk) * 30) + ' 秒，一次约 ' + Math.max(1, Math.round(3 * (0.35 + 0.65 * talk))) + ' 句';
 }
-el('memoryStrength').oninput = () => { el('memoryStrength').dataset.dirty = '1'; labels(); };
-el('talkativeness').oninput = () => { el('talkativeness').dataset.dirty = '1'; labels(); };
-['baseURL', 'model', 'visionModel', 'visionMax', 'httpBase', 'configDir', 'wsUrl', 'allowGroups', 'apiKey', 'httpToken', 'wsToken'].forEach((id) => {
-  el(id).addEventListener('input', () => { el(id).dataset.dirty = '1'; });
-});
+for (const control of settingsControls) {
+  if (control.tagName === 'BUTTON') continue;
+  control.addEventListener('input', () => {
+    control.dataset.dirty = '1';
+    if (control.type === 'range') labels();
+  });
+}
+updateSettingsControls();
 
 el('save').onclick = async () => {
+  if (savingSettings || !snap) return;
+  savingSettings = true;
+  updateSettingsControls();
   el('saveNote').textContent = '保存中…';
   try {
     const body = {
@@ -380,9 +450,12 @@ el('save').onclick = async () => {
     el('wsToken').value = '';
     el('saveNote').textContent = '已保存';
     toast('已保存');
-    refresh();
+    await refresh();
   } catch (error) {
     el('saveNote').textContent = '保存失败：' + error.message;
+  } finally {
+    savingSettings = false;
+    updateSettingsControls();
   }
 };
 el('visionTest').onclick = async () => {
@@ -395,23 +468,39 @@ el('visionTest').onclick = async () => {
   }
 };
 
+let sendingTalk = false;
 el('talkSend').onclick = async () => {
-  const text = el('talkText').value.trim();
-  if (!text) return;
-  el('talkText').value = '';
+  const input = el('talkText');
+  const text = input.value.trim();
+  if (!text || sendingTalk) return;
+  sendingTalk = true;
+  el('talkSend').disabled = true;
+  el('talkSend').textContent = '等待回复…';
+  input.value = '';
   const log = el('talkLog');
+  log.scrollTop = 0;
   log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">我：' + esc(text) + '</span></div>');
   try {
     const data = await api('/talk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: text, entityId: 'owner' }) });
     const bubbles = (data.result && data.result.dual && data.result.dual.bubbles) || [];
-    const who = (data.identity && data.identity.name) || '比宝';
+    const who = data.snapshot?.identity?.name || snap?.identity?.name || '比宝';
     log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">' + esc(who) + '：' + esc(bubbles.join(' / ') || '（沉默）') + '</span></div>');
     refresh();
   } catch (error) {
     log.insertAdjacentHTML('afterbegin', '<div class="item"><span class="grow">失败：' + esc(error.message) + '</span></div>');
+    if (!input.value) input.value = text;
+  } finally {
+    sendingTalk = false;
+    el('talkSend').textContent = '发送';
+    el('talkSend').disabled = false;
   }
 };
-el('talkText').addEventListener('keydown', (event) => { if (event.key === 'Enter') el('talkSend').click(); });
+el('talkText').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault();
+    el('talkSend').click();
+  }
+});
 
 async function loadGroups() {
   try {
@@ -422,12 +511,19 @@ async function loadGroups() {
       const buttons = ['foveal', 'peripheral', 'muted'].map((key) =>
         '<button class="btn" data-group="' + esc(group.id) + '" data-layer="' + key + '"' + (layer === key ? ' style="border-color:var(--brand)"' : '') + '>' +
         (key === 'foveal' ? '焦点' : key === 'peripheral' ? '余光' : '免打扰') + '</button>').join('');
-      return '<div class="item"><span class="grow">' + esc(group.name) + ' <span class="muted">' + (group.memberCount || 0) + ' 人</span></span>' + buttons + '</div>';
+      return '<div class="item"><span class="grow">' + esc(group.name) + ' <span class="muted">' + (group.memberCount || 0) + ' 人</span></span><div class="group-actions">' + buttons + '</div></div>';
     }).join('') || '<div class="muted">还没有群</div>';
     el('groups').querySelectorAll('button[data-group]').forEach((button) => {
       button.onclick = async () => {
-        await post('/group/layer', { groupId: button.dataset.group, layer: button.dataset.layer });
-        loadGroups();
+        button.disabled = true;
+        try {
+          await post('/group/layer', { groupId: button.dataset.group, layer: button.dataset.layer });
+          await loadGroups();
+        } catch (error) {
+          toast('群聊设置失败：' + error.message);
+        } finally {
+          button.disabled = false;
+        }
       };
     });
     const log = (data.group && data.group.log) || [];
@@ -477,12 +573,21 @@ async function loadStickers() {
   try {
     const data = await api('/stickers');
     const items = data.items || [];
+    const activity = data.activity;
     el('stickerStats').textContent = '共 ' + ((data.stats && data.stats.count) || 0) + ' 张';
+    if (activity) {
+      const connection = activity.connected ? (activity.enabled ? '自动收藏已开启' : '自动收藏已关闭') : 'QQ 未连接';
+      el('stickerActivity').textContent = [
+        connection,
+        '本次运行收到 ' + activity.received + ' 张候选，收藏 ' + activity.saved + ' 张，发送 ' + activity.sent + ' 张',
+        activity.lastCollectError, activity.lastSendError,
+      ].filter(Boolean).join(' · ');
+    } else el('stickerActivity').textContent = '';
     el('stickerGrid').innerHTML = items.slice().reverse().map((item) =>
       '<div class="sticker"><img src="/api/bibao/stickers/file?id=' + encodeURIComponent(item.id) + '&token=' + encodeURIComponent(token) + '" alt="" />' +
       '<div class="gist">' + esc(item.gist) + '</div>' +
       '<div class="row"><span class="chip">' + esc(item.mood || '日常') + '</span><span class="muted">用 ' + (item.uses || 0) + ' 次</span></div>' +
-      '<div class="row"><button class="btn" data-edit="' + esc(item.id) + '">改描述</button><button class="btn" data-send="' + esc(item.id) + '">发一张</button><button class="btn" data-del="' + esc(item.id) + '">删掉</button></div></div>').join('') ||
+      '<div class="row"><button class="btn" data-edit="' + esc(item.id) + '">改描述</button>' + (item.privateOnly || (activity && !activity.manualAvailable) ? '' : '<button class="btn" data-send="' + esc(item.id) + '">发到群里</button>') + '<button class="btn" data-del="' + esc(item.id) + '">删掉</button></div></div>').join('') ||
       '<div class="muted">还没有收藏</div>';
     el('stickerGrid').querySelectorAll('[data-del]').forEach((button) => {
       button.onclick = async () => { await post('/stickers', { remove: button.dataset.del }); loadStickers(); };
@@ -511,16 +616,30 @@ el('stickerImport').onclick = () => el('stickerFile').click();
 el('stickerFile').onchange = async (event) => {
   const files = Array.from(event.target.files || []).slice(0, 10);
   event.target.value = '';
-  for (const file of files) {
-    try {
-      const dataUrl = await shrink(file, 320);
-      await post('/stickers/import', { dataUrl: dataUrl });
-    } catch (error) {
-      toast('导入失败：' + error.message);
+  if (!files.length) return;
+  const button = el('stickerImport');
+  button.disabled = true;
+  button.textContent = '正在导入…';
+  let added = 0;
+  let firstError = '';
+  try {
+    for (const file of files) {
+      try {
+        const dataUrl = await shrink(file, 320);
+        await post('/stickers/import', { dataUrl, name: file.name });
+        added++;
+      } catch (error) {
+        if (!firstError) firstError = error.message;
+      }
     }
+    toast(firstError
+      ? '导入 ' + added + ' 张，失败 ' + (files.length - added) + ' 张。' + firstError
+      : '已导入 ' + added + ' 张表情包');
+    if (added) await loadStickers();
+  } finally {
+    button.disabled = false;
+    button.textContent = '导入表情包';
   }
-  toast('导入完成');
-  loadStickers();
 };
 
 function shrink(file, maxSide) {
@@ -528,6 +647,10 @@ function shrink(file, maxSide) {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('读取失败'));
     reader.onload = () => {
+      if (file.type === 'image/gif') {
+        if (file.size > 3 * 1024 * 1024) return reject(new Error('动图超过 3 MB，请压缩后导入'));
+        return resolve(String(reader.result));
+      }
       const img = new Image();
       img.onerror = () => reject(new Error('不是图片'));
       img.onload = () => {
@@ -545,7 +668,12 @@ function shrink(file, maxSide) {
 }
 
 refresh();
-setInterval(refresh, 6000);
+setInterval(() => {
+  if (!stateRequest && !document.hidden) void refresh();
+}, 6000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !stateRequest) void refresh();
+});
 </script>
 </body>
 </html>`

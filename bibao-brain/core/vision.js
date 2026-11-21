@@ -105,7 +105,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
     get enabled() {
       return Boolean(baseURL && apiKey && model)
     },
-    async describe(url, { prompt = '用第一人称记下你看到的画面：谁、在哪、在做什么、有什么显眼的东西。60 字以内，只描述看到的，不要评价。', maxTokens = 200 } = {}) {
+    async describe(url, { prompt = '用第一人称记下你看到的画面：谁、在哪、在做什么、有什么显眼的东西。60 字以内，只描述看到的，不要评价。', maxTokens = 200, reasoningEffort = 'low', signal } = {}) {
       if (!this.enabled) throw new Error('视觉模型没配置')
       const fetched = await fetchImage(url)
       const dataUrl = fetched.dataUrl
@@ -124,7 +124,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
           body: JSON.stringify({
             model,
             max_tokens: maxTokens,
-            reasoning_effort: 'low',
+            ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
             stream: false,
             messages: [
               {
@@ -136,7 +136,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
               },
             ],
           }),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         })
         const raw = await res.text()
         if (!res.ok) throw new Error(`视觉 HTTP ${res.status}: ${raw.slice(0, 160)}`)
