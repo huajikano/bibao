@@ -74,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.16.2`](https://github.com/huajikano/bibao/releases/tag/v0.16.2) | 修复对话页「我自己」好感度写死 42（改为读取真实社交记忆）；修复群聊页只显示 12 个群、缺最近消息与长列表被截断 |
 | [`v0.16.1`](https://github.com/huajikano/bibao/releases/tag/v0.16.1) | 模型配置改为一键选：从 DSH 已配好的来源与模型里下拉选择，支持一键套用到全部认知逻辑，无需再复制 baseURL / API Key；旧的直连配置继续可用 |
 | [`v0.15.0`](https://github.com/huajikano/bibao/releases/tag/v0.15.0) | BCI 感知回灌、自动本体感觉/内感受/屏幕视觉；QQ 表情包真实收藏与确认发送；界面加载、输入法与线程滚动修复 |
 | [`v0.14.1`](https://github.com/huajikano/bibao/releases/tag/v0.14.1) | 蒸馏可读取自定义供应商已保存的模型，失败时显示上游错误码与 HTTP 状态 |
