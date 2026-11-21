@@ -1142,7 +1142,14 @@ window.__ModuleLoader__.load({
       const timers = useRef([])
       const threadRef = useRef(null)
 
-      const options = [{ id: 'owner', name: '我自己', hint: '亲密度 42' }].concat(
+      const selfRelation = (snap?.social ?? []).find((item) => item.id === 'owner')
+      const options = [
+        {
+          id: 'owner',
+          name: '我自己',
+          hint: selfRelation ? `亲 ${Number(selfRelation.intimacy ?? 0).toFixed(1)} / 惧 ${fixed(selfRelation.powerFear)}` : '亲密度 —',
+        },
+      ].concat(
         (snap?.social ?? [])
           .filter((item) => item.id !== 'owner')
           .map((item) => ({ id: item.id, name: item.name, hint: `亲 ${Number(item.intimacy ?? 0).toFixed(1)} / 惧 ${fixed(item.powerFear)}` })),
@@ -3366,11 +3373,19 @@ window.__ModuleLoader__.load({
 
       renderTalk(t, snap) {
         const { messages, draft, typing, showInner, asId } = this.state
-        const options = [{ id: 'owner', name: '我自己', hint: '亲密度 42' }].concat(
+        // 我自己的好感来自社交记忆，不能写死：之前这里固定成 42，怎么聊都不动
+        const self = (snap.social ?? []).find((item) => item.id === 'owner')
+        const options = [
+          {
+            id: 'owner',
+            name: '我自己',
+            hint: self ? `亲 ${Number(self.intimacy ?? 0).toFixed(1)} / 惧 ${Number(self.powerFear ?? 0).toFixed(2)}` : '亲密度 —',
+          },
+        ].concat(
           (snap.social ?? []).filter((item) => item.id !== 'owner').map((item) => ({
             id: item.id,
             name: item.name,
-            hint: `亲 ${Math.round(item.intimacy)} / 惧 ${Number(item.powerFear).toFixed(2)}`,
+            hint: `亲 ${Number(item.intimacy ?? 0).toFixed(1)} / 惧 ${Number(item.powerFear ?? 0).toFixed(2)}`,
           })),
         )
         return h(
@@ -3623,8 +3638,9 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'bb-groups' },
-              groups.slice(0, 12).map((group) =>
-                h(
+              groups.map((group) => {
+                const last = (group.buffer ?? []).at(-1)
+                return h(
                   'div',
                   { key: group.id, className: `bb-group is-${group.layer}${group.id === this.state.groupId ? ' is-picked' : ''}`, onClick: () => this.setState({ groupId: group.id }) },
                   h(
@@ -3634,7 +3650,12 @@ window.__ModuleLoader__.load({
                     h(Chip, { children: t(group.layer), tone: group.layer === 'foveal' ? 'good' : group.layer === 'peripheral' ? 'on' : '' }),
                     group.pinned ? h(Chip, { children: '固定白名单', tone: 'warn' }) : null,
                   ),
-                  h('div', { className: 'bb-slotMeta' }, `${group.memberCount} 人 · ${group.unread} ${t('unread')}`),
+                  h('div', { className: 'bb-slotMeta' }, `${group.memberCount} 人 · ${group.unread} ${t('unread')} · 缓存 ${(group.buffer ?? []).length} 条`),
+                  h(
+                    'div',
+                    { className: `bb-groupMsg${last ? '' : ' is-empty'}` },
+                    last ? `${last.senderName || last.senderId || '有人'}：${last.text ?? ''}` : '还没有消息',
+                  ),
                   h(
                     'div',
                     { className: 'bb-layerBtns' },
@@ -3656,8 +3677,8 @@ window.__ModuleLoader__.load({
                       ),
                     ),
                   ),
-                ),
-              ),
+                )
+              }),
             ),
             h(
               'p',
@@ -6019,17 +6040,23 @@ class FriendsPanel extends React.Component {
 .bb-node.is-active .bb-nodeText { fill: var(--dsw-alias-label-primary); }
 .bb-nodeDot { fill: var(--dsw-alias-state-warn-primary); }
 .bb-nodeDot.is-off { fill: var(--dsw-alias-state-idle-primary); }
-.bb-groups { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); margin-block-end: 12px; }
+.bb-groups { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); margin-block-end: 12px; max-block-size: min(46vh, 420px); overflow: auto; padding-inline-end: 2px; }
 .bb-group {
   border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; padding: 8px 10px;
   cursor: pointer; background: var(--dsw-alias-bg-layer-2); font-size: 11.5px;
+  min-inline-size: 0;
 }
 .bb-group.is-picked { border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent); }
 .bb-group.is-foveal { box-shadow: inset 3px 0 0 var(--dsw-alias-brand-primary); }
 .bb-group.is-peripheral { box-shadow: inset 3px 0 0 var(--dsw-alias-state-warn-primary); }
 .bb-group.is-muted { opacity: .72; }
 .bb-groupHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.bb-groupName { font-weight: 600; font-size: 12px; }
+.bb-groupName { font-weight: 600; font-size: 12px; overflow-wrap: anywhere; }
+.bb-groupMsg {
+  margin-block-start: 4px; font-size: 11px; line-height: 1.35; color: var(--dsw-alias-label-secondary);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.bb-groupMsg.is-empty { opacity: .6; }
 .bb-groupPreview { margin-block-start: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); }
 .bb-feed { display: flex; flex-direction: column; gap: 8px; }
 .bb-log { display: flex; flex-direction: column; max-block-size: 320px; overflow: auto; }
