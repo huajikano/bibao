@@ -2845,6 +2845,119 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      // 自动获取模型：DSH 来源走适配器目录，自建供应商直接打 {baseURL}/models
+      path: '/suppliers/models', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const source = String(body.source ?? 'custom')
+        const id = String(body.id ?? '').trim()
+        if (!id) return fail('要指定供应商', 400)
+        try {
+          if (source === 'dsh') {
+            const catalog = await readDshModelCatalog(ctx.get('llm'), { provider: id, settings: ctx.get('settings') })
+            return json({
+              models: (catalog.models ?? []).map((row) => ({ id: row.id, name: row.name || row.id })),
+              note: catalog.note ?? '',
+            })
+          }
+          const vendor = vendorById(id)
+          if (!vendor) return fail('没有这个供应商', 404)
+          const base = String(vendor.baseURL || '').replace(/\/(chat\/completions|completions)\/?$/i, '').replace(/\/+$/, '')
+          if (!base) return fail('这个供应商还没有 baseURL', 400)
+          const response = await fetch(`${base}/models`, {
+            headers: vendor.apiKey ? { authorization: `Bearer ${vendor.apiKey}`, accept: 'application/json' } : { accept: 'application/json' },
+            signal: AbortSignal.timeout(15000),
+          })
+          if (!response.ok) return fail(`获取模型失败：HTTP ${response.status}`, 502)
+          const payload = await response.json().catch(() => null)
+          const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+          const models = Array.from(new Set(
+            rows.map((row) => (typeof row === 'string' ? row : row?.id)).filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()),
+          )).slice(0, 100)
+          if (models.length) {
+            vendor.models = models
+            await mkdir(dataDir, { recursive: true })
+            await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+          }
+          return json({
+            models: models.map((mid) => ({ id: mid, name: mid })),
+            note: models.length ? '' : '端点没有返回模型名，可以手动填',
+            vendors: vendorsPublic(),
+          })
+        } catch (error) {
+          return fail(`获取模型失败：${error?.message ?? error}`, 502)
+        }
+      },
+    },
+    {
+      // 统一分配：source = dsh | custom，scope = default | all | 逻辑名 | vision
+      path: '/suppliers/assign', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const source = String(body.source ?? 'custom')
+        const id = String(body.id ?? '').trim()
+        const model = String(body.model ?? '').trim()
+        const scope = String(body.scope ?? 'default')
+        if (!id) return fail('要指定供应商', 400)
+        if (source === 'dsh') {
+          if (scope === 'vision') return fail('视觉需要兼容 OpenAI 的端点，请在「供应商」页用自定义供应商给视觉用', 400)
+          const dsh = ctx.get('llm')
+          if (typeof dsh?.listProviders === 'function' && !dsh.listProviders().some((row) => row.id === id)) {
+            return fail(`DSH 里没有注册来源「${id}」`, 400)
+          }
+          if (!model) return fail('要指定模型', 400)
+          const pick = { provider: id, model, dsh: true, enabled: true, vendor: '', baseURL: '', apiKey: '' }
+          if (scope === 'default' || scope === 'all') {
+            settings.useLlm = true
+            settings.provider = id
+            settings.model = model
+            settings.llm.baseURL = ''
+            settings.llm.model = ''
+          }
+          if (scope === 'all') {
+            settings.llm.profiles = settings.llm.profiles ?? {}
+            for (const name of LOGICS) {
+              if (name === 'funnel' || name === 'ignition') continue
+              settings.llm.profiles[name] = { ...(settings.llm.profiles[name] ?? {}), ...pick }
+            }
+          } else if (scope !== 'default' && LOGICS.includes(scope)) {
+            settings.llm.profiles = settings.llm.profiles ?? {}
+            settings.llm.profiles[scope] = { ...(settings.llm.profiles[scope] ?? {}), ...pick }
+          }
+        } else {
+          const vendor = vendorById(id)
+          if (!vendor) return fail('没有这个供应商', 404)
+          const resolvedModel = model || vendor.models?.[0] || ''
+          if (scope === 'vision') {
+            settings.vision.vendor = id
+            settings.vision.model = resolvedModel
+            settings.vision.baseURL = ''
+            settings.vision.apiKey = ''
+          } else {
+            const pick = { vendor: id, model: resolvedModel, enabled: true, dsh: false, provider: '', baseURL: '', apiKey: '' }
+            if (scope === 'default' || scope === 'all') {
+              settings.vendor = id
+              settings.useLlm = true
+            }
+            if (scope === 'all') {
+              settings.llm.profiles = settings.llm.profiles ?? {}
+              for (const name of LOGICS) {
+                if (name === 'funnel' || name === 'ignition') continue
+                settings.llm.profiles[name] = { ...(settings.llm.profiles[name] ?? {}), ...pick }
+              }
+            } else if (scope !== 'default' && LOGICS.includes(scope)) {
+              settings.llm.profiles = settings.llm.profiles ?? {}
+              settings.llm.profiles[scope] = { ...(settings.llm.profiles[scope] ?? {}), ...pick }
+            }
+          }
+        }
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+        refreshLlm()
+        return json({ ok: true, snapshot: snapshot() })
+      },
+    },
+    {
       // 供应商账本：集中增删改查。密钥只落本机、只回掩码。
       path: '/vendors', methods: ['GET', 'POST', 'DELETE'],
       handler: async (request) => {

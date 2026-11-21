@@ -15,6 +15,12 @@ const server = createServer((req, res) => {
   let body = ''
   req.on('data', (chunk) => { body += chunk })
   req.on('end', () => {
+    // 自动获取模型：OpenAI 兼容的 /models
+    if (req.method === 'GET' && /\/v1\/models$/.test(req.url ?? '')) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ data: [{ id: 'fake-model-1' }, { id: 'fake-model-2' }] }))
+      return
+    }
     seen.push({ url: req.url, auth: req.headers.authorization ?? '', body: body ? JSON.parse(body) : null })
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({
@@ -52,9 +58,15 @@ const check = (name, ok, detail) => results.push({ name, ok, detail })
 
 try {
   const added = await call('POST', '/vendors', {
-    name: '本地假端点', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'sk-fake-endpoint-key', models: ['fake-model-1'], makeDefault: true,
+    name: '本地假端点', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'sk-fake-endpoint-key', models: [], makeDefault: true,
   })
-  const used = await call('POST', '/llm/use-vendor', { vendor: added.data.vendor.id, scope: 'all' })
+  check('可以只填地址和 Key 保存', added.status === 200 && added.data.vendor.models.length === 0, `${added.data.vendor.models.length} 个模型`)
+
+  const fetched = await call('POST', '/suppliers/models', { source: 'custom', id: added.data.vendor.id })
+  check('模型可自动获取', fetched.status === 200 && fetched.data.models.length === 2, fetched.data.models.map((m) => m.id).join(','))
+  check('获取后写回供应商', (fetched.data.vendors ?? []).find((v) => v.id === added.data.vendor.id)?.models?.length === 2)
+
+  const used = await call('POST', '/suppliers/assign', { source: 'custom', id: added.data.vendor.id, model: 'fake-model-2', scope: 'all' })
   check('供应商已应用到全部逻辑', used.status === 200)
 
   // 短问候会走本地快路径，这里用一句真实对话触发模型
@@ -63,7 +75,7 @@ try {
   const first = seen[0]
   check('请求路径是 OpenAI 兼容接口', Boolean(first && /\/v1\/chat\/completions$/.test(first.url ?? '')), first?.url)
   check('带上了该供应商的 Key', first?.auth === 'Bearer sk-fake-endpoint-key', first?.auth ? 'Bearer ***' : '无')
-  check('使用了该供应商的模型', first?.body?.model === 'fake-model-1', first?.body?.model)
+  check('使用了所选模型', first?.body?.model === 'fake-model-2', first?.body?.model)
 } finally {
   server.close()
   for (let i = 0; i < 5; i += 1) { try { await rm(dir, { recursive: true, force: true }); break } catch { await new Promise((r) => setTimeout(r, 120)) } }
