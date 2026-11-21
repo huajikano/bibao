@@ -2798,6 +2798,14 @@ window.__ModuleLoader__.load({
           note: '',
           saving: '',
           form: null,
+          // DSH 模型目录：直接列出已配好的来源与模型，省去手抄 provider/model
+          catalog: null,
+          catalogError: '',
+          catalogLoading: false,
+          pickProvider: '',
+          pickModel: '',
+          pickBusy: '',
+          pickNote: '',
         }
         this.timers = []
         this.followThread = true
@@ -2822,11 +2830,14 @@ window.__ModuleLoader__.load({
         this.syncForm = this.syncForm.bind(this)
         this.setField = this.setField.bind(this)
         this.setProfile = this.setProfile.bind(this)
+        this.loadCatalog = this.loadCatalog.bind(this)
+        this.useDshModel = this.useDshModel.bind(this)
       }
 
       componentDidMount() {
         this.alive = true
         this.load()
+        void this.loadCatalog()
         this.timer = setInterval(() => {
           if (!this.stateRequest && !document.hidden) void this.load()
         }, 4000)
@@ -2896,7 +2907,14 @@ window.__ModuleLoader__.load({
         const snow = snap.snow ?? {}
         const profiles = {}
         for (const item of cfg.profiles ?? []) {
-          profiles[item.name] = { enabled: item.enabled !== false, baseURL: item.baseURL ?? '', model: item.model ?? '', apiKey: '' }
+          profiles[item.name] = {
+            enabled: item.enabled !== false,
+            baseURL: item.baseURL ?? '',
+            model: item.model ?? '',
+            provider: item.provider ?? '',
+            dsh: item.dsh === true,
+            apiKey: '',
+          }
         }
         this.setState({
           form: {
@@ -2936,6 +2954,65 @@ window.__ModuleLoader__.load({
             profiles: { ...prev.form.profiles, [name]: { ...(prev.form.profiles[name] ?? {}), ...patch } },
           },
         }))
+      }
+
+      async loadCatalog() {
+        if (this.state.catalogLoading) return
+        this.setState({ catalogLoading: true })
+        try {
+          const data = await request('/llm/catalog')
+          if (!this.alive) return
+          const active = data.active ?? {}
+          const providers = data.providers ?? []
+          const current = providers.find((row) => row.provider === active.provider)
+          const provider = this.state.pickProvider || (current ? current.provider : (providers[0]?.provider ?? ''))
+          this.setState({ catalog: data, catalogError: '', catalogLoading: false, pickProvider: provider })
+          await this.loadModelsFor(provider, active.model || '')
+        } catch (error) {
+          if (this.alive) this.setState({ catalogError: `读取 DSH 模型目录失败：${error.message}`, catalogLoading: false })
+        }
+      }
+
+      /** 拉取某个来源的模型列表；prefer 用来保持已选模型不被覆盖。 */
+      async loadModelsFor(provider, prefer = '') {
+        if (!provider) return
+        try {
+          const data = await request(`/llm/catalog?provider=${encodeURIComponent(provider)}`)
+          if (!this.alive) return
+          const models = data.models ?? []
+          const modelsByProvider = { ...(this.state.catalog?.modelsByProvider ?? {}), [provider]: models }
+          const wanted = prefer || this.state.pickModel
+          const keep = models.some((row) => row.id === wanted) ? wanted : (models[0]?.id ?? '')
+          this.setState({ catalog: { ...(this.state.catalog ?? {}), modelsByProvider }, pickModel: keep })
+        } catch (error) {
+          if (this.alive) this.setState({ catalogError: `读取该来源的模型失败：${error.message}` })
+        }
+      }
+
+      /** 把选中的 DSH 模型一次性用起来；scope=all 时铺给全部认知逻辑。 */
+      async useDshModel(scope) {
+        const provider = this.state.pickProvider
+        const model = this.state.pickModel
+        if (!provider || !model) {
+          this.setState({ pickNote: '先选来源和模型' })
+          return
+        }
+        this.setState({ pickBusy: scope, pickNote: '' })
+        try {
+          const data = await request('/llm/use-dsh', {
+            method: 'POST',
+            body: JSON.stringify({ provider, model, scope }),
+          })
+          if (!this.alive) return
+          this.setState({
+            snap: data.snapshot,
+            pickBusy: '',
+            pickNote: scope === 'all' ? '已套用到全部认知逻辑' : '已设为默认模型',
+          })
+          this.syncForm(data.snapshot)
+        } catch (error) {
+          if (this.alive) this.setState({ pickBusy: '', pickNote: `应用失败：${error.message}` })
+        }
       }
 
       async sendTalk() {
@@ -3217,7 +3294,13 @@ window.__ModuleLoader__.load({
         if (form.apiKey) llm.apiKey = form.apiKey
         for (const meta of LOGIC_META) {
           const row = form.profiles[meta.name] ?? {}
-          llm.profiles[meta.name] = { enabled: row.enabled !== false, baseURL: row.baseURL ?? '', model: row.model ?? '' }
+          llm.profiles[meta.name] = {
+            enabled: row.enabled !== false,
+            baseURL: row.baseURL ?? '',
+            model: row.model ?? '',
+            provider: row.provider ?? '',
+            dsh: row.dsh === true,
+          }
           if (row.apiKey) llm.profiles[meta.name].apiKey = row.apiKey
         }
         const snowluma = {
@@ -3721,11 +3804,65 @@ window.__ModuleLoader__.load({
           ),
           h(
             Card,
-            { title: '语言区模型', hint: '留空则用 DSH 当前默认模型' },
-            h(Field, { label: 'baseURL / 完整 URL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://…/v2/chat/completions', onChange: (e) => this.setField({ baseURL: e.target.value }) })),
-            h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'spark-x2.6 / deepseek-chat', onChange: (e) => this.setField({ model: e.target.value }) })),
-            h(Field, { label: 'apiKey' }, h('input', { className: 'bb-input', type: 'password', value: form.apiKey, placeholder: snap.llmConfig?.hasKey ? `${snap.llmConfig.keyMask}（留空不变）` : '留空 = 用 DSH 默认模型', onChange: (e) => this.setField({ apiKey: e.target.value }) })),
-            h('div', { className: 'bb-muted' }, '三种逻辑可各指向不同厂商 / 不同 key；关掉「独立配置」就继承默认'),
+            { title: '选用模型', hint: '直接挑 DSH 里已经配好的模型：不用填 baseURL，也不用复制 API Key' },
+            this.state.catalogError ? h('div', { className: 'bb-muted' }, this.state.catalogError) : null,
+            h(
+              'div',
+              { className: 'bb-inline bb-inline--wrap' },
+              h(
+                'label',
+                { className: 'bb-field', style: { flex: '1 1 180px' } },
+                h('span', {}, '模型来源'),
+                h(
+                  'select',
+                  {
+                    className: 'bb-input',
+                    value: this.state.pickProvider,
+                    onChange: (event) => {
+                      const provider = event.target.value
+                      this.setState({ pickProvider: provider, pickModel: '' })
+                      void this.loadModelsFor(provider)
+                    },
+                  },
+                  (this.state.catalog?.providers ?? []).length === 0
+                    ? h('option', { value: '' }, this.state.catalogLoading ? '读取中…' : 'DSH 里还没有可用来源')
+                    : (this.state.catalog.providers ?? []).map((row) =>
+                        h('option', { key: row.provider, value: row.provider }, `${row.displayName || row.provider}${row.active === false ? '（未启用）' : ''}`),
+                      ),
+                ),
+              ),
+              h(
+                'label',
+                { className: 'bb-field', style: { flex: '1 1 220px' } },
+                h('span', {}, '模型'),
+                h(
+                  'select',
+                  {
+                    className: 'bb-input',
+                    value: this.state.pickModel,
+                    onChange: (event) => this.setState({ pickModel: event.target.value }),
+                  },
+                  ((this.state.catalog?.modelsByProvider ?? {})[this.state.pickProvider] ?? []).length === 0
+                    ? h('option', { value: '' }, '该来源没有列出模型')
+                    : ((this.state.catalog?.modelsByProvider ?? {})[this.state.pickProvider] ?? []).map((row) =>
+                        h('option', { key: row.id, value: row.id }, row.name && row.name !== row.id ? `${row.name}（${row.id}）` : row.id),
+                      ),
+                ),
+              ),
+            ),
+            h(
+              'div',
+              { className: 'bb-actions' },
+              h('button', { type: 'button', className: 'bb-btn primary', disabled: Boolean(this.state.pickBusy), onClick: () => this.useDshModel('all') }, this.state.pickBusy === 'all' ? '应用中…' : '套用到全部认知逻辑'),
+              h('button', { type: 'button', className: 'bb-btn', disabled: Boolean(this.state.pickBusy), onClick: () => this.useDshModel('default') }, this.state.pickBusy === 'default' ? '应用中…' : '只设为默认'),
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadCatalog() }, '刷新列表'),
+            ),
+            this.state.pickNote ? h('span', { className: 'bb-chip good' }, this.state.pickNote) : null,
+            h('div', { className: 'bb-muted' }, '走 DSH 的模型用你已登录的账号与额度，不需要另外填 Key；这里选完会立刻生效并写入本机设置。'),
+          ),
+          h(
+            Card,
+            { title: '每个逻辑的模型', hint: '默认全部继承上面的选择；有需要再单独指定' },
             LOGIC_META.map((meta) => {
               const row = form.profiles[meta.name] ?? {}
               const status = (snap.llmConfig?.profiles ?? []).find((item) => item.name === meta.name) ?? {}
@@ -3740,17 +3877,33 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'bb-muted' }, meta.hint),
                 )
               }
+              const usingDsh = row.dsh === true && Boolean(row.provider) && Boolean(row.model)
               return h(
                 'div',
                 { key: meta.name, className: 'bb-logicRow' },
-                h('div', { className: 'bb-inline' }, h('strong', { className: 'bb-logicName' }, meta.label), h(Chip, { children: status.active ? status.source : 'local', tone: status.active ? 'good' : '' }), h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: row.enabled !== false, onChange: (e) => this.setProfile(meta.name, { enabled: e.target.checked }) }), '独立配置')),
+                h('div', { className: 'bb-inline' },
+                  h('strong', { className: 'bb-logicName' }, meta.label),
+                  h(Chip, { children: status.active ? status.source : 'local', tone: status.active ? 'good' : '' }),
+                  h('label', { className: 'bb-check' }, h('input', { type: 'checkbox', checked: row.enabled !== false, onChange: (e) => this.setProfile(meta.name, { enabled: e.target.checked }) }), '独立配置'),
+                ),
                 h('div', { className: 'bb-muted' }, meta.hint),
                 row.enabled !== false
-                  ? h('div', { className: 'bb-logicGrid' },
-                      h('input', { className: 'bb-input', value: row.baseURL ?? '', placeholder: '继承 baseURL', onChange: (e) => this.setProfile(meta.name, { baseURL: e.target.value }) }),
-                      h('input', { className: 'bb-input', value: row.model ?? '', placeholder: '继承 model', onChange: (e) => this.setProfile(meta.name, { model: e.target.value }) }),
-                      h('input', { className: 'bb-input', type: 'password', value: row.apiKey ?? '', placeholder: status.hasKey ? `${status.keyMask}（留空不变）` : '继承 apiKey', onChange: (e) => this.setProfile(meta.name, { apiKey: e.target.value }) }),
-                    )
+                  ? usingDsh
+                    ? h('div', { className: 'bb-inline bb-inline--wrap' },
+                        h(Chip, { children: `DSH · ${row.provider}/${row.model}`, tone: 'good' }),
+                        h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.setProfile(meta.name, { dsh: false, provider: '', model: '', baseURL: '' }) }, '改回继承'),
+                      )
+                    : h('div', { className: 'bb-logicGrid' },
+                        h('input', { className: 'bb-input', value: row.baseURL ?? '', placeholder: '继承 baseURL', onChange: (e) => this.setProfile(meta.name, { baseURL: e.target.value }) }),
+                        h('input', { className: 'bb-input', value: row.model ?? '', placeholder: '继承 model', onChange: (e) => this.setProfile(meta.name, { model: e.target.value }) }),
+                        h('input', { className: 'bb-input', type: 'password', value: row.apiKey ?? '', placeholder: status.hasKey ? `${status.keyMask}（留空不变）` : '继承 apiKey', onChange: (e) => this.setProfile(meta.name, { apiKey: e.target.value }) }),
+                        h('button', {
+                          type: 'button',
+                          className: 'bb-btn bb-btn--tiny',
+                          disabled: !this.state.pickProvider || !this.state.pickModel,
+                          onClick: () => this.setProfile(meta.name, { dsh: true, provider: this.state.pickProvider, model: this.state.pickModel, baseURL: '' }),
+                        }, '用上面选的 DSH 模型'),
+                      )
                   : null,
               )
             }),
@@ -3758,6 +3911,19 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'bb-actions', style: { marginBlockStart: '10px' } },
               h('button', { type: 'button', className: 'bb-btn primary', disabled: Boolean(saving), onClick: this.saveSettings }, '保存模型'),
+            ),
+          ),
+          h(
+            Card,
+            { title: '手动直连（可选）', hint: '只有要绕开 DSH、直连别家端点时才需要填' },
+            h(Field, { label: 'baseURL / 完整 URL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://…/v2/chat/completions', onChange: (e) => this.setField({ baseURL: e.target.value }) })),
+            h(Field, { label: 'model' }, h('input', { className: 'bb-input', value: form.model, placeholder: 'spark-x2.6 / deepseek-chat', onChange: (e) => this.setField({ model: e.target.value }) })),
+            h(Field, { label: 'apiKey' }, h('input', { className: 'bb-input', type: 'password', value: form.apiKey, placeholder: snap.llmConfig?.hasKey ? `${snap.llmConfig.keyMask}（留空不变）` : '留空 = 用 DSH 默认模型', onChange: (e) => this.setField({ apiKey: e.target.value }) })),
+            h('div', { className: 'bb-muted' }, '三项都填齐才会走直连；留空则用上面的 DSH 选择或 DSH 当前默认模型。'),
+            h(
+              'div',
+              { className: 'bb-actions', style: { marginBlockStart: '10px' } },
+              h('button', { type: 'button', className: 'bb-btn primary', disabled: Boolean(saving), onClick: this.saveSettings }, '保存直连配置'),
             ),
           ),
           h(

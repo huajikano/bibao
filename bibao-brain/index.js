@@ -412,8 +412,8 @@ export function apply(ctx, config = {}) {
       apiKey: override.apiKey || base.apiKey,
       model: override.model || base.model,
     }
-    // 蒸馏工作台可直接选用 DSH 已保存的模型：经 DSH 的适配、限额与计量，不需要另存密钥。
-    if (name === 'distill' && override.enabled !== false && override.dsh === true && override.provider && override.model && dsh && typeof dsh.stream === 'function') {
+    // 任何逻辑都可以直接选用 DSH 已保存的模型：经 DSH 的适配、限额与计量，不需要另存密钥。
+    if (override.enabled !== false && override.dsh === true && override.provider && override.model && dsh && typeof dsh.stream === 'function') {
       return {
         llm: meterLlm(dsh, { meter: usage, logic: name, provider: override.provider, model: override.model, source: 'dsh:' + override.provider }),
         provider: override.provider,
@@ -507,6 +507,9 @@ export function apply(ctx, config = {}) {
       try {
         const saved = JSON.parse(await readFile(settingsFile, 'utf8'))
         if (typeof saved?.useLlm === 'boolean') settings.useLlm = saved.useLlm
+        // 语言区默认模型：改成 provider/model 分开存，重启后才不会退回 DSH 当前选中项
+        if (typeof saved?.provider === 'string') settings.provider = saved.provider
+        if (typeof saved?.model === 'string') settings.model = saved.model
         if (saved?.snowluma && typeof saved.snowluma === 'object') {
           // 以前只恢复 enabled/sendEnabled/allowGroups，手填的 WS/HTTP 地址与 token
           // 重启后会丢失，表现为"配置保存了但客户端连不上"。这里逐字段恢复。
@@ -717,6 +720,43 @@ export function apply(ctx, config = {}) {
     return `${text.slice(0, 4)}…${text.slice(-4)}`
   }
 
+  /** settings.json 的唯一序列化入口：面板保存与一键采用模型共用，避免两处字段漂移。 */
+  function persistedSettings() {
+    return {
+      useLlm: settings.useLlm,
+      provider: settings.provider,
+      model: settings.model,
+      snowluma: {
+        enabled: settings.snowluma.enabled,
+        sendEnabled: settings.snowluma.sendEnabled,
+        allowGroups: settings.snowluma.allowGroups,
+        allowPrivate: settings.snowluma.allowPrivate,
+        pokeReact: settings.snowluma.pokeReact,
+        pokeReply: settings.snowluma.pokeReply,
+        pokeAnyGroup: settings.snowluma.pokeAnyGroup,
+        pokeBack: settings.snowluma.pokeBack,
+        recallEnabled: settings.snowluma.recallEnabled === true,
+        stickers: settings.snowluma.stickers !== false,
+        selfId: settings.snowluma.selfId ?? '',
+        maxReplyChars: settings.snowluma.maxReplyChars,
+        httpBase: settings.snowluma.httpBase,
+        httpToken: settings.snowluma.httpToken,
+        wsUrl: settings.snowluma.wsUrl,
+        wsToken: settings.snowluma.wsToken,
+        wsMode: settings.snowluma.wsMode,
+        wsServer: settings.snowluma.wsServer,
+      },
+      llm: settings.llm,
+      tuning: settings.tuning,
+      growth: settings.growth,
+      outreach: settings.outreach,
+      vision: settings.vision,
+      autoSense: settings.autoSense,
+      knowledge: settings.knowledge,
+      owner: settings.owner,
+    }
+  }
+
   function snapshot() {
     if (!brain) return null
     refreshLlm()
@@ -779,6 +819,9 @@ export function apply(ctx, config = {}) {
       asleep: brain.isAsleep(),
       llmConfig: {
         useLlm: settings.useLlm,
+        // 默认语言区：provider/model 是 DSH 侧的选中项；baseURL/model 是直连残留
+        provider: settings.provider,
+        dshModel: settings.model,
         baseURL: settings.llm.baseURL,
         model: settings.llm.model,
         hasKey: Boolean(settings.llm.apiKey),
@@ -790,6 +833,8 @@ export function apply(ctx, config = {}) {
             name: logicName,
             baseURL: override.baseURL ?? '',
             model: override.model ?? '',
+            provider: override.provider ?? '',
+            dsh: override.dsh === true,
             hasKey: Boolean(override.apiKey),
             keyMask: maskKey(override.apiKey),
             enabled: override.enabled !== false,
@@ -2648,37 +2693,7 @@ export function apply(ctx, config = {}) {
           brain.applyTuning(settings.tuning)
           try {
             await mkdir(dataDir, { recursive: true })
-            await writeFile(settingsFile, JSON.stringify({
-              useLlm: settings.useLlm,
-              snowluma: {
-                enabled: settings.snowluma.enabled,
-                sendEnabled: settings.snowluma.sendEnabled,
-                allowGroups: settings.snowluma.allowGroups,
-                allowPrivate: settings.snowluma.allowPrivate,
-                pokeReact: settings.snowluma.pokeReact,
-                pokeReply: settings.snowluma.pokeReply,
-                pokeAnyGroup: settings.snowluma.pokeAnyGroup,
-                pokeBack: settings.snowluma.pokeBack,
-                recallEnabled: settings.snowluma.recallEnabled === true,
-                stickers: settings.snowluma.stickers !== false,
-                selfId: settings.snowluma.selfId ?? '',
-                maxReplyChars: settings.snowluma.maxReplyChars,
-                httpBase: settings.snowluma.httpBase,
-                httpToken: settings.snowluma.httpToken,
-                wsUrl: settings.snowluma.wsUrl,
-                wsToken: settings.snowluma.wsToken,
-                wsMode: settings.snowluma.wsMode,
-                wsServer: settings.snowluma.wsServer,
-              },
-              llm: settings.llm,
-              tuning: settings.tuning,
-              growth: settings.growth,
-              outreach: settings.outreach,
-              vision: settings.vision,
-              autoSense: settings.autoSense,
-              knowledge: settings.knowledge,
-              owner: settings.owner,
-            }), 'utf8')
+            await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
           } catch (error) {
             console.warn('[bibao] tuning save failed:', error?.message ?? error)
           }
@@ -2757,6 +2772,79 @@ export function apply(ctx, config = {}) {
             settings: ctx.get('settings'),
           }))
         } catch { return fail('读取 DSH 模型目录失败，请刷新后重试。', 502) }
+      },
+    },
+    {
+      // 模型目录：把 DSH 里已经配好的来源与模型列出来，省得手抄 provider/model 和 apiKey。
+      path: '/llm/catalog', methods: ['GET'],
+      handler: async (request) => {
+        await boot()
+        try {
+          const provider = new URL(request.url).searchParams.get('provider') || ''
+          const catalog = await readDshModelCatalog(ctx.get('llm'), { provider, settings: ctx.get('settings') })
+          const providers = (catalog.providers ?? []).map((row) => {
+            if (row.provider !== 'direct' || row.active) return row
+            // direct 的「已注册」取决于默认端点是否填过，这里按实际配置纠正一次
+            return { ...row, active: Boolean(settings.llm.baseURL && settings.llm.apiKey) }
+          })
+          return json({
+            providers,
+            models: catalog.models ?? [],
+            note: catalog.note ?? '',
+            manual: catalog.manual === true,
+            active: {
+              useLlm: settings.useLlm,
+              provider: settings.provider,
+              model: settings.model,
+              baseURL: settings.llm.baseURL,
+              directModel: settings.llm.model,
+              hasKey: Boolean(settings.llm.apiKey),
+              keyMask: maskKey(settings.llm.apiKey),
+            },
+          })
+        } catch {
+          return fail('读取 DSH 模型目录失败，请刷新后重试。', 502)
+        }
+      },
+    },
+    {
+      // 一键采用：把 DSH 里某个已配好的模型设成默认语言区模型，或直接铺给全部认知逻辑。
+      path: '/llm/use-dsh', methods: ['POST'],
+      handler: async (request) => {
+        await boot()
+        const body = await readBody(request)
+        const provider = String(body.provider ?? '').trim()
+        const model = String(body.model ?? '').trim()
+        if (!provider || !model) return fail('要指定 provider 与 model', 400)
+        const dsh = ctx.get('llm')
+        if (typeof dsh?.listProviders === 'function' && !dsh.listProviders().some((row) => row.id === provider)) {
+          return fail(`DSH 里没有注册来源「${provider}」，请先在 DSH 模型设置里启用它`, 400)
+        }
+        const scope = String(body.scope ?? 'default')
+        // 走 DSH 不需要 baseURL/apiKey：DSH 已经持有，这里只记 provider/model。
+        const pick = { provider, model, dsh: true, enabled: true, baseURL: '' }
+        if (scope === 'default' || scope === 'all') {
+          settings.useLlm = true
+          settings.provider = provider
+          settings.model = model
+          // 只清掉直连端点与模型名，让 DSH 分支生效；apiKey 原样保留，方便随时切回直连
+          settings.llm.baseURL = ''
+          settings.llm.model = ''
+        }
+        if (scope === 'all') {
+          settings.llm.profiles = settings.llm.profiles ?? {}
+          for (const name of LOGICS) {
+            if (name === 'funnel' || name === 'ignition') continue
+            settings.llm.profiles[name] = { ...(settings.llm.profiles[name] ?? {}), ...pick }
+          }
+        } else if (scope !== 'default' && LOGICS.includes(scope)) {
+          settings.llm.profiles = settings.llm.profiles ?? {}
+          settings.llm.profiles[scope] = { ...(settings.llm.profiles[scope] ?? {}), ...pick }
+        }
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+        refreshLlm()
+        return json({ ok: true, snapshot: snapshot() })
       },
     },
     {
@@ -3682,9 +3770,12 @@ export function apply(ctx, config = {}) {
           }
         }
         if (body.llm && typeof body.llm === 'object') {
-          if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/') && !directEndpoint) {
+          const providerGiven = typeof body.llm.provider === 'string' && body.llm.provider.trim()
+          if (typeof body.llm.model === 'string' && body.llm.model && !body.llm.model.includes('/') && !directEndpoint && !providerGiven) {
             return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
           }
+          if (typeof body.llm.provider === 'string') settings.provider = body.llm.provider.trim()
+          if (typeof body.llm.useLlm === 'boolean') settings.useLlm = body.llm.useLlm
           for (const key of ['baseURL', 'apiKey', 'model']) {
             if (typeof body.llm[key] !== 'string') continue
             // 空字符串 = 表单没填，保留已保存的（尤其是 apiKey，面板只回显掩码）
@@ -3717,41 +3808,7 @@ export function apply(ctx, config = {}) {
         }
         try {
           await mkdir(dataDir, { recursive: true })
-          await writeFile(
-            settingsFile,
-            JSON.stringify({
-              useLlm: settings.useLlm,
-              snowluma: {
-                enabled: settings.snowluma.enabled,
-                sendEnabled: settings.snowluma.sendEnabled,
-                allowGroups: settings.snowluma.allowGroups,
-                allowPrivate: settings.snowluma.allowPrivate,
-                pokeReact: settings.snowluma.pokeReact,
-                pokeReply: settings.snowluma.pokeReply,
-                pokeAnyGroup: settings.snowluma.pokeAnyGroup,
-                pokeBack: settings.snowluma.pokeBack,
-                recallEnabled: settings.snowluma.recallEnabled === true,
-                stickers: settings.snowluma.stickers !== false,
-                selfId: settings.snowluma.selfId ?? '',
-                maxReplyChars: settings.snowluma.maxReplyChars,
-                httpBase: settings.snowluma.httpBase,
-                httpToken: settings.snowluma.httpToken,
-                wsUrl: settings.snowluma.wsUrl,
-                wsToken: settings.snowluma.wsToken,
-                wsMode: settings.snowluma.wsMode,
-                wsServer: settings.snowluma.wsServer,
-              },
-              llm: settings.llm,
-              tuning: settings.tuning,
-              growth: settings.growth,
-              outreach: settings.outreach,
-              vision: settings.vision,
-              autoSense: settings.autoSense,
-              knowledge: settings.knowledge,
-              owner: settings.owner,
-            }),
-            'utf8',
-          )
+          await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
         } catch (error) {
           console.warn('[bibao] settings save failed:', error?.message ?? error)
         }
