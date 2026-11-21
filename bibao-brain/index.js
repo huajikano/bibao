@@ -69,9 +69,13 @@ const DEFAULTS = {
   // 主动分享：默认关闭，且只发私聊；打开后每天最多一条
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
-  vision: { enabled: false, baseURL: '', apiKey: '', model: '', maxPerHour: 20 },
+  vision: { enabled: false, vendor: '', baseURL: '', apiKey: '', model: '', maxPerHour: 20 },
   knowledge: { enabled: false, dir: '', maxSnippets: 2, maxChars: 700 },
   owner: { qq: '', requirements: '' },
+  // 中心化供应商：像 cc-switch 那样先把「名称 / 地址 / Key / 模型」存好，各处只选供应商
+  providers: [],
+  // 默认用哪个供应商（provider id）；空 = 不用供应商
+  vendor: '',
   // 手：默认关着；开着就会真的动鼠标键盘
   game: { control: false, layout: null, autoStart: false },
   // 自动感官：屏幕截图默认关闭，必须单独授权
@@ -140,11 +144,15 @@ export function apply(ctx, config = {}) {
   const stateFile = settings.stateFile || path.join(dataDir, 'brain-state.json')
   const settingsFile = path.join(dataDir, 'settings.json')
   const usage = new TokenMeter({ file: path.join(dataDir, 'usage.json') })
-  const visionConfig = () => ({
-    baseURL: settings.vision.baseURL || settings.llm.baseURL,
-    apiKey: settings.vision.apiKey || settings.llm.apiKey,
-    model: settings.vision.model,
-  })
+  const visionConfig = () => {
+    // 视觉也能直接选供应商：选了就不用再单独填地址和 Key
+    const vendor = vendorById(settings.vision.vendor)
+    return {
+      baseURL: settings.vision.baseURL || vendor?.baseURL || settings.llm.baseURL,
+      apiKey: settings.vision.apiKey || vendor?.apiKey || settings.llm.apiKey,
+      model: settings.vision.model || vendor?.models?.[0] || '',
+    }
+  }
 
   const visionUsage = (row = {}) =>
     usage.record({
@@ -400,17 +408,19 @@ export function apply(ctx, config = {}) {
   const LOGICS = ['funnel', 'ignition', 'appraisal', 'memory', 'broca', 'feedback', 'distill']
   const LEGACY_LOGIC_ALIAS = { reflection: 'memory' }
 
-  /** 每个认知逻辑各自解析模型：逻辑级覆盖 > 默认直连 > DSH 默认模型 > 本地布洛卡。 */
+  /** 每个认知逻辑各自解析模型：逻辑级 DSH > 逻辑级供应商 > 逻辑级直连 > 默认供应商 > 默认直连 > DSH 默认 > 本地。 */
   function resolveLogic(name) {
     const base = settings.llm ?? DEFAULTS.llm
-    const override = name === 'distill' && (!base.profiles?.distill || base.profiles.distill.enabled === false || !['baseURL','apiKey','model','provider','dsh'].some((key) => Boolean(base.profiles.distill[key])))
+    const override = name === 'distill' && (!base.profiles?.distill || base.profiles.distill.enabled === false || !['baseURL','apiKey','model','provider','dsh','vendor'].some((key) => Boolean(base.profiles.distill[key])))
       ? base.profiles?.broca ?? {}
       : base.profiles?.[name] ?? base.profiles?.[LEGACY_LOGIC_ALIAS[name]] ?? {}
     const dsh = ctx.get('llm')
+    // 供应商：逻辑级指定优先，其次全局默认；选了供应商就不用再填地址和 Key
+    const vendor = override.enabled !== false ? (vendorById(override.vendor) || vendorById(settings.vendor)) : null
     const cfg = {
-      baseURL: override.baseURL || base.baseURL,
-      apiKey: override.apiKey || base.apiKey,
-      model: override.model || base.model,
+      baseURL: override.baseURL || vendor?.baseURL || base.baseURL,
+      apiKey: override.apiKey || vendor?.apiKey || base.apiKey,
+      model: override.model || vendor?.models?.[0] || base.model,
     }
     // 任何逻辑都可以直接选用 DSH 已保存的模型：经 DSH 的适配、限额与计量，不需要另存密钥。
     if (override.enabled !== false && override.dsh === true && override.provider && override.model && dsh && typeof dsh.stream === 'function') {
@@ -422,12 +432,13 @@ export function apply(ctx, config = {}) {
       }
     }
     if (override.enabled !== false && cfg.apiKey && cfg.baseURL && cfg.model) {
+      const source = vendor ? `vendor:${vendor.id}` : 'direct'
       const onUsage = (row = {}) =>
         usage.record({
           logic: name,
-          provider: 'direct',
+          provider: source,
           model: cfg.model,
-          source: 'direct',
+          source,
           input: row.input,
           output: row.output,
           cacheRead: row.cacheRead,
@@ -435,7 +446,7 @@ export function apply(ctx, config = {}) {
           latencyMs: row.latencyMs,
           estimated: row.estimated,
         })
-      return { llm: createDirectLlm({ ...cfg, onUsage }), provider: 'direct', model: cfg.model, source: 'direct' }
+      return { llm: createDirectLlm({ ...cfg, onUsage }), provider: source, model: cfg.model, source }
     }
     const selection = ctx.get('agentDefaultModel')?.currentSelection?.() ?? null
     const provider = settings.provider || selection?.provider || ''
@@ -510,6 +521,18 @@ export function apply(ctx, config = {}) {
         // 语言区默认模型：改成 provider/model 分开存，重启后才不会退回 DSH 当前选中项
         if (typeof saved?.provider === 'string') settings.provider = saved.provider
         if (typeof saved?.model === 'string') settings.model = saved.model
+        if (typeof saved?.vendor === 'string') settings.vendor = saved.vendor
+        if (Array.isArray(saved?.providers)) {
+          settings.providers = saved.providers
+            .filter((row) => row && typeof row.id === 'string' && row.id)
+            .map((row) => ({
+              id: row.id,
+              name: typeof row.name === 'string' && row.name ? row.name : row.id,
+              baseURL: typeof row.baseURL === 'string' ? row.baseURL : '',
+              apiKey: typeof row.apiKey === 'string' ? row.apiKey : '',
+              models: Array.isArray(row.models) ? row.models.map(String).filter(Boolean) : [],
+            }))
+        }
         if (saved?.snowluma && typeof saved.snowluma === 'object') {
           // 以前只恢复 enabled/sendEnabled/allowGroups，手填的 WS/HTTP 地址与 token
           // 重启后会丢失，表现为"配置保存了但客户端连不上"。这里逐字段恢复。
@@ -720,12 +743,53 @@ export function apply(ctx, config = {}) {
     return `${text.slice(0, 4)}…${text.slice(-4)}`
   }
 
+  /* ---- 中心化供应商账本 ------------------------------------------------ */
+
+  function vendorList() {
+    if (!Array.isArray(settings.providers)) settings.providers = []
+    return settings.providers
+  }
+
+  function vendorById(id) {
+    const key = String(id ?? '').trim()
+    if (!key) return null
+    return vendorList().find((row) => row && row.id === key) ?? null
+  }
+
+  function slugId(text, fallback = 'vendor') {
+    const base = String(text ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40)
+    return base || `${fallback}-${Date.now().toString(36)}`
+  }
+
+  /** 对外只给掩码，密钥永远不出本机。 */
+  function vendorPublic(row) {
+    return {
+      id: row.id,
+      name: row.name || row.id,
+      baseURL: row.baseURL || '',
+      models: Array.isArray(row.models) ? row.models : [],
+      hasKey: Boolean(row.apiKey),
+      keyMask: maskKey(row.apiKey),
+    }
+  }
+
+  function vendorsPublic() {
+    return vendorList().map(vendorPublic)
+  }
+
   /** settings.json 的唯一序列化入口：面板保存与一键采用模型共用，避免两处字段漂移。 */
   function persistedSettings() {
     return {
       useLlm: settings.useLlm,
       provider: settings.provider,
       model: settings.model,
+      vendor: settings.vendor,
+      providers: settings.providers,
       snowluma: {
         enabled: settings.snowluma.enabled,
         sendEnabled: settings.snowluma.sendEnabled,
@@ -800,13 +864,15 @@ export function apply(ctx, config = {}) {
       },
       vision: {
         enabled: settings.vision.enabled,
+        vendor: settings.vision.vendor || '',
+        vendors: vendorsPublic(),
         baseURL: settings.vision.baseURL,
         model: settings.vision.model,
         maxPerHour: settings.vision.maxPerHour,
         hasKey: Boolean(settings.vision.apiKey),
         keyMask: maskKey(settings.vision.apiKey),
         effectiveBaseURL: visionConfig().baseURL,
-        effectiveModel: settings.vision.model,
+        effectiveModel: visionConfig().model,
       },
       knowledge: { ...settings.knowledge, status: knowledge.status() },
       owner: { ...settings.owner },
@@ -824,6 +890,8 @@ export function apply(ctx, config = {}) {
         dshModel: settings.model,
         baseURL: settings.llm.baseURL,
         model: settings.llm.model,
+        vendor: settings.vendor || '',
+        vendors: vendorsPublic(),
         hasKey: Boolean(settings.llm.apiKey),
         keyMask: maskKey(settings.llm.apiKey),
         profiles: LOGICS.map((logicName) => {
@@ -834,6 +902,7 @@ export function apply(ctx, config = {}) {
             baseURL: override.baseURL ?? '',
             model: override.model ?? '',
             provider: override.provider ?? '',
+            vendor: override.vendor ?? '',
             dsh: override.dsh === true,
             hasKey: Boolean(override.apiKey),
             keyMask: maskKey(override.apiKey),
@@ -2672,6 +2741,7 @@ export function apply(ctx, config = {}) {
           const body = await readBody(request)
           if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
+          if (typeof body.vision.vendor === 'string') settings.vision.vendor = body.vision.vendor.trim()
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
             const model = body.vision.model.trim()
             if (!model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
@@ -2772,6 +2842,88 @@ export function apply(ctx, config = {}) {
             settings: ctx.get('settings'),
           }))
         } catch { return fail('读取 DSH 模型目录失败，请刷新后重试。', 502) }
+      },
+    },
+    {
+      // 供应商账本：集中增删改查。密钥只落本机、只回掩码。
+      path: '/vendors', methods: ['GET', 'POST', 'DELETE'],
+      handler: async (request) => {
+        const method = request.method
+        if (method === 'GET') {
+          return json({ vendors: vendorsPublic(), current: settings.vendor || '' })
+        }
+        const body = await readBody(request)
+        if (method === 'DELETE') {
+          const id = String(body.id ?? '').trim()
+          if (!id) return fail('要指定要删的供应商 id', 400)
+          const before = vendorList().length
+          settings.providers = vendorList().filter((row) => row?.id !== id)
+          if (settings.providers.length === before) return fail('没有这个供应商', 404)
+          if (settings.vendor === id) settings.vendor = ''
+          settings.llm.profiles = settings.llm.profiles ?? {}
+          for (const key of Object.keys(settings.llm.profiles)) {
+            if (settings.llm.profiles[key]?.vendor === id) settings.llm.profiles[key].vendor = ''
+          }
+          await mkdir(dataDir, { recursive: true })
+          await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+          refreshLlm()
+          return json({ ok: true, vendors: vendorsPublic(), current: settings.vendor || '', snapshot: snapshot() })
+        }
+        const name = String(body.name ?? '').trim()
+        const baseURL = String(body.baseURL ?? '').trim()
+        if (!name) return fail('供应商名称不能为空', 400)
+        if (!/^https?:\/\//i.test(baseURL)) return fail('baseURL 要以 http:// 或 https:// 开头', 400)
+        const rawModels = Array.isArray(body.models) ? body.models : String(body.models ?? '').split(/[\s,，\n]+/)
+        const models = Array.from(new Set(rawModels.map((row) => String(row ?? '').trim()).filter(Boolean))).slice(0, 40)
+        let id = String(body.id ?? '').trim()
+        const existing = id ? vendorById(id) : null
+        if (!existing) {
+          id = id || slugId(name)
+          let n = 2
+          while (vendorById(id)) id = `${slugId(name)}-${n++}`
+        }
+        const apiKey = typeof body.apiKey === 'string' && body.apiKey ? body.apiKey : (existing?.apiKey ?? '')
+        const row = { id, name, baseURL, apiKey, models }
+        const list = vendorList().filter((item) => item?.id !== id)
+        list.push(row)
+        settings.providers = list
+        if (body.makeDefault === true) settings.vendor = id
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+        refreshLlm()
+        return json({ ok: true, vendor: vendorPublic(row), vendors: vendorsPublic(), current: settings.vendor || '', snapshot: snapshot() })
+      },
+    },
+    {
+      // 把某个供应商用起来：scope = default / all / 单个逻辑
+      path: '/llm/use-vendor', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const vendor = vendorById(body.vendor)
+        if (!vendor) return fail('没有这个供应商', 404)
+        if (!vendor.baseURL) return fail('这个供应商还没填 baseURL', 400)
+        if (!vendor.apiKey) return fail('这个供应商还没填 apiKey', 400)
+        if (!vendor.models?.length) return fail('这个供应商还没填模型名', 400)
+        const scope = String(body.scope ?? 'default')
+        const pick = { vendor: vendor.id, enabled: true, dsh: false, provider: '', baseURL: '', model: '', apiKey: '' }
+        if (scope === 'default' || scope === 'all') {
+          settings.vendor = vendor.id
+          settings.useLlm = true
+        }
+        if (scope === 'all') {
+          settings.llm.profiles = settings.llm.profiles ?? {}
+          for (const name of LOGICS) {
+            if (name === 'funnel' || name === 'ignition') continue
+            settings.llm.profiles[name] = { ...(settings.llm.profiles[name] ?? {}), ...pick }
+          }
+        } else if (scope !== 'default' && LOGICS.includes(scope)) {
+          settings.llm.profiles = settings.llm.profiles ?? {}
+          settings.llm.profiles[scope] = { ...(settings.llm.profiles[scope] ?? {}), ...pick }
+        }
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+        refreshLlm()
+        return json({ ok: true, snapshot: snapshot(), vendors: vendorsPublic() })
       },
     },
     {
@@ -3682,6 +3834,7 @@ export function apply(ctx, config = {}) {
           url: request.url,
         })
         if (typeof body.useLlm === 'boolean') settings.useLlm = body.useLlm
+        if (typeof body.vendor === 'string') settings.vendor = body.vendor.trim()
         const snowTouched = Boolean(body.snowluma && typeof body.snowluma === 'object')
         const directEndpoint = Boolean(
           (body.llm?.baseURL || settings.llm.baseURL) && (body.llm?.apiKey || settings.llm.apiKey),
@@ -3740,11 +3893,13 @@ export function apply(ctx, config = {}) {
         }
         if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
+          if (typeof body.vision.vendor === 'string') settings.vision.vendor = body.vision.vendor.trim()
           if (typeof body.vision.baseURL === 'string') settings.vision.baseURL = body.vision.baseURL.trim()
           if (typeof body.vision.apiKey === 'string' && body.vision.apiKey) settings.vision.apiKey = body.vision.apiKey.trim()
+          const visionVendor = vendorById(body.vision.vendor || settings.vision.vendor)
           const visionDirect = Boolean(
-            (body.vision.baseURL || settings.vision.baseURL || settings.llm.baseURL) &&
-              (body.vision.apiKey || settings.vision.apiKey || settings.llm.apiKey),
+            (body.vision.baseURL || settings.vision.baseURL || visionVendor?.baseURL || settings.llm.baseURL) &&
+              (body.vision.apiKey || settings.vision.apiKey || visionVendor?.apiKey || settings.llm.apiKey),
           )
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
             const model = body.vision.model.trim()
@@ -3802,6 +3957,7 @@ export function apply(ctx, config = {}) {
                 ...(typeof patch.enabled === 'boolean' ? { enabled: patch.enabled } : {}),
                 ...(typeof patch.dsh === 'boolean' ? { dsh: patch.dsh } : {}),
                 ...(typeof patch.provider === 'string' ? { provider: patch.provider } : {}),
+                ...(typeof patch.vendor === 'string' ? { vendor: patch.vendor } : {}),
               }
             }
           }
