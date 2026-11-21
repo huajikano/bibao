@@ -74,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.16.1`](https://github.com/huajikano/bibao/releases/tag/v0.16.1) | 模型配置改为一键选：从 DSH 已配好的来源与模型里下拉选择，支持一键套用到全部认知逻辑，无需再复制 baseURL / API Key；旧的直连配置继续可用 |
 | [`v0.15.0`](https://github.com/huajikano/bibao/releases/tag/v0.15.0) | BCI 感知回灌、自动本体感觉/内感受/屏幕视觉；QQ 表情包真实收藏与确认发送；界面加载、输入法与线程滚动修复 |
 | [`v0.14.1`](https://github.com/huajikano/bibao/releases/tag/v0.14.1) | 蒸馏可读取自定义供应商已保存的模型，失败时显示上游错误码与 HTTP 状态 |
 | [`v0.14.0`](https://github.com/huajikano/bibao/releases/tag/v0.14.0) | 蒸馏人生工作台：长材料分片导入、人物证据与表达分析、后台任务及跨进程恢复、思考设置与流式响应兼容；修复 ZCode 等无设置命名空间来源的模型列表空白，保留 0.13.0 既有修复 |
