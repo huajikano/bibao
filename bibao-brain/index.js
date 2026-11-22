@@ -24,7 +24,7 @@ import { OneBotWsServer } from './core/onebot-ws-server.js'
 import { createDirectLlm } from './core/openai.js'
 import { TokenMeter, meterLlm } from './core/usage.js'
 import { openBrainStore } from './core/store.js'
-import { createVision } from './core/vision.js'
+import { createVision, createDshVision } from './core/vision.js'
 import { StickerBook, reactionMood, stickerSummary } from './core/stickers.js'
 import { decodeStickerDataUrl, downloadQqSticker, stickerDataUrl } from './core/sticker-media.js'
 import { createSystemAdapter, createInteroceptionAdapter, createScreenCaptureAdapter, captureScreen, SystemProbe, interoceptionSense } from './core/bci-auto.js'
@@ -69,7 +69,7 @@ const DEFAULTS = {
   // 主动分享：默认关闭，且只发私聊；打开后每天最多一条
   outreach: { enabled: false, minSilenceMin: 360, maxPerDay: 1, minIntimacy: 55, cooldownHours: 8 },
   // 视觉：直接用 DSH 里已经配好的 OpenAI 兼容端点，不内置本地模型
-  vision: { enabled: false, vendor: '', baseURL: '', apiKey: '', model: '', maxPerHour: 20 },
+  vision: { enabled: false, vendor: '', provider: '', baseURL: '', apiKey: '', model: '', maxPerHour: 20 },
   knowledge: { enabled: false, dir: '', maxSnippets: 2, maxChars: 700 },
   owner: { qq: '', requirements: '' },
   // 中心化供应商：像 cc-switch 那样先把「名称 / 地址 / Key / 模型」存好，各处只选供应商
@@ -145,13 +145,27 @@ export function apply(ctx, config = {}) {
   const settingsFile = path.join(dataDir, 'settings.json')
   const usage = new TokenMeter({ file: path.join(dataDir, 'usage.json') })
   const visionConfig = () => {
-    // 视觉也能直接选供应商：选了就不用再单独填地址和 Key
     const vendor = vendorById(settings.vision.vendor)
     return {
+      // dsh = 走 DSH 已登录的模型（不需要 baseURL / key）
+      mode: settings.vision.vendor ? 'vendor' : settings.vision.provider && settings.vision.model ? 'dsh' : 'direct',
+      provider: settings.vision.provider || '',
       baseURL: settings.vision.baseURL || vendor?.baseURL || settings.llm.baseURL,
       apiKey: settings.vision.apiKey || vendor?.apiKey || settings.llm.apiKey,
       model: settings.vision.model || vendor?.models?.[0] || '',
+      vendorId: vendor?.id ?? '',
     }
+  }
+
+  /** 按当前配置选视觉实现：DSH 优先，其次直连。 */
+  function buildVision() {
+    const cfg = visionConfig()
+    const dsh = ctx.get('llm')
+    const attachments = ctx.get('attachments')
+    if (cfg.mode === 'dsh' && dsh && attachments) {
+      return createDshVision({ llm: dsh, attachments, provider: cfg.provider, model: cfg.model, onUsage: visionUsage })
+    }
+    return createVision({ baseURL: cfg.baseURL, apiKey: cfg.apiKey, model: cfg.model, onUsage: visionUsage })
   }
 
   const visionUsage = (row = {}) =>
@@ -170,12 +184,16 @@ export function apply(ctx, config = {}) {
 
   let biography = null
   let brain = null
+  // 最近一次模型原话（只在解析失败时记录），方便排查"模型跑题/解析失败"
+  let lastLlmRaw = ''
   let store = null
   // AI 生成的人物草稿：应用时只发 id，避免把几 KB 的 JSON 塞进 URL（会 431）
   let personaDraft = null
   let personaDraftId = ''
   const distillationJobs = new DistillationJobs({ dir: path.join(dataDir,'distill-tasks') })
   let vision = null
+  // DSH 视觉模型目录短缓存，避免每次开面板都遍历所有来源
+  let visionModelCache = { at: 0, rows: [] }
   let stickers = null
   const tft = new TftAdapter()
   const motor = new MotorModel()
@@ -398,6 +416,7 @@ export function apply(ctx, config = {}) {
       impression: '会主动找我说话',
     })
     funnel = new GroupAttentionFunnel({ social: brain.social, interests: brain.interests, userName: brain.name })
+    if (brain) brain.onRawLlm = (raw) => { lastLlmRaw = String(raw ?? '').slice(0, 600) }
     for (const group of defaultGroups()) funnel.addGroup(group)
     applyPinnedWhitelist()
     funnel.focus('g_class', Date.now())
@@ -643,10 +662,7 @@ export function apply(ctx, config = {}) {
       }
       brain.applyTuning(settings.tuning)
       stickers = stickers || new StickerBook(path.join(dataDir, 'stickers'))
-      vision = createVision({
-        ...visionConfig(),
-        onUsage: visionUsage,
-      })
+      vision = buildVision()
       {
         const owner = brain.social.get(settings.userId)
         if (owner) owner.friend = true
@@ -711,6 +727,7 @@ export function apply(ctx, config = {}) {
     if (!brain) return
     const llms = llmNow()
     brain.llms = llms
+    brain.onRawLlm = (raw) => { lastLlmRaw = String(raw ?? '').slice(0, 600) }
     brain.llm = llms.broca.llm
     brain.llmProvider = llms.broca.provider
     brain.llmModel = llms.broca.model
@@ -865,6 +882,8 @@ export function apply(ctx, config = {}) {
       vision: {
         enabled: settings.vision.enabled,
         vendor: settings.vision.vendor || '',
+        provider: settings.vision.provider || '',
+        mode: visionConfig().mode,
         vendors: vendorsPublic(),
         baseURL: settings.vision.baseURL,
         model: settings.vision.model,
@@ -921,6 +940,7 @@ export function apply(ctx, config = {}) {
       },
       outreach: { ...settings.outreach, state: brain.outreach },
       usage: usage.snapshot(),
+      diag: { llmRaw: lastLlmRaw },
       settings: { useLlm: settings.useLlm, provider: settings.provider, model: settings.model, stateFile },
     }
   }
@@ -2742,6 +2762,7 @@ export function apply(ctx, config = {}) {
           if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
           if (typeof body.vision.vendor === 'string') settings.vision.vendor = body.vision.vendor.trim()
+          if (typeof body.vision.provider === 'string') settings.vision.provider = body.vision.provider.trim()
           if (typeof body.vision.model === 'string' && body.vision.model.trim()) {
             const model = body.vision.model.trim()
             if (!model.includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
@@ -2750,7 +2771,7 @@ export function apply(ctx, config = {}) {
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ ...visionConfig(), onUsage: visionUsage })
+          if (vision) vision = buildVision()
         }
         if (body.tuning && typeof body.tuning === 'object') {
             if (Number.isFinite(Number(body.tuning.memoryStrength))) {
@@ -2842,6 +2863,109 @@ export function apply(ctx, config = {}) {
             settings: ctx.get('settings'),
           }))
         } catch { return fail('读取 DSH 模型目录失败，请刷新后重试。', 502) }
+      },
+    },
+    {
+      // 视觉可选模型：DSH 里能看图的模型 + 自定义供应商的模型，一份下拉
+      path: '/vision/models', methods: ['GET'],
+      handler: async () => {
+        const options = []
+        for (const vendor of vendorList()) {
+          if (!vendor.baseURL) continue
+          for (const model of Array.isArray(vendor.models) ? vendor.models : []) {
+            options.push({ key: `custom|${vendor.id}|${model}`, source: 'custom', vendor: vendor.id, model, label: `${vendor.name || vendor.id} · ${model}` })
+          }
+        }
+        const dsh = ctx.get('llm')
+        if (typeof dsh?.listProviders === 'function' && typeof dsh.listModels === 'function') {
+          const now = Date.now()
+          if (!visionModelCache.at || now - visionModelCache.at > 60_000) {
+            const rows = []
+            for (const provider of dsh.listProviders()) {
+              try {
+                const models = await dsh.listModels(provider.id)
+                for (const m of models ?? []) {
+                  const modalities = Array.isArray(m.inputModalities) ? m.inputModalities : []
+                  // 明确声明只吃文本的，不进视觉列表
+                  if (modalities.length && !modalities.includes('image')) continue
+                  rows.push({
+                    provider: provider.id,
+                    providerName: provider.name || provider.id,
+                    model: m.id,
+                    supportsImage: modalities.includes('image'),
+                    declared: modalities.length > 0,
+                  })
+                }
+              } catch {
+                /* 单个来源读不到不影响其它 */
+              }
+            }
+            visionModelCache = { at: now, rows }
+          }
+          for (const row of visionModelCache.rows) {
+            options.push({
+              key: `dsh|${row.provider}|${row.model}`,
+              source: 'dsh',
+              provider: row.provider,
+              model: row.model,
+              supportsImage: row.supportsImage,
+              label: `DSH · ${row.providerName} · ${row.model}${row.supportsImage ? ' ✅看图' : row.declared ? '' : '（未声明）'}`,
+            })
+          }
+        }
+        const current = {
+          source: settings.vision.vendor ? 'custom' : settings.vision.provider ? 'dsh' : 'manual',
+          vendor: settings.vision.vendor || '',
+          provider: settings.vision.provider || '',
+          model: settings.vision.model || '',
+        }
+        return json({
+          options,
+          current,
+          effect: { mode: visionConfig().mode, baseURL: visionConfig().baseURL, model: visionConfig().model, hasKey: Boolean(visionConfig().apiKey || settings.vision.provider) },
+          enabled: settings.vision.enabled === true,
+        })
+      },
+    },
+    {
+      // 视觉用哪个模型：一条请求换掉，顺手打开开关
+      path: '/vision/use', methods: ['POST'],
+      handler: async (request) => {
+        const body = await readBody(request)
+        const source = String(body.source ?? 'custom')
+        const model = String(body.model ?? '').trim()
+        if (!model) return fail('要指定模型', 400)
+        if (source === 'dsh') {
+          const provider = String(body.provider ?? '').trim()
+          if (!provider) return fail('要指定 DSH 来源', 400)
+          const dsh = ctx.get('llm')
+          if (typeof dsh?.listProviders === 'function' && !dsh.listProviders().some((row) => row.id === provider)) {
+            return fail(`DSH 里没有注册来源「${provider}」`, 400)
+          }
+          if (!ctx.get('attachments')) return fail('当前 DSH 没有附件服务，无法走 DSH 视觉，请改用自定义供应商', 400)
+          settings.vision.provider = provider
+          settings.vision.vendor = ''
+          settings.vision.model = model
+          settings.vision.baseURL = ''
+          settings.vision.apiKey = ''
+        } else {
+          const vendor = vendorById(body.vendor)
+          if (!vendor) return fail('没有这个供应商', 404)
+          if (!vendor.baseURL) return fail('这个供应商还没填 baseURL', 400)
+          if (!vendor.apiKey) return fail('这个供应商还没填 apiKey', 400)
+          const picked = (vendor.models ?? []).includes(model) ? model : vendor.models?.[0] ?? ''
+          if (!picked) return fail('这个供应商还没有可用模型，请先在供应商页获取模型', 400)
+          settings.vision.vendor = vendor.id
+          settings.vision.provider = ''
+          settings.vision.model = picked
+          settings.vision.baseURL = ''
+          settings.vision.apiKey = ''
+        }
+        settings.vision.enabled = true
+        vision = buildVision()
+        await mkdir(dataDir, { recursive: true })
+        await writeFile(settingsFile, JSON.stringify(persistedSettings()), 'utf8')
+        return json({ ok: true, snapshot: snapshot() })
       },
     },
     {
@@ -4007,6 +4131,7 @@ export function apply(ctx, config = {}) {
         if (body.vision && typeof body.vision === 'object') {
           if (typeof body.vision.enabled === 'boolean') settings.vision.enabled = body.vision.enabled
           if (typeof body.vision.vendor === 'string') settings.vision.vendor = body.vision.vendor.trim()
+          if (typeof body.vision.provider === 'string') settings.vision.provider = body.vision.provider.trim()
           if (typeof body.vision.baseURL === 'string') settings.vision.baseURL = body.vision.baseURL.trim()
           if (typeof body.vision.apiKey === 'string' && body.vision.apiKey) settings.vision.apiKey = body.vision.apiKey.trim()
           const visionVendor = vendorById(body.vision.vendor || settings.vision.vendor)
@@ -4022,7 +4147,7 @@ export function apply(ctx, config = {}) {
           if (Number.isFinite(Number(body.vision.maxPerHour))) {
             settings.vision.maxPerHour = Math.max(1, Math.min(200, Number(body.vision.maxPerHour)))
           }
-          if (vision) vision = createVision({ ...visionConfig(), onUsage: visionUsage })
+          if (vision) vision = buildVision()
         }
         if (body.knowledge && typeof body.knowledge === 'object') {
           await updateKnowledgeSettings(body.knowledge)

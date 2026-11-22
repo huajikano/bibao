@@ -2822,6 +2822,8 @@ window.__ModuleLoader__.load({
           supplierPick: {},
           supplierBusy: '',
           supplierNote: '',
+          supplierQuery: '',
+          assign: {},
         }
         this.timers = []
         this.followThread = true
@@ -3153,123 +3155,249 @@ window.__ModuleLoader__.load({
         }
       }
 
-      renderSuppliers(t, snap) {
+      /* 按逻辑分配：每行选来源 + 模型，点应用单独生效 */
+      assignOf(scope, snap) {
+        const saved = this.state.assign?.[scope]
+        if (saved) return saved
+        const profiles = snap.llmConfig?.profiles ?? []
         const vendors = snap.llmConfig?.vendors ?? []
-        const dshProviders = this.state.catalog?.providers ?? []
-        const defaultVendor = snap.llmConfig?.vendor ?? ''
-        const visionVendor = snap.vision?.vendor ?? ''
-        const form = this.state.vendorForm
-        const setVendor = (patch) => this.setState((prev) => ({ vendorForm: { ...prev.vendorForm, ...patch } }))
+        if (scope === 'default') {
+          const vendor = snap.llmConfig?.vendor
+          const provider = snap.llmConfig?.provider
+          return {
+            source: vendor ? 'custom' : provider ? 'dsh' : '',
+            id: vendor || provider || '',
+            model: vendor ? '' : snap.llmConfig?.dshModel || '',
+          }
+        }
+        if (scope === 'vision') {
+          const v = snap.vision ?? {}
+          return {
+            source: v.vendor ? 'custom' : v.provider ? 'dsh' : '',
+            id: v.vendor || v.provider || '',
+            model: v.effectiveModel || v.model || '',
+          }
+        }
+        const row = profiles.find((item) => item.name === scope) ?? {}
+        if (row.dsh && row.provider) return { source: 'dsh', id: row.provider, model: row.model || row.resolvedModel || '' }
+        if (row.vendor) return { source: 'custom', id: row.vendor, model: row.model || row.resolvedModel || '' }
+        return { source: '', id: '', model: '' }
+      }
 
-        const modelPicker = (source, id) => {
-          const key = `${source}:${id}`
-          const entry = this.state.supplierModels?.[key]
-          if (!entry) {
-            return h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadSupplierModels(source, id) }, '获取模型')
-          }
-          if (entry.loading) return h('span', { className: 'bb-muted' }, '正在获取模型…')
-          if (!entry.models.length) {
-            return h('div', { className: 'bb-inline bb-inline--wrap' },
-              h('span', { className: 'bb-muted' }, entry.note || '没有拿到模型'),
-              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadSupplierModels(source, id) }, '重试'),
-            )
-          }
-          return h(
+      setAssign(scope, patch) {
+        this.setState((prev) => {
+          const snap = prev.snap
+          const base = prev.assign?.[scope] ?? this.assignOf(scope, snap)
+          return { assign: { ...(prev.assign ?? {}), [scope]: { ...base, ...patch } } }
+        })
+      }
+
+      modelsOf(source, id) {
+        if (!source || !id) return []
+        let raw = []
+        if (source === 'custom') {
+          const vendor = (this.state.snap?.llmConfig?.vendors ?? []).find((row) => row.id === id)
+          raw = vendor?.models ?? []
+        } else {
+          raw = this.state.supplierModels?.['dsh:' + id]?.models ?? []
+        }
+        // 归一化成字符串：DSH 返回 {id,name} 对象，直接塞进 <option> 会整页崩
+        return Array.from(
+          new Set(
+            raw
+              .map((row) => (typeof row === 'string' ? row : (row?.id ?? '')))
+              .filter((value) => typeof value === 'string' && value.trim()),
+          ),
+        )
+      }
+
+      async ensureModels(source, id) {
+        if (!source || !id) return
+        if (source === 'custom') return
+        const key = 'dsh:' + id
+        if (this.state.supplierModels?.[key]) return
+        await this.loadSupplierModels('dsh', id)
+      }
+
+      async applyAssign(scope) {
+        const pick = this.assignOf(scope, this.state.snap)
+        if (!pick.source || !pick.id) {
+          this.setState({ supplierNote: '先选来源' })
+          return
+        }
+        const model = pick.model || (this.modelsOf(pick.source, pick.id)[0] ?? '')
+        if (!model) {
+          this.setState({ supplierNote: '这个来源还没有模型，先点「读取模型」' })
+          return
+        }
+        this.setState({ supplierBusy: scope, supplierNote: '' })
+        try {
+          const data = await request('/suppliers/assign', {
+            method: 'POST',
+            body: JSON.stringify({ source: pick.source, id: pick.id, model, scope }),
+          })
+          if (!this.alive) return
+          this.setState({ snap: data.snapshot, supplierBusy: '', supplierNote: '已应用到 ' + (scope === 'default' ? '默认' : scope === 'vision' ? '视觉' : (LOGIC_META.find((m) => m.name === scope)?.label ?? scope)) })
+          if (scope !== 'vision') this.syncForm(data.snapshot)
+        } catch (error) {
+          if (this.alive) this.setState({ supplierBusy: '', supplierNote: '应用失败：' + error.message })
+        }
+      }
+
+      renderAssignRow(scope, label, hint, snap, options) {
+        const pick = this.assignOf(scope, snap)
+        const models = this.modelsOf(pick.source, pick.id)
+        const busy = this.state.supplierBusy === scope
+        return h(
+          'div',
+          { key: scope, className: 'bb-assignRow' },
+          h('div', { className: 'bb-assignName' }, h('strong', {}, label), hint ? h('span', { className: 'bb-muted' }, hint) : null),
+          h(
             'div',
-            { className: 'bb-inline bb-inline--wrap' },
+            { className: 'bb-assignControls' },
             h(
               'select',
               {
                 className: 'bb-select',
-                value: this.state.supplierPick?.[key] || '',
-                onChange: (event) => this.setState((prev) => ({ supplierPick: { ...prev.supplierPick, [key]: event.target.value } })),
+                value: pick.source && pick.id ? pick.source + ':' + pick.id : '',
+                onChange: (event) => {
+                  const value = event.target.value
+                  if (!value) {
+                    this.setAssign(scope, { source: '', id: '', model: '' })
+                    return
+                  }
+                  const [source, ...rest] = value.split(':')
+                  const id = rest.join(':')
+                  this.setAssign(scope, { source, id, model: '' })
+                  void this.ensureModels(source, id)
+                },
               },
-              entry.models.map((row) => h('option', { key: row.id, value: row.id }, row.name && row.name !== row.id ? `${row.name}（${row.id}）` : row.id)),
+              h('option', { value: '' }, scope === 'default' || scope === 'vision' ? '未设置' : '继承默认'),
+              options.dsh.length
+                ? h('optgroup', { label: 'DSH 已登录' }, options.dsh.map((row) => h('option', { key: 'dsh:' + row.provider, value: 'dsh:' + row.provider }, row.displayName || row.provider)))
+                : null,
+              options.vendors.length
+                ? h('optgroup', { label: '自定义供应商' }, options.vendors.map((row) => h('option', { key: 'custom:' + row.id, value: 'custom:' + row.id }, row.name)))
+                : null,
             ),
-            h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadSupplierModels(source, id) }, '刷新'),
-          )
-        }
+            h(
+              'select',
+              {
+                className: 'bb-select',
+                value: pick.model || '',
+                disabled: !pick.source || !pick.id,
+                onChange: (event) => this.setAssign(scope, { model: event.target.value }),
+              },
+              models.length
+                ? [h('option', { key: '', value: '' }, models.length ? '默认（第一个）' : '无模型'), ...models.map((id) => h('option', { key: id, value: id }, id))]
+                : h('option', { value: '' }, pick.source === 'dsh' ? '点「读取模型」' : '无模型'),
+            ),
+            pick.source === 'dsh'
+              ? h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: async () => { await this.ensureModels('dsh', pick.id); }, }, '读取模型')
+              : null,
+            h('button', { type: 'button', className: 'bb-btn primary bb-btn--tiny', disabled: busy, onClick: () => this.applyAssign(scope) }, busy ? '应用中…' : '应用'),
+          ),
+        )
+      }
 
-        const supplierRow = (source, id, name, meta, badge) =>
-          h(
-            'div',
-            { key: `${source}:${id}`, className: 'bb-supplier' },
-            h(
-              'div',
-              { className: 'bb-supplierHead' },
-              h('strong', {}, name),
-              badge,
-              meta ? h('span', { className: 'bb-muted' }, meta) : null,
-            ),
-            h('div', { className: 'bb-inline bb-inline--wrap' }, modelPicker(source, id)),
-            h(
-              'div',
-              { className: 'bb-actions' },
-              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny primary', disabled: Boolean(this.state.supplierBusy), onClick: () => this.assignSupplier(source, id, 'all') }, '全部逻辑用这个'),
-              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: Boolean(this.state.supplierBusy), onClick: () => this.assignSupplier(source, id, 'default') }, '设为默认'),
-              source === 'custom'
-                ? h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', disabled: Boolean(this.state.supplierBusy), onClick: () => this.assignSupplier(source, id, 'vision') }, '给视觉用')
-                : null,
-              source === 'custom'
-                ? h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.editVendor(vendors.find((v) => v.id === id)) }, '编辑')
-                : null,
-              source === 'custom'
-                ? h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.deleteVendor(id) }, '删除')
-                : null,
-            ),
-          )
+      renderSuppliers(t, snap) {
+        const vendors = snap.llmConfig?.vendors ?? []
+        const dshProviders = this.state.catalog?.providers ?? []
+        const query = (this.state.supplierQuery ?? '').trim().toLowerCase()
+        const shown = query
+          ? dshProviders.filter((row) => String(row.provider).toLowerCase().includes(query) || String(row.displayName ?? '').toLowerCase().includes(query))
+          : dshProviders
+        const options = { dsh: dshProviders, vendors }
+        const form = this.state.vendorForm
+        const setVendor = (patch) => this.setState((prev) => ({ vendorForm: { ...prev.vendorForm, ...patch } }))
+        const wired = LOGIC_META.filter((meta) => meta.wired !== false)
 
         return h(
           'div',
           { className: 'bb-stack' },
           h(
             Card,
-            { title: 'DSH 里已经登录的供应商', hint: '这些不用填任何东西：选好模型就能直接用' },
-            dshProviders.length
-              ? dshProviders.map((p) =>
-                  supplierRow('dsh', p.provider, p.displayName || p.provider, '', h(Chip, { children: p.active === false ? '未启用' : '已登录', tone: p.active === false ? '' : 'good' })),
-                )
-              : h('div', { className: 'bb-muted' }, this.state.catalogLoading ? '正在读取 DSH 供应商…' : 'DSH 里还没有可用的供应商'),
-            h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadCatalog() }, '刷新 DSH 列表'),
+            { title: '按逻辑分配', hint: '每一行都能单独选供应商和模型；不选就继承默认' },
+            this.state.supplierNote ? h('div', { className: 'bb-chip good' }, this.state.supplierNote) : null,
+            this.renderAssignRow('default', '默认', '没单独指定的逻辑都用它', snap, options),
+            wired.map((meta) => this.renderAssignRow(meta.name, meta.label, meta.hint, snap, options)),
+            this.renderAssignRow('vision', '视觉', '看图用的模型（需要支持图片）', snap, options),
+            h('div', { className: 'bb-actions' },
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.setState({ assign: {} }) }, '重置选择'),
+              h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadCatalog() }, '刷新供应商列表'),
+            ),
           ),
           h(
             Card,
-            { title: '自定义供应商', hint: '填一次地址和 Key，模型会自动去端点取，不用手抄' },
-            vendors.length
-              ? vendors.map((v) =>
-                  supplierRow(
-                    'custom',
-                    v.id,
-                    v.name,
-                    `${v.baseURL} · ${v.hasKey ? v.keyMask : '无 Key'}`,
-                    v.id === defaultVendor ? h(Chip, { children: '默认', tone: 'good' }) : v.id === visionVendor ? h(Chip, { children: '视觉', tone: 'on' }) : null,
+            { title: 'DSH 供应商', hint: '已登录的来源，选模型后可直接分配给任意逻辑' },
+            h('input', {
+              className: 'bb-input',
+              value: this.state.supplierQuery ?? '',
+              placeholder: '搜索来源名（例如 buzzidoo）',
+              onChange: (event) => this.setState({ supplierQuery: event.target.value }),
+            }),
+            h('div', { className: 'bb-muted' }, `共 ${dshProviders.length} 个来源，当前显示 ${shown.length} 个`),
+            h('div', { className: 'bb-supplierScroll' },
+              shown.map((row) => {
+                const key = 'dsh:' + row.provider
+                const entry = this.state.supplierModels?.[key]
+                return h(
+                  'div',
+                  { key, className: 'bb-supplierCompact' },
+                  h('div', { className: 'bb-supplierHead' },
+                    h('strong', {}, row.displayName || row.provider),
+                    h(Chip, { children: row.active === false ? '未启用' : '已登录', tone: row.active === false ? '' : 'good' }),
+                  ),
+                  h('div', { className: 'bb-inline bb-inline--wrap' },
+                    entry
+                      ? entry.loading
+                        ? h('span', { className: 'bb-muted' }, '读取中…')
+                        : h('span', { className: 'bb-muted' }, entry.models.length ? entry.models.map((m) => (typeof m === 'string' ? m : m?.id)).filter(Boolean).join(' / ') : (entry.note || '没有模型'))
+                      : h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadSupplierModels('dsh', row.provider) }, '读取模型'),
+                    h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.assignSupplier('dsh', row.provider, 'all') }, '全部逻辑用这个'),
                   ),
                 )
-              : h('div', { className: 'bb-muted' }, '还没有自定义供应商。点下面展开添加。'),
+              }),
+            ),
+          ),
+          h(
+            Card,
+            { title: '自定义供应商', hint: '填一次地址和 Key，模型自动获取' },
+            vendors.length
+              ? vendors.map((v) =>
+                  h('div', { key: v.id, className: 'bb-supplierCompact' },
+                    h('div', { className: 'bb-supplierHead' },
+                      h('strong', {}, v.name),
+                      v.id === (snap.llmConfig?.vendor ?? '') ? h(Chip, { children: '默认', tone: 'good' }) : null,
+                      v.id === (snap.vision?.vendor ?? '') ? h(Chip, { children: '视觉', tone: 'on' }) : null,
+                    ),
+                    h('div', { className: 'bb-muted' }, `${v.baseURL} · ${v.hasKey ? v.keyMask : '无 Key'} · ${(v.models ?? []).length} 个模型`),
+                    h('div', { className: 'bb-actions' },
+                      h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.loadSupplierModels('custom', v.id) }, '获取/刷新模型'),
+                      h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.editVendor(v) }, '编辑'),
+                      h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.deleteVendor(v.id) }, '删除'),
+                    ),
+                  ),
+                )
+              : h('div', { className: 'bb-muted' }, '还没有自定义供应商。'),
             h(
               'details',
               { className: 'bb-supplierForm' },
               h('summary', {}, form.id ? `编辑：${form.name || form.id}` : '添加自定义供应商'),
-              h(
-                'div',
-                { className: 'bb-vendorForm' },
+              h('div', { className: 'bb-vendorForm' },
                 h(Field, { label: '名称' }, h('input', { className: 'bb-input', value: form.name, placeholder: 'DeepSeek 官方', onChange: (e) => setVendor({ name: e.target.value }) })),
                 h(Field, { label: 'baseURL' }, h('input', { className: 'bb-input', value: form.baseURL, placeholder: 'https://api.deepseek.com/v1', onChange: (e) => setVendor({ baseURL: e.target.value }) })),
                 h(Field, { label: 'apiKey' }, h('input', { className: 'bb-input', type: 'password', value: form.apiKey, placeholder: form.id ? '留空 = 保持原有 Key' : 'sk-…（只存本机）', onChange: (e) => setVendor({ apiKey: e.target.value }) })),
               ),
-              h(
-                'div',
-                { className: 'bb-actions' },
+              h('div', { className: 'bb-actions' },
                 h('button', { type: 'button', className: 'bb-btn primary', disabled: Boolean(this.state.vendorBusy), onClick: this.saveVendor }, form.id ? '保存修改' : '保存供应商'),
                 form.id ? h('button', { type: 'button', className: 'bb-btn', onClick: () => this.editVendor(null) }, '取消编辑') : null,
-                h('span', { className: 'bb-muted' }, '模型会在保存后自动获取，也可以进列表点「获取模型」'),
               ),
             ),
-            this.state.supplierNote ? h('span', { className: 'bb-chip good' }, this.state.supplierNote) : null,
-            this.state.vendorNote ? h('span', { className: 'bb-chip good' }, this.state.vendorNote) : null,
           ),
         )
       }
+
 
       async sendTalk() {
         const text = this.state.draft.trim()
@@ -5353,6 +5481,10 @@ class FriendsPanel extends React.Component {
           bciAutomation: null,
           screenCaptureBusy: false,
           screenNote: '',
+          // 视觉模型直接下拉切换
+          visionOptions: [],
+          visionPick: '',
+          visionBusy: false,
         }
         this.load = this.load.bind(this)
         this.feed = this.feed.bind(this)
@@ -5361,11 +5493,55 @@ class FriendsPanel extends React.Component {
         this.saveKnowledgeDir = this.saveKnowledgeDir.bind(this)
         this.importKnowledge = this.importKnowledge.bind(this)
         this.searchKnowledge = this.searchKnowledge.bind(this)
+        this.loadVisionOptions = this.loadVisionOptions.bind(this)
+        this.applyVisionPick = this.applyVisionPick.bind(this)
       }
 
       componentDidMount() {
         this.alive = true
         this.load()
+        this.loadVisionOptions()
+      }
+
+      async loadVisionOptions() {
+        try {
+          const data = await request('/vision/models')
+          if (!this.alive) return
+          const options = data.options ?? []
+          const current = data.current ?? {}
+          const found = options.find(
+            (row) =>
+              row.model === current.model &&
+              ((current.source === 'custom' && row.source === 'custom' && row.vendor === current.vendor) ||
+                (current.source === 'dsh' && row.source === 'dsh' && row.provider === current.provider)),
+          )
+          this.setState({
+            visionOptions: options,
+            visionPick: found ? found.key : '',
+          })
+        } catch {
+          /* 视觉下拉失败不影响其它感官 */
+        }
+      }
+
+      async applyVisionPick() {
+        const option = this.state.visionOptions.find((row) => row.key === this.state.visionPick)
+        if (!option) {
+          this.setState({ screenNote: '先选一个模型' })
+          return
+        }
+        this.setState({ visionBusy: true })
+        try {
+          const data = await request('/vision/use', {
+            method: 'POST',
+            body: JSON.stringify({ source: option.source, vendor: option.vendor, provider: option.provider, model: option.model }),
+          })
+          if (!this.alive) return
+          this.setState({ visionBusy: false, screenNote: `视觉已切到 ${option.label}`, vision: data.snapshot?.vision ?? this.state.vision })
+          await this.load()
+        } catch (error) {
+          this.setState({ visionBusy: false, screenNote: `切换失败：${error.message}` })
+        }
       }
 
       componentWillUnmount() {
@@ -5615,15 +5791,36 @@ class FriendsPanel extends React.Component {
                   h(
                     'div',
                     { className: 'bb-personaField', style: { gridColumn: '1 / -1' } },
-                    h('span', { className: 'bb-muted' }, '视觉用哪个模型'),
+                    h('span', { className: 'bb-muted' }, '视觉用哪个模型（选中后点应用，立刻生效）'),
+                    this.state.visionOptions.length
+                      ? h(
+                          'div',
+                          { className: 'bb-inline bb-inline--wrap' },
+                          h(
+                            'select',
+                            {
+                              className: 'bb-select',
+                              style: { flex: '1 1 240px', minInlineSize: '0' },
+                              value: this.state.visionPick,
+                              onChange: (event) => this.setState({ visionPick: event.target.value }),
+                            },
+                            h('option', { value: '' }, '选择模型…'),
+                            this.state.visionOptions.map((row) => h('option', { key: row.key, value: row.key }, row.label)),
+                          ),
+                          h('button', { type: 'button', className: 'bb-btn primary', disabled: this.state.visionBusy, onClick: this.applyVisionPick }, this.state.visionBusy ? '切换中…' : '应用'),
+                          h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.testVision() }, '测试'),
+                        )
+                      : h(
+                          'div',
+                          { className: 'bb-inline bb-inline--wrap' },
+                          h('span', { className: 'bb-muted' }, '还没有可用模型：去「供应商」页添加供应商并获取模型'),
+                          h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.props.onGoSuppliers?.() }, '去供应商页'),
+                        ),
                     h(
-                      'div',
-                      { className: 'bb-inline bb-inline--wrap' },
-                      h(Chip, { children: this.state.vision?.vendor ? `供应商：${(this.state.vision.vendors ?? []).find((v) => v.id === this.state.vision.vendor)?.name ?? this.state.vision.vendor}` : '未绑定供应商', tone: this.state.vision?.vendor ? 'good' : '' }),
-                      h(Chip, { children: `模型：${this.state.vision?.effectiveModel || '未设置'}` }),
-                      h('button', { type: 'button', className: 'bb-btn bb-btn--tiny', onClick: () => this.props.onGoSuppliers?.() }, '去供应商页选'),
+                      'span',
+                      { className: 'bb-muted' },
+                      `当前：${this.state.vision?.vendor ? (this.state.vision.vendors ?? []).find((v) => v.id === this.state.vision.vendor)?.name ?? this.state.vision.vendor : '未绑定供应商'} · ${this.state.vision?.effectiveModel || '未设置模型'}`,
                     ),
-                    h('span', { className: 'bb-muted' }, '在「供应商」页点「给视觉用」即可自动配好地址、Key 和模型。'),
                   ),
                   h(
                     'label',
@@ -6253,6 +6450,21 @@ class FriendsPanel extends React.Component {
 .bb-supplierHead strong { font-size: 12.5px; }
 .bb-supplierForm { margin-block-start: 6px; }
 .bb-supplierForm > summary { cursor: pointer; font-size: 12px; color: var(--dsw-alias-label-secondary); padding-block: 4px; }
+.bb-assignRow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-block-end: 1px dashed var(--dsw-alias-border-l1);
+}
+.bb-assignRow:last-of-type { border-block-end: none; }
+.bb-assignName { display: flex; flex-direction: column; gap: 2px; min-inline-size: 120px; }
+.bb-assignName strong { font-size: 12.5px; }
+.bb-assignName .bb-muted { font-size: 11px; }
+.bb-assignControls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 320px; }
+.bb-assignControls .bb-select { flex: 1 1 140px; min-inline-size: 0; }
+.bb-supplierScroll { max-block-size: 340px; overflow: auto; }
+.bb-supplierCompact {
+  border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 8px 10px; margin-block-end: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+}
 .bb-feed { display: flex; flex-direction: column; gap: 8px; }
 .bb-log { display: flex; flex-direction: column; max-block-size: 320px; overflow: auto; }
 .bb-logRow { padding: 7px 0; border-block-end: 1px dashed var(--dsw-alias-border-l1); font-size: 11.5px; }

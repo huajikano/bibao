@@ -11,6 +11,7 @@ import { PARAMS, clamp } from './constants.js'
 import { dateLabel } from './clock.js'
 import { composeReply, composeStall, enforceBudget } from './broca.js'
 import { SYSTEM_PROMPT, buildSystemPrompt } from './voice.js'
+import { safeReasoningOptions } from './usage.js'
 
 export { SYSTEM_PROMPT }
 
@@ -341,7 +342,12 @@ export function normalizeDualTrack(raw, ctx) {
 }
 
 export function extractJson(text = '') {
-  const raw = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '')
+  const raw = String(text ?? '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim()
   const start = raw.indexOf('{')
   if (start < 0) return null
   let depth = 0
@@ -360,15 +366,63 @@ export function extractJson(text = '') {
     else if (ch === '}') {
       depth -= 1
       if (depth === 0) {
+        const slice = raw.slice(start, i + 1)
         try {
-          return JSON.parse(raw.slice(start, i + 1))
+          return JSON.parse(slice)
         } catch {
-          return null
+          // 模型常犯的两类小错：字符串里有裸换行、对象/数组末尾多一个逗号
+          const repaired = repairJson(slice)
+          if (repaired !== slice) {
+            try {
+              return JSON.parse(repaired)
+            } catch {
+              /* 交给下面的宽松扫描 */
+            }
+          }
+          break
         }
       }
     }
   }
   return null
+}
+
+/** 只做安全的字符级修补，不改变结构。 */
+function repairJson(text = '') {
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) {
+        out += ch
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        out += ch
+        escaped = true
+        continue
+      }
+      if (ch === '"') {
+        inString = false
+        out += ch
+        continue
+      }
+      // 字符串里的裸控制字符必须转义，否则 JSON.parse 直接失败
+      if (ch === '\n') out += '\\n'
+      else if (ch === '\r') out += '\\r'
+      else if (ch === '\t') out += '\\t'
+      else if (ch.codePointAt(0) < 0x20) out += `\\u${ch.codePointAt(0).toString(16).padStart(4, '0')}`
+      else out += ch
+      continue
+    }
+    if (ch === '"') inString = true
+    out += ch
+  }
+  // 去掉 } 或 ] 前面多余的逗号
+  return out.replace(/,\s*([}\]])/g, '$1')
 }
 
 const STREAM_TIMEOUT = Symbol('stream-timeout')
@@ -381,6 +435,10 @@ const STREAM_TIMEOUT = Symbol('stream-timeout')
  */
 export async function collectStream(stream, { timeoutMs = 0, onTimeout = null } = {}) {
   const chunks = []
+  // 有的适配器不发 text-delta，只在 block-end 里给整块文本
+  const blocks = []
+  // 上游明确报错时把原因带回来，别让"空输出"看起来像模型跑题
+  let failure = null
   const iterator = stream?.[Symbol.asyncIterator]?.()
   if (!iterator) return { text: '', timedOut: false }
   const deadline = Number(timeoutMs) > 0 ? Date.now() + Number(timeoutMs) : 0
@@ -415,14 +473,22 @@ export async function collectStream(stream, { timeoutMs = 0, onTimeout = null } 
       if (!step || step.done) break
       const chunk = step.value ?? {}
       if (chunk.type === 'text-delta') chunks.push(String(chunk.text ?? ''))
-      if (chunk.type === 'finish' && chunk.reason?.kind === 'error') break
+      if (chunk.type === 'block-end' && chunk.block?.type === 'text' && typeof chunk.block.text === 'string') {
+        blocks.push(chunk.block.text)
+      }
+      if (chunk.type === 'finish' && chunk.reason?.kind === 'error') {
+        failure = chunk.reason.failure ?? { code: 'llm-error', message: '模型返回错误' }
+        break
+      }
     }
-  } catch {
+  } catch (error) {
     /* 流中途出错按没说完处理 */
+    failure = failure ?? { code: 'stream-error', message: String(error?.message ?? error) }
   } finally {
     clearTimeout(timer)
   }
-  return { text: chunks.join(''), timedOut }
+  const streamed = chunks.join('')
+  return { text: streamed.trim() ? streamed : blocks.join(''), timedOut, failure }
 }
 
 /**
@@ -446,13 +512,14 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
   const remaining = () => (deadlineAt ? Math.max(0, deadlineAt - Date.now()) : 0)
   const runOnce = async (systemText, temperature) => {
     const controller = new AbortController()
+    const reasoning = await safeReasoningOptions(llm, { provider, model }, 'low')
     const stream = llm.stream({
       provider,
       model,
       system: systemText,
       temperature,
       maxTokens: 700,
-      reasoningEffort: 'low',
+      ...reasoning,
       signal: controller.signal,
       messages: [{ role: 'user', content: [{ type: 'text', text: frame }] }],
     })
@@ -461,10 +528,12 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
 
   let text = ''
   let llmTimedOut = false
+  let failure = null
   try {
     const first = await runOnce(system, 0.9)
     text = first.text
     llmTimedOut = first.timedOut
+    failure = first.failure ?? null
   } catch (error) {
     return { ...local, meta: { ...local.meta, source: 'local', llmError: String(error?.message ?? error).slice(0, 160) } }
   }
@@ -480,7 +549,8 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
 
   const normalizedCtx = { ...ctx, localFallback: local }
   let normalized = normalizeDualTrack(text, normalizedCtx)
-  if (!normalized && (!budgetMs || remaining() > 1500)) {
+  // 上游已经明确报错（风控/限流/权限）时不要再补一次调用：重试只会加重惩罚
+  if (!normalized && !failure && (!budgetMs || remaining() > 1500)) {
     // 第二次：明确要求"不要思考过程"，温度压低，很多思考型模型这一步才肯给纯 JSON
     try {
       const retry = await runOnce(`${system}\n重要：只输出 JSON 对象本身，不要任何思考过程、解释或代码块标记。`, 0.4)
@@ -494,6 +564,10 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
     }
   }
   if (!normalized) {
+    // 上游明确报错时优先显示原因；否则才是"解析不了"
+    const failureText = failure
+      ? `${failure.code ?? 'llm-error'}${failure.status ? ' ' + failure.status : ''}: ${String(failure.message ?? '').slice(0, 120)}`
+      : ''
     // 留一条可诊断的痕迹：前 160 字符 + 长度
     try {
       ctx.onRaw?.(`${String(text).length}| ${String(text).slice(0, 160)}`)
@@ -502,7 +576,12 @@ export async function generateDualTrack(ctx, { llm = null, provider = '', model 
     }
     return {
       ...local,
-      meta: { ...local.meta, source: 'local', llmError: llmTimedOut ? 'timeout' : 'unparsable-json', llmTimedOut },
+      meta: {
+        ...local.meta,
+        source: 'local',
+        llmError: failureText || (llmTimedOut ? 'timeout' : 'unparsable-json'),
+        llmTimedOut,
+      },
     }
   }
   return { ...normalized, meta: { ...normalized.meta, source: 'llm' } }

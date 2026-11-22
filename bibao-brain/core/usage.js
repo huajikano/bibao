@@ -245,7 +245,7 @@ export class TokenMeter {
  */
 export function meterLlm(llm, { meter, logic, provider, model, source = 'dsh' } = {}) {
   if (!llm || typeof llm.stream !== 'function' || !meter) return llm
-  return {
+  const metered = {
     ...llm,
     stream(options = {}) {
       const inputEstimate = estimateMessages(options)
@@ -290,5 +290,28 @@ export function meterLlm(llm, { meter, logic, provider, model, source = 'dsh' } 
         }
       })()
     },
+  }
+  // 记住这台 LLM 是否声明过思考能力：没声明过的调用不能带 reasoningEffort
+  metered.__bibaoReasoning = llm.__bibaoReasoning ?? null
+  return metered
+}
+
+/**
+ * 思考强度的安全发送：先确认模型声明支持，确认不了就不带该参数。
+ * 返回的 options 要么不含 reasoningEffort，要么含已验证的值。
+ */
+export async function safeReasoningOptions(llm, { provider, model } = {}, want = 'low') {
+  if (!llm) return {}
+  if (llm.__bibaoReasoning?.verified) {
+    return llm.__bibaoReasoning.efforts.includes(want) ? { reasoningEffort: want } : {}
+  }
+  try {
+    const caps = await llm.resolveModelInfo?.(provider, model)
+    const efforts = (caps?.reasoning?.efforts ?? []).map((row) => row?.id).filter(Boolean)
+    llm.__bibaoReasoning = { verified: true, efforts }
+    return efforts.includes(want) ? { reasoningEffort: want } : {}
+  } catch {
+    llm.__bibaoReasoning = { verified: true, efforts: [] }
+    return {}
   }
 }

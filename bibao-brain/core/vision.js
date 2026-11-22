@@ -6,12 +6,10 @@
  */
 
 import { createHash } from 'node:crypto'
-import { estimateTokens } from './usage.js'
-
+import { estimateTokens, safeReasoningOptions } from './usage.js'
 const MAX_BYTES = 8 * 1024 * 1024
 
-export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsage = null } = {}) {
-  const cache = new Map()
+export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsage = null } = {}) {  const cache = new Map()
   const stats = { calls: 0, cached: 0, failed: 0, last: null }
 
   const endpoint = () => {
@@ -174,6 +172,99 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
         if (cache.size > 200) cache.delete(cache.keys().next().value)
         stats.last = { text: clean, at: Date.now(), hash }
         return { text: clean, cached: false, buffer: fetched.buffer, type: fetched.type }
+      } catch (error) {
+        stats.failed += 1
+        throw error
+      }
+    },
+  }
+}
+
+/**
+ * 视觉走 DSH：把图片存成附件，再用 llm.stream 让 DSH 里已登录的模型看图。
+ * 不需要另填 baseURL / apiKey。
+ */
+export function createDshVision({ llm, attachments, provider, model, timeoutMs = 60000, onUsage = null } = {}) {
+  const cache = new Map()
+  const stats = { calls: 0, cached: 0, failed: 0, last: null }
+
+  async function toAttachment(mediaType, buffer, name = 'screenshot') {
+    if (!attachments?.saveImage) throw new Error('当前 DSH 没有提供附件服务，无法把图片交给视觉模型')
+    return attachments.saveImage({ data: new Uint8Array(buffer), mediaType, name })
+  }
+
+  return {
+    stats,
+    get enabled() {
+      return Boolean(llm && provider && model && attachments)
+    },
+    async describe(url, { prompt = '用第一人称记下你看到的画面：谁、在哪、在做什么、有什么显眼的东西。60 字以内，只描述看到的，不要评价。', maxTokens = 200, signal } = {}) {
+      if (!this.enabled) throw new Error('视觉模型没配置')
+      let buffer
+      let type
+      if (String(url).startsWith('data:')) {
+        const [head, body] = String(url).split(',')
+        type = (head.match(/data:([^;]+)/) ?? [])[1] ?? 'image/png'
+        buffer = Buffer.from(body, 'base64')
+      } else {
+        const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
+        if (!res.ok) throw new Error(`图片下载失败 ${res.status}`)
+        type = res.headers.get('content-type') ?? 'image/jpeg'
+        buffer = Buffer.from(await res.arrayBuffer())
+      }
+      if (!/^image\//.test(type)) throw new Error(`不是图片：${type}`)
+      if (buffer.length > MAX_BYTES) throw new Error('图片太大')
+      const hash = createHash('sha1').update(prompt + '|' + provider + '|' + model + '|').update(buffer).digest('hex').slice(0, 16)
+      if (cache.has(hash)) {
+        stats.cached += 1
+        return { text: cache.get(hash), cached: true, buffer, type }
+      }
+      stats.calls += 1
+      const startedAt = Date.now()
+      try {
+        const attachment = await toAttachment(type, buffer)
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        if (typeof timer.unref === 'function') timer.unref()
+        const abort = () => controller.abort()
+        signal?.addEventListener?.('abort', abort, { once: true })
+        const pieces = []
+        const blockPieces = []
+        try {
+          const reasoning = await safeReasoningOptions(llm, { provider, model }, 'low')
+          for await (const chunk of llm.stream({
+            provider,
+            model,
+            stream: true,
+            maxTokens,
+            ...reasoning,
+            signal: controller.signal,
+            messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', attachment }] }],
+          })) {
+            if (chunk?.type === 'text-delta' && chunk.text) pieces.push(String(chunk.text))
+            if (chunk?.type === 'block-end' && chunk.block?.type === 'text' && chunk.block.text) blockPieces.push(String(chunk.block.text))
+            if (chunk?.type === 'finish' && chunk.reason?.kind === 'error') {
+              const reason = chunk.reason.failure
+              throw new Error(`${reason?.code ?? 'llm-error'}: ${String(reason?.message ?? '').slice(0, 160)}`)
+            }
+          }
+        } finally {
+          clearTimeout(timer)
+          signal?.removeEventListener?.('abort', abort)
+        }
+        // 有增量就只用增量，避免和整块文本重复
+        const streamed = pieces.join('')
+        const text = (streamed.trim() ? streamed : blockPieces.join('')).replace(/\s+/g, ' ').trim().slice(0, 1600)
+        if (!text) throw new Error('模型没有返回内容')
+        cache.set(hash, text)
+        if (cache.size > 200) cache.delete(cache.keys().next().value)
+        stats.last = { text, at: Date.now(), hash }
+        try {
+          onUsage?.({ model, input: Math.max(1, Math.round(buffer.length / 4)), output: text.length, latencyMs: Date.now() - startedAt, estimated: true })
+        } catch {
+          /* 统计失败不影响视觉 */
+        }
+        return { text, cached: false, buffer, type }
       } catch (error) {
         stats.failed += 1
         throw error

@@ -11,6 +11,7 @@
  */
 
 import { DAY_MS, HOUR_MS, MIN_MS, clamp } from './constants.js'
+import { safeReasoningOptions } from './usage.js'
 
 export const STYLE_KEYS = ['warmth', 'playfulness', 'directness', 'verbosity', 'vulnerability', 'initiative']
 
@@ -319,6 +320,7 @@ export class SelfModel {
 
     let raw = ''
     try {
+      const reasoning = await safeReasoningOptions(llm, { provider, model }, 'low')
       const stream = llm.stream({
         provider,
         model,
@@ -326,7 +328,7 @@ export class SelfModel {
         messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
         maxTokens: 900,
         temperature: 0.5,
-        reasoningEffort: 'low',
+        ...reasoning,
       })
       for await (const chunk of stream) {
         if (chunk.type === 'text-delta') raw += chunk.text
