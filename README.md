@@ -74,6 +74,7 @@ dsh plugin add https://github.com/huajikano/bibao/releases/latest/download/bibao
 
 | Tag | 内容 |
 | --- | --- |
+| [`v0.19.4`](https://github.com/huajikano/bibao/releases/tag/v0.19.4) | 全面审计修复：视觉输入大小与格式校验、设置原子校验、控制台 Cookie 鉴权、敏感配置不进 URL、BCI 诊断间隔实时同步；48 套回归保持通过 |
 | [`v0.19.3`](https://github.com/huajikano/bibao/releases/tag/v0.19.3) | 思考强度按模型声明能力发送（修 UNSUPPORTED_REASONING_EFFORT 降级）；供应商页按逻辑分配 + 来源搜索；修「读取模型」白屏 |
 | [`v0.19.0`](https://github.com/huajikano/bibao/releases/tag/v0.19.0) | 视觉模型可直接用 DSH 已登录模型（图片经附件交给 llm.stream），一个下拉切换；独立供应商页；模型解析容错与上游错误透传 |
 | [`v0.16.2`](https://github.com/huajikano/bibao/releases/tag/v0.16.2) | 修复对话页「我自己」好感度写死 42（改为读取真实社交记忆）；修复群聊页只显示 12 个群、缺最近消息与长列表被截断 |

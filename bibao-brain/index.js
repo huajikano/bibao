@@ -137,7 +137,7 @@ export function apply(ctx, config = {}) {
   settings.owner = { ...DEFAULTS.owner, ...(config?.owner ?? {}) }
   settings.game = { ...DEFAULTS.game, ...(config?.game ?? {}) }
   settings.autoSense = { ...DEFAULTS.autoSense, ...(config?.autoSense ?? {}) }
-  const AUTO_SENSE_INTERVAL_MS = Math.max(10_000, Math.min(60_000, Number(settings.autoSense.intervalMs) || 60_000))
+  const autoSenseIntervalMs = () => Math.max(10_000, Math.min(60_000, Number(settings.autoSense.intervalMs) || 60_000))
   const dataDir = path.dirname(
     settings.stateFile || path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'bibao', 'brain-state.json'),
   )
@@ -842,6 +842,7 @@ export function apply(ctx, config = {}) {
     if (!brain) return null
     refreshLlm()
     const snap = brain.snapshot()
+    const effectiveVision = visionConfig()
     return {
       ...snap,
       gate: gate
@@ -883,22 +884,22 @@ export function apply(ctx, config = {}) {
         enabled: settings.vision.enabled,
         vendor: settings.vision.vendor || '',
         provider: settings.vision.provider || '',
-        mode: visionConfig().mode,
+        mode: effectiveVision.mode,
         vendors: vendorsPublic(),
         baseURL: settings.vision.baseURL,
         model: settings.vision.model,
         maxPerHour: settings.vision.maxPerHour,
-        hasKey: Boolean(settings.vision.apiKey),
-        keyMask: maskKey(settings.vision.apiKey),
-        effectiveBaseURL: visionConfig().baseURL,
-        effectiveModel: visionConfig().model,
+        hasKey: effectiveVision.mode === 'dsh' ? Boolean(effectiveVision.provider && effectiveVision.model) : Boolean(effectiveVision.apiKey),
+        keyMask: effectiveVision.mode === 'dsh' ? '' : maskKey(effectiveVision.apiKey),
+        effectiveBaseURL: effectiveVision.baseURL,
+        effectiveModel: effectiveVision.model,
       },
       knowledge: { ...settings.knowledge, status: knowledge.status() },
       owner: { ...settings.owner },
       bci: {
         ...bci.snapshot(),
         screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true,
-        automaticIntervalMs: AUTO_SENSE_INTERVAL_MS,
+        automaticIntervalMs: autoSenseIntervalMs(),
       },
       bciAutomation: { screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true, intervalMs: settings.autoSense.intervalMs, visionMinMs: settings.autoSense.visionMinMs },
       asleep: brain.isAsleep(),
@@ -2501,9 +2502,9 @@ export function apply(ctx, config = {}) {
             active: Boolean(adapter.meta?.channel && brain.senses.isEnabled(adapter.meta.channel)),
             automatic: ['system', 'interoception'].includes(adapter.id) || (adapter.id === 'screen' && settings.autoSense.screenCaptureEnabled === true),
             screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true,
-            intervalMs: adapter.id === 'screen' ? settings.autoSense.visionMinMs : AUTO_SENSE_INTERVAL_MS,
+            intervalMs: adapter.id === 'screen' ? settings.autoSense.visionMinMs : autoSenseIntervalMs(),
           })),
-          autoSense: { screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true, intervalMs: AUTO_SENSE_INTERVAL_MS, visionMinMs: settings.autoSense.visionMinMs },
+          autoSense: { screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true, intervalMs: autoSenseIntervalMs(), visionMinMs: settings.autoSense.visionMinMs },
           note: '自动采集由通道开关控制；屏幕截图有独立权限且默认关闭。动作执行始终关闭。',
         })
       },
@@ -2802,7 +2803,7 @@ export function apply(ctx, config = {}) {
           return json({
             channels: brain.senses.snapshot(),
             adapters: bci.list(),
-            autoSense: { screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true, intervalMs: AUTO_SENSE_INTERVAL_MS, visionMinMs: settings.autoSense.visionMinMs },
+            autoSense: { screenCaptureEnabled: settings.autoSense.screenCaptureEnabled === true, intervalMs: autoSenseIntervalMs(), visionMinMs: settings.autoSense.visionMinMs },
             recent: (brain.inner ?? [])
               .filter((item) => item.kind === 'sensor')
               .slice(-12)
@@ -4062,6 +4063,25 @@ export function apply(ctx, config = {}) {
       methods: ['POST'],
       handler: async (request) => {
         const body = await readBody(request)
+        if (typeof body.owner?.qq === 'string') {
+          const qq = body.owner.qq.trim()
+          if (qq && !/^\d{5,15}$/.test(qq)) return fail('主人 QQ 必须是 5-15 位数字', 400)
+        }
+        if (body.llm && typeof body.llm === 'object' && typeof body.llm.model === 'string' && body.llm.model) {
+          const directEndpoint = Boolean((body.llm.baseURL || settings.llm.baseURL) && (body.llm.apiKey || settings.llm.apiKey))
+          const providerGiven = typeof body.llm.provider === 'string' && body.llm.provider.trim()
+          if (!body.llm.model.includes('/') && !directEndpoint && !providerGiven) {
+            return fail(`模型名要写成 provider/model（例如 zcode/GLM-5.3-Flash），${body.llm.model} 缺了前缀`, 400)
+          }
+        }
+        if (body.vision && typeof body.vision === 'object' && typeof body.vision.model === 'string' && body.vision.model.trim()) {
+          const incomingVendor = vendorById(body.vision.vendor || settings.vision.vendor)
+          const visionDirect = Boolean(
+            (body.vision.baseURL || settings.vision.baseURL || incomingVendor?.baseURL || settings.llm.baseURL) &&
+              (body.vision.apiKey || settings.vision.apiKey || incomingVendor?.apiKey || settings.llm.apiKey),
+          )
+          if (!visionDirect && !body.vision.model.trim().includes('/')) return fail('视觉模型名也要写成 provider/model', 400)
+        }
         void appendSnowLog({
           at: Date.now(),
           kind: 'settings-in',
@@ -4519,7 +4539,8 @@ export function apply(ctx, config = {}) {
 
   async function serveConsoleApi(req, res, url) {
     const cookie = String(req.headers.cookie ?? '')
-    if (!cookie.includes(`bibao_ui=${consoleState.token}`)) {
+    const hasUiCookie = cookie.split(';').some((part) => part.trim() === `bibao_ui=${consoleState.token}`)
+    if (!hasUiCookie) {
       res.writeHead(401, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ error: 'unauthorized' }))
       return
@@ -4570,7 +4591,8 @@ export function apply(ctx, config = {}) {
         }
         const token = url.searchParams.get('token')
         const cookie = String(req.headers.cookie ?? '')
-        const ok = token === consoleState.token || cookie.includes(`bibao_ui=${consoleState.token}`)
+        const hasUiCookie = cookie.split(';').some((part) => part.trim() === `bibao_ui=${consoleState.token}`)
+        const ok = token === consoleState.token || hasUiCookie
         if (!ok) {
           res.writeHead(401, { 'content-type': 'text/html; charset=utf-8' })
           res.end('<meta charset="utf-8"><p>401：请用 boot-report.json 里的 uiUrl（带 token）打开。</p>')

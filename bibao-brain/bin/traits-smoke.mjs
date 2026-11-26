@@ -1,4 +1,4 @@
-﻿import { traitBonus, bestTraitToComplete, traitsOf } from '../core/traits.js'
+import { traitBonus, bestTraitToComplete, traitsOf } from '../core/traits.js'
 const out = []
 const check = (n, ok, d = '') => out.push([n, ok, d])
 check('认识英雄的羁绊', traitsOf('艾希').includes('射手'), traitsOf('艾希').join('/'))

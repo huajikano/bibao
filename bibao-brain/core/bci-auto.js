@@ -150,7 +150,6 @@ export function createSystemAdapter(probe) {
     kind: 'system',
     capabilities: [CAPABILITIES.SENSE_STATE],
     readOnly: true,
-    readOnly: true,
     async sense(_payload = {}, { signal } = {}) {
       const metrics = await probe.sample({ signal })
       return { ...systemSenseText(metrics), metrics }

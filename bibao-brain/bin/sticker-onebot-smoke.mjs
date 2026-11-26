@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /** 从真实反向 WS 消息到收藏、文本回复与 OneBot 图片动作。所有数据和动作均为本地夹具。 */
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'

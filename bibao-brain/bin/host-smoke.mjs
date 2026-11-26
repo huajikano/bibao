@@ -110,8 +110,15 @@ check(
   screenOn.status === 200 && bciScreenOn.data.autoSense?.screenCaptureEnabled === true,
   JSON.stringify(bciScreenOn.data.autoSense ?? null),
 )
-await call('POST', '/settings', { autoSense: { screenCaptureEnabled: false } })
-await call('POST', '/senses', { toggle: true, channel: 'interoception', enabled: true })
+const intervalSettings = await call('POST', '/settings', { autoSense: { intervalMs: 30000 } })
+const bciInterval = await call('GET', '/bci')
+check(
+  '自动感官采样间隔更新后诊断同步',
+  intervalSettings.status === 200 && bciInterval.data.autoSense?.intervalMs === 30000,
+  JSON.stringify(bciInterval.data.autoSense ?? null),
+)
+await call('POST', '/settings', { autoSense: { intervalMs: 60000 } })
+
 const interoSense = await call('POST', '/bci/sense', { adapter: 'interoception' })
 check(
   'BCI 适配器读数会进入感官皮层',
@@ -271,8 +278,13 @@ check(
     /十一点/.test(ownerSettings.data?.snapshot?.owner?.requirements ?? ''),
   JSON.stringify(ownerSettings.data?.snapshot?.owner ?? null),
 )
-const badOwner = await call('POST', '/settings', { owner: { qq: 'not-a-qq' } })
-check('主人 QQ 校验', badOwner.status === 400, `${badOwner.status} ${badOwner.data?.error ?? ''}`)
+const badOwnerWithTuning = await call('POST', '/settings', { owner: { qq: 'bad' }, tuning: { talkativeness: 0.12 } })
+const afterBadOwner = await call('GET', '/state')
+check(
+  '设置校验失败不会部分应用其他字段',
+  badOwnerWithTuning.status === 400 && afterBadOwner.data.tuning?.talkativeness !== 0.12,
+  JSON.stringify(afterBadOwner.data.tuning ?? null),
+)
 
 const visionSettings = await call('POST', '/settings', {
   vision: {

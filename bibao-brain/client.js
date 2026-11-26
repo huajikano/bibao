@@ -404,7 +404,8 @@ window.__ModuleLoader__.load({
     async function request(pathname, options = {}) {
       // 某些链路会把 POST 的 body 丢掉，所以同一份 JSON 再塞进查询串，Host 两边都认
       let url = `${API}${pathname}`
-      if (options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 1500) {
+      const queryPayloadAllowed = options.method === 'POST' && typeof options.body === 'string' && options.body.length <= 1500 && !/^\/(?:settings|vendors|suppliers|llm|vision|biography)/.test(pathname)
+      if (queryPayloadAllowed) {
         url += `${url.includes('?') ? '&' : '?'}payload=${encodeURIComponent(options.body)}`
       }
       const response = await fetch(new URL(url, window.location.origin), {

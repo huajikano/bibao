@@ -9,6 +9,14 @@ import { createHash } from 'node:crypto'
 import { estimateTokens, safeReasoningOptions } from './usage.js'
 const MAX_BYTES = 8 * 1024 * 1024
 
+function decodeDataImage(url) {
+  const match = /^data:(image\/(?:png|jpeg|jpg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(String(url))
+  if (!match || match[2].length % 4 === 1) throw new Error('图片 data URL 无效')
+  const buffer = Buffer.from(match[2], 'base64')
+  if (buffer.length > MAX_BYTES) throw new Error('图片太大')
+  return { dataUrl: String(url), buffer, type: match[1].toLowerCase() }
+}
+
 export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsage = null } = {}) {  const cache = new Map()
   const stats = { calls: 0, cached: 0, failed: 0, last: null }
 
@@ -84,13 +92,12 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
     throw new Error(`视觉返回不是合法 JSON：${text.slice(0, 120)}`)
   }
 
-  async function fetchImage(url) {
+  async function fetchImage(url, signal) {
+    if (signal?.aborted) throw signal.reason ?? new Error('视觉请求已取消')
     if (String(url).startsWith('data:')) {
-      const [head, body] = String(url).split(',')
-      return { dataUrl: String(url), buffer: Buffer.from(body, 'base64'), type: (head.match(/data:([^;]+)/) ?? [])[1] ?? 'image/png' }
+      return decodeDataImage(url)
     }
-    const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
-    if (!res.ok) throw new Error(`图片下载失败 ${res.status}`)
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) })
     const type = res.headers.get('content-type') ?? 'image/jpeg'
     const buffer = Buffer.from(await res.arrayBuffer())
     if (buffer.length > MAX_BYTES) throw new Error('图片太大')
@@ -105,7 +112,7 @@ export function createVision({ baseURL, apiKey, model, timeoutMs = 60000, onUsag
     },
     async describe(url, { prompt = '用第一人称记下你看到的画面：谁、在哪、在做什么、有什么显眼的东西。60 字以内，只描述看到的，不要评价。', maxTokens = 200, reasoningEffort = 'low', signal } = {}) {
       if (!this.enabled) throw new Error('视觉模型没配置')
-      const fetched = await fetchImage(url)
+      const fetched = await fetchImage(url, signal)
       const dataUrl = fetched.dataUrl
       // 同一张图、不同问题要分别缓存，否则会拿上次的答案
       const hash = createHash('sha1').update(prompt + '|' + dataUrl).digest('hex').slice(0, 16)
@@ -203,9 +210,9 @@ export function createDshVision({ llm, attachments, provider, model, timeoutMs =
       let buffer
       let type
       if (String(url).startsWith('data:')) {
-        const [head, body] = String(url).split(',')
-        type = (head.match(/data:([^;]+)/) ?? [])[1] ?? 'image/png'
-        buffer = Buffer.from(body, 'base64')
+        const decoded = decodeDataImage(url)
+        type = decoded.type
+        buffer = decoded.buffer
       } else {
         const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
         if (!res.ok) throw new Error(`图片下载失败 ${res.status}`)

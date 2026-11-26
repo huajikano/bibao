@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** 视觉端点兼容：完整 URL、拼接 JSON、SSE、纯文本都能读。 */
+import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { createVision } from '../core/vision.js'
 
@@ -34,6 +35,14 @@ check('SSE 响应', second.text === '红色', second.text)
 const plain = createVision({ ...shared, baseURL: `http://127.0.0.1:${port}/text` })
 const third = await plain.describe(png, { prompt: '描述一下', maxTokens: 20 })
 check('纯文本响应', third.text.includes('一只猫'), third.text)
+
+await assert.rejects(
+  () => concatenated.describe('data:image/png;base64,' + 'A'.repeat(11_200_000)),
+  /图片太大/,
+)
+check('超限 data URL 在发请求前被拒绝', true)
+await assert.rejects(() => concatenated.describe('data:text/plain;base64,SGVsbG8='), /data URL 无效/)
+check('非图片 data URL 被拒绝', true)
 
 server.closeAllConnections?.()
 await new Promise((resolve) => server.close(resolve))
